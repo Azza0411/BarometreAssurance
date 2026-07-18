@@ -1,0 +1,51 @@
+-- Schéma pour le stockage des états financiers/rapports de plusieurs sources.
+-- `sources`     : une ligne par source de données (CMF, FTUSA, et d'autres à venir).
+-- `cmf`         : une ligne par société suivie (pertinent pour les sources qui
+--                 publient par société, comme CMF ; NULL pour les sources
+--                 sectorielles comme FTUSA).
+-- `documents`   : une ligne par document (état financier annuel, rapport
+--                 sectoriel...) trouvé pour une source.
+-- `kpi_values`  : une ligne par KPI extrait d'un document (Bilan, Annexe 12, Annexe 13...).
+
+CREATE TABLE IF NOT EXISTS sources (
+    id   INT AUTO_INCREMENT PRIMARY KEY,
+    nom  VARCHAR(50)  NOT NULL UNIQUE,   -- ex: CMF, FTUSA, CGA
+    lien VARCHAR(500) NOT NULL           -- URL de base du site source
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cmf (
+    id             INT AUTO_INCREMENT PRIMARY KEY,
+    code           VARCHAR(50)  NOT NULL UNIQUE,   -- code court (ex: STAR, COMAR)
+    nom_entreprise VARCHAR(255) NOT NULL            -- nom exact tel qu'affiché sur le portail CMF
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- cmf_id est NULL pour les documents d'une source sectorielle (ex: FTUSA), qui
+-- n'est pas rattachée à une société individuelle. source_id identifie
+-- toujours l'origine du document, quelle que soit la source.
+CREATE TABLE IF NOT EXISTS documents (
+    id           INT AUTO_INCREMENT PRIMARY KEY,
+    source_id    INT NOT NULL,
+    cmf_id       INT NULL,
+    nom_pdf      VARCHAR(255) NOT NULL,             -- ex: STAR_2020.pdf
+    annee        SMALLINT NOT NULL,
+    lien         VARCHAR(500) NOT NULL,             -- URL du PDF sur le site source
+    date_ajout   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_document_source_cmf_annee (source_id, cmf_id, annee),
+    CONSTRAINT fk_documents_source FOREIGN KEY (source_id) REFERENCES sources(id),
+    CONSTRAINT fk_documents_cmf FOREIGN KEY (cmf_id) REFERENCES cmf(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- valeur_nombre / valeur_texte : un seul des deux est renseigné par KPI.
+-- Les KPI numériques (Total actif, Effectif...) utilisent valeur_nombre.
+-- Les KPI textuels (Date de création, Siège social...) utilisent valeur_texte.
+CREATE TABLE IF NOT EXISTS kpi_values (
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    document_id   INT NOT NULL,
+    tableau       VARCHAR(255) NOT NULL,   -- ex: "Bilan au 31-12-2022", "Annexe 12 - Resultat technique Vie"
+    kpi           VARCHAR(255) NOT NULL,   -- ex: "Total actif", "Résultat technique Vie"
+    valeur_nombre DOUBLE NULL,
+    valeur_texte  VARCHAR(500) NULL,
+    date_ajout    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_document_kpi (document_id, kpi),
+    CONSTRAINT fk_kpi_document FOREIGN KEY (document_id) REFERENCES documents(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
