@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600">
+  <!-- Moitié gauche verte -->
+  <rect width="450" height="600" fill="#006233"/>
+  <!-- Moitié droite blanche -->
+  <rect x="450" width="450" height="600" fill="#FFFFFF"/>
+  <!-- Croissant rouge -->
+  <circle cx="480" cy="300" r="160" fill="#D21034"/>
+  <circle cx="530" cy="300" r="130" fill="#FFFFFF"/>
+  <!-- Étoile rouge à 5 branches -->
+  <polygon points="450,170 463,210 505,210 471,234 484,274 450,250 416,274 429,234 395,210 437,210"
+           fill="#D21034" transform="rotate(18, 450, 300) translate(0, 50)"/>
+</svg>
