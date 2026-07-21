@@ -134,45 +134,51 @@ function CompanyDropdown({ companies, selected, onSelect }) {
   );
 }
 
-/* ── KpiCard — toujours rouge (ApercuMarche exact) ───────────────────────────*/
-function KpiCard({ label, value, iconFn, selected }) {
+/* ── KpiCard — dark gradient style (inspiré DarkKpiBanner / ProfilPays) ─────*/
+function KpiCard({ label, value, iconFn, selected, onClick }) {
   return (
-    <div style={{
-      flex:1, borderRadius:10, padding:"9px 11px", position:"relative", overflow:"hidden",
-      background:"linear-gradient(135deg,#B80C26 0%,#7A0000 100%)",
-      boxShadow: selected
-        ? "0 0 0 3px white, 0 4px 18px rgba(184,12,38,0.5)"
-        : "0 3px 12px rgba(184,12,38,0.22)",
-      display:"flex", alignItems:"center", gap:9, minHeight:72,
-      transition:"box-shadow .2s",
-    }}>
-      <div style={{
-        position:"absolute", right:-12, top:-12, width:56, height:56,
-        borderRadius:"50%", background:"rgba(255,255,255,0.06)",
-      }}/>
+    <div
+      onClick={onClick}
+      style={{
+        flex: 1,
+        borderRadius: 8,
+        padding: "14px 16px 12px",
+        display: "flex", flexDirection: "column",
+        background: selected
+          ? "linear-gradient(120deg, #13131A 0%, #1E1E2A 25%, #252535 55%, #424242 80%, #696969 100%)"
+          : "linear-gradient(120deg, #1A1A22 0%, #22222E 50%, #2E2E3E 100%)",
+        boxShadow: selected
+          ? `0 4px 20px rgba(255,230,0,.18), 0 1px 0 rgba(255,255,255,.06) inset`
+          : "0 2px 10px rgba(10,10,20,.25), 0 1px 0 rgba(255,255,255,.04) inset",
+        outline: selected ? `2px solid ${Y}` : "2px solid transparent",
+        transition: "all .18s ease",
+        cursor: "pointer",
+        position: "relative",
+        overflow: "hidden",
+      }}
+      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = "none"; }}
+    >
       {selected && (
         <div style={{
-          position:"absolute", top:5, right:7,
-          background:"rgba(255,255,255,0.28)", borderRadius:20,
-          padding:"1px 7px", fontSize:8, fontWeight:900, color:"white",
-          border:"1px solid rgba(255,255,255,0.45)",
+          position: "absolute", top: 6, right: 8,
+          background: Y, borderRadius: 20,
+          padding: "1px 6px", fontSize: 7.5, fontWeight: 900, color: D,
         }}>✓</div>
       )}
       <div style={{
-        width:36, height:36, borderRadius:8, flexShrink:0,
-        background:"rgba(255,255,255,0.18)", border:"1px solid rgba(255,255,255,0.14)",
-        display:"flex", alignItems:"center", justifyContent:"center",
+        width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+        background: selected ? Y : "rgba(255,255,255,.08)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        marginBottom: 8,
       }}>
-        {iconFn("white")}
+        {iconFn(selected ? D : "rgba(255,255,255,.55)")}
       </div>
-      <div style={{ flex:1, minWidth:0 }}>
-        <div style={{
-          fontSize:7.5, fontWeight:800, letterSpacing:"0.8px",
-          textTransform:"uppercase", color:"rgba(255,255,255,0.55)", marginBottom:2,
-        }}>{label}</div>
-        <div style={{ fontSize:21, fontWeight:900, color:"white", lineHeight:1 }}>
-          {value ?? "—"}
-        </div>
+      <div style={{ fontSize: 7.5, fontWeight: 700, color: "rgba(255,255,255,.38)", textTransform: "uppercase", letterSpacing: "2px", marginBottom: 6 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 24, fontWeight: 300, color: "#FFFFFF", lineHeight: 1, letterSpacing: "-0.5px" }}>
+        {value ?? "—"}
       </div>
     </div>
   );
@@ -183,7 +189,8 @@ function Card({ title, children, style={} }) {
   return (
     <div style={{
       background:"white", borderRadius:12, border:"1px solid #EBEBEB",
-      boxShadow:"0 2px 8px rgba(0,0,0,0.05)", padding:"10px 12px", ...style,
+      boxShadow:"0 2px 8px rgba(0,0,0,0.05)", padding:"10px 12px",
+      display:"flex", flexDirection:"column", overflow:"hidden", ...style,
     }}>
       {title && (
         <div style={{ display:"flex", alignItems:"center", gap:5, marginBottom:7 }}>
@@ -207,7 +214,7 @@ function HBar({ labs=[], vals=[] }) {
       {labs.map((lab,i) => (
         <div key={i} style={{ display:"flex", alignItems:"center", gap:6 }}>
           <div style={{
-            width:108, fontSize:9, fontWeight:600, color:D, textAlign:"right", flexShrink:0,
+            width:80, fontSize:8, fontWeight:600, color:D, textAlign:"right", flexShrink:0,
             lineHeight:1.2, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
           }} title={lab}>{lab}</div>
           <div style={{ flex:1, height:11, background:"#F3F3F6", borderRadius:3, overflow:"hidden" }}>
@@ -227,7 +234,12 @@ function GrandPublicsView({ seg, data }) {
   const d = data?.segments?.[seg] || data?.segments?.all;
   if (!d) return <div style={{ color:G, padding:32, textAlign:"center" }}>Données non disponibles</div>;
 
-  const H = 140;
+  /* Available height ≈ viewport − topbar(58) − padding(20) − switcher(32) − kpiTiles(56) − gaps(40) − source(20)
+     Distribute: row1 gets 44%, row2 gets 56% of that. Chart fits inside card minus title(22px)+pad(20px). */
+  const avail = Math.max(300, window.innerHeight - 92 - 20 - 32 - 56 - 40 - 20);
+  const H1 = Math.floor(avail * 0.44) - 42;   // row 1 card chart height
+  const H2 = Math.floor(avail * 0.56) - 42;   // row 2 card chart height
+  const H = H1;
 
   const genreOpts = {
     chart:{ type:"donut", fontFamily:FONT },
@@ -265,97 +277,110 @@ function GrandPublicsView({ seg, data }) {
     tooltip:{ y:{ formatter:v=>`${v}%` } },
   };
 
+  /*
+   Layout repensé : 3 colonnes × 2 lignes + carte géo span 2 lignes
+   Col 1 (étroite) : Genre (donut, petit) + stats Véhicule/Proprio
+   Col 2 (large)   : Tranche d'âge (bar, besoin de largeur) + Profession (liste)
+   Col 3 (large)   : TypePro treemap (besoin d'espace) + Rev Fam+Ind côte à côte
+   Col 4 (fixe)    : Carte géo sur toute la hauteur
+  */
+  const CH = Math.max(90, Math.floor((window.innerHeight - 92 - 20 - 32 - 56 - 40 - 20) * 0.42) - 40);
+
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+    <div style={{
+      display:"grid",
+      gridTemplateColumns:"180px 1fr 1.5fr 152px",
+      gridTemplateRows:"40% 60%",
+      gap:6,
+      height:"100%",
+    }}>
 
-      {/* Ligne 1 — 3 colonnes : Genre | Âge | TypePro */}
-      <div style={{ display:"grid", gridTemplateColumns:"140px 1fr 1fr", gap:8 }}>
-
-        <Card title="Genre">
-          <ReactApexChart options={genreOpts} series={d.genre||[0,0]} type="donut" height={H}/>
-          <div style={{ display:"flex", flexDirection:"column", gap:3, marginTop:4 }}>
-            {[["Homme",D,d.genre?.[0]??0],["Femme",Y,d.genre?.[1]??0]].map(([lbl,c,v])=>(
-              <div key={lbl} style={{ display:"flex", alignItems:"center", gap:5 }}>
-                <div style={{ width:8, height:8, borderRadius:2, background:c, flexShrink:0 }}/>
-                <span style={{ fontSize:9.5, color:D, fontWeight:600, flex:1 }}>{lbl}</span>
-                <span style={{ fontSize:11, fontWeight:900, color:D }}>{v}%</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card title="Tranche d'âge">
-          <ReactApexChart options={ageOpts}
-            series={[{ name:"Répondants", data:d.age||[] }]} type="bar" height={H+30}/>
-        </Card>
-
-        <Card title="Type de profession">
-          {(d.typePro||[]).length > 0
-            ? <ReactApexChart options={treeOpts} series={[{ data:d.typePro }]} type="treemap" height={H+30}/>
-            : <div style={{ height:H+30, display:"flex", alignItems:"center", justifyContent:"center", color:G }}>N/D</div>
-          }
-        </Card>
-      </div>
-
-      {/* Ligne 2 — 4 colonnes : Stats | Profession | RevFam | RevInd */}
-      <div style={{ display:"grid", gridTemplateColumns:"140px 1fr 1fr 1fr", gap:8 }}>
-
-        {/* Véhicule + Proprio */}
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {[
-            { iconFn:ICONS.vehicule, val:d.vehicule, lbl:"Ont un véhicule" },
-            { iconFn:ICONS.maison,   val:d.proprio,  lbl:"Propriétaires"   },
-          ].map(({ iconFn, val, lbl })=>(
-            <div key={lbl} style={{
-              background:"white", borderRadius:12, border:"1px solid #EBEBEB",
-              boxShadow:"0 2px 8px rgba(0,0,0,0.05)", padding:"9px 11px",
-              display:"flex", alignItems:"center", gap:8, flex:1,
-            }}>
-              <div style={{
-                width:34, height:34, borderRadius:8, background:"#FFF8E6",
-                border:"1px solid #FFE600",
-                display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
-              }}>
-                {iconFn(D)}
-              </div>
-              <div>
-                <div style={{ fontSize:19, fontWeight:900, color:D }}>{val??0}%</div>
-                <div style={{ fontSize:8.5, color:G, fontWeight:600, lineHeight:1.3 }}>{lbl}</div>
-              </div>
+      {/* [row0, col0] Genre — donut compact avec légende intégrée */}
+      <Card title="Genre">
+        <ReactApexChart options={genreOpts} series={d.genre||[0,0]} type="donut" height={CH}/>
+        <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+          {[["Homme",D,d.genre?.[0]??0],["Femme",Y,d.genre?.[1]??0]].map(([lbl,c,v])=>(
+            <div key={lbl} style={{ display:"flex", alignItems:"center", gap:5 }}>
+              <div style={{ width:8, height:8, borderRadius:2, background:c, flexShrink:0 }}/>
+              <span style={{ fontSize:9, color:D, fontWeight:600, flex:1 }}>{lbl}</span>
+              <span style={{ fontSize:10, fontWeight:900, color:D }}>{v}%</span>
             </div>
           ))}
         </div>
+      </Card>
 
-        <Card title="Profession">
-          <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
-            {(d.professions||[]).map(([name,pct],i)=>(
-              <div key={i} style={{
-                display:"flex", alignItems:"center", gap:5,
-                padding:"3px 5px", background:i%2===0?"#FAFAFA":"white", borderRadius:4,
-              }}>
-                <span style={{ flex:1, fontSize:9, color:D, fontWeight:600 }}>{name}</span>
-                <div style={{ height:3, width:32, background:"#F0F0F0", borderRadius:2, overflow:"hidden" }}>
-                  <div style={{ height:"100%", width:`${pct}%`, background:Y, borderRadius:2 }}/>
-                </div>
-                <span style={{ fontSize:9, fontWeight:800, color:D, width:20, textAlign:"right" }}>{pct}%</span>
-              </div>
-            ))}
+      {/* [row0, col1] Tranche d'âge — bar chart (a besoin de largeur) */}
+      <Card title="Tranche d'âge">
+        <ReactApexChart options={ageOpts}
+          series={[{ name:"Répondants", data:d.age||[] }]} type="bar" height={CH}/>
+      </Card>
+
+      {/* [row0, col2] Type profession — treemap (a besoin d'espace) */}
+      <Card title="Type de profession">
+        {(d.typePro||[]).length > 0
+          ? <ReactApexChart options={treeOpts} series={[{ data:d.typePro }]} type="treemap" height={CH}/>
+          : <div style={{ height:CH, display:"flex", alignItems:"center", justifyContent:"center", color:G }}>N/D</div>
+        }
+      </Card>
+
+      {/* [row0-1, col3] Carte géo — toute la hauteur */}
+      <Card title="Géo." style={{ gridRow:"1 / span 2", padding:"10px 8px" }}>
+        <TunisiaMap data={GEO_MAP} compact/>
+      </Card>
+
+      {/* [row1, col0] Véhicule + Proprio — 2 tuiles stat empilées */}
+      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+        {[
+          { iconFn:ICONS.vehicule, val:d.vehicule, lbl:"Ont un véhicule" },
+          { iconFn:ICONS.maison,   val:d.proprio,  lbl:"Propriétaires"   },
+        ].map(({ iconFn, val, lbl })=>(
+          <div key={lbl} style={{
+            background:"white", borderRadius:10, border:"1px solid #EBEBEB",
+            boxShadow:"0 2px 6px rgba(0,0,0,0.05)", padding:"10px 12px",
+            display:"flex", alignItems:"center", gap:10, flex:1,
+          }}>
+            <div style={{
+              width:32, height:32, borderRadius:8, background:"#FFF8E6",
+              border:"1px solid #FFE600",
+              display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
+            }}>
+              {iconFn(D)}
+            </div>
+            <div>
+              <div style={{ fontSize:20, fontWeight:900, color:D, lineHeight:1 }}>{val??0}%</div>
+              <div style={{ fontSize:8.5, color:G, fontWeight:600, lineHeight:1.3, marginTop:2 }}>{lbl}</div>
+            </div>
           </div>
-        </Card>
+        ))}
+      </div>
 
+      {/* [row1, col1] Profession — liste, ce cadre est assez large */}
+      <Card title="Profession">
+        <div style={{ display:"flex", flexDirection:"column", gap:3, overflow:"hidden" }}>
+          {(d.professions||[]).slice(0,9).map(([name,pct],i)=>(
+            <div key={i} style={{
+              display:"flex", alignItems:"center", gap:6,
+              padding:"3px 5px", background:i%2===0?"#FAFAFA":"white", borderRadius:3,
+            }}>
+              <span style={{ flex:1, fontSize:9, color:D, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{name}</span>
+              <div style={{ height:3, width:36, background:"#F0F0F0", borderRadius:2, overflow:"hidden", flexShrink:0 }}>
+                <div style={{ height:"100%", width:`${pct}%`, background:Y, borderRadius:2 }}/>
+              </div>
+              <span style={{ fontSize:9, fontWeight:800, color:D, width:24, textAlign:"right", flexShrink:0 }}>{pct}%</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* [row1, col2] Revenus familiaux + individuels côte à côte — grand cadre */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
         <Card title="Revenu familial mensuel">
           <HBar labs={d.revFam?.labs||[]} vals={d.revFam?.vals||[]}/>
         </Card>
-
         <Card title="Revenu individuel mensuel">
           <HBar labs={d.revInd?.labs||[]} vals={d.revInd?.vals||[]}/>
         </Card>
       </div>
-
-      {/* Ligne 3 — Carte géo pleine largeur, compact (sans liste régions) */}
-      <Card title="Répartition géographique" style={{ display:"flex", alignItems:"stretch", gap:0 }}>
-        <TunisiaMap data={GEO_MAP} compact/>
-      </Card>
     </div>
   );
 }
@@ -383,24 +408,30 @@ function EntreprisesView({ data }) {
     tooltip:{ y:{ formatter:v=>`${v}%` } },
   };
 
+  /* Layout : 3 colonnes × 2 lignes, carte géo sur 2 lignes */
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 200px", gap:8 }}>
-        <Card title="Secteur d'activité">
-          <ReactApexChart options={treeOpts} series={[{ data:e.secteurs||[] }]} type="treemap" height={200}/>
-        </Card>
-        <Card title="Nb. employés">
-          <ReactApexChart options={donutOpts} series={e.employes?.vals||[]} type="donut" height={200}/>
-        </Card>
-      </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 200px", gap:8 }}>
-        <Card title="Chiffres d'affaires annuel">
-          <HBar labs={e.ca?.labs||[]} vals={e.ca?.vals||[]}/>
-        </Card>
-        <Card title="Répartition géographique">
-          <TunisiaMap data={GEO_MAP} compact/>
-        </Card>
-      </div>
+    <div style={{ display:"grid", gridTemplateColumns:"2fr 1.4fr 180px", gridTemplateRows:"55% 45%", gap:8, height:"100%" }}>
+
+      {/* [row0, col0] Secteur d'activité */}
+      <Card title="Secteur d'activité">
+        <ReactApexChart options={treeOpts} series={[{ data:e.secteurs||[] }]} type="treemap" height={Math.max(140, Math.floor(window.innerHeight * 0.24))}/>
+      </Card>
+
+      {/* [row0, col1] Effectif employés */}
+      <Card title="Effectif employés">
+        <ReactApexChart options={donutOpts} series={e.employes?.vals||[]} type="donut" height={Math.max(140, Math.floor(window.innerHeight * 0.24))}/>
+      </Card>
+
+      {/* [row0-1, col2] Répartition géographique — occupe toute la hauteur */}
+      <Card title="Répartition géographique" style={{ gridRow:"1 / span 2", padding:"10px 8px" }}>
+        <TunisiaMap data={GEO_MAP} compact/>
+      </Card>
+
+      {/* [row1, col0-1] Chiffres d'affaires — occupe les 2 premières colonnes */}
+      <Card title="Chiffres d'affaires annuel" style={{ gridColumn:"1 / span 2" }}>
+        <HBar labs={e.ca?.labs||[]} vals={e.ca?.vals||[]}/>
+      </Card>
+
     </div>
   );
 }
@@ -420,9 +451,9 @@ function AnalyseEchantillon({ data }) {
   const counts = data?.counts || {};
 
   return (
-    <div>
+    <div style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0, overflow:"hidden" }}>
       {/* Switcher */}
-      <div style={{ display:"flex", gap:7, alignItems:"center", marginBottom:11, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", gap:6, alignItems:"center", marginBottom:5, flexWrap:"wrap", flexShrink:0 }}>
         {[{ key:"ent", label:"Entreprises" },{ key:"gp", label:"Grand public" }].map(({ key, label })=>(
           <button key={key} onClick={() => { setMainSeg(key); setSubSeg(null); }} style={{
             padding:"6px 16px", borderRadius:8, fontSize:12, fontWeight:700, cursor:"pointer",
@@ -455,23 +486,28 @@ function AnalyseEchantillon({ data }) {
         )}
       </div>
 
-      {/* KPI tiles — TOUJOURS rouges, selected = anneau blanc */}
-      <div style={{ display:"flex", gap:7, marginBottom:11 }}>
-        {SUB_FILTERS.map(({ key, label, iconFn })=>(
-          <KpiCard
-            key={key}
-            label={label}
-            value={counts[key]}
-            iconFn={iconFn}
-            selected={subSeg===key}
-          />
-        ))}
-      </div>
+      {/* KPI tiles — dark gradient, uniquement pour Grand Public */}
+      {mainSeg==="gp" && (
+        <div style={{ display:"flex", gap:6, marginBottom:5, flexShrink:0 }}>
+          {SUB_FILTERS.map(({ key, label, iconFn })=>(
+            <KpiCard
+              key={key}
+              label={label}
+              value={counts[key]}
+              iconFn={iconFn}
+              selected={subSeg===key}
+              onClick={() => setSubSeg(subSeg===key ? null : key)}
+            />
+          ))}
+        </div>
+      )}
 
-      {mainSeg==="gp"
-        ? <GrandPublicsView seg={subSeg || "all"} data={data}/>
-        : <EntreprisesView data={data}/>
-      }
+      <div style={{ flex:1, minHeight:0, overflow:"hidden" }}>
+        {mainSeg==="gp"
+          ? <GrandPublicsView seg={subSeg || "all"} data={data}/>
+          : <EntreprisesView data={data}/>
+        }
+      </div>
     </div>
   );
 }
@@ -561,34 +597,28 @@ function FicheClientEntreprise({ data, code }) {
         </div>
       </div>
 
-      {/* KPI rouge */}
+      {/* KPI — dark gradient style DarkKpiBanner / ProfilPays */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8 }}>
         {ficheKpis.map(({ label, value, sub, icon })=>(
           <div key={label} style={{
-            borderRadius:10, padding:"9px 11px", position:"relative", overflow:"hidden",
-            background:"linear-gradient(135deg,#B80C26 0%,#7A0000 100%)",
-            boxShadow:"0 3px 12px rgba(184,12,38,0.22)",
-            display:"flex", alignItems:"center", gap:9, minHeight:70,
+            borderRadius:8, padding:"13px 15px 11px",
+            background:"linear-gradient(120deg, #0D0D14 0%, #13131A 20%, #1A1A24 45%, #252535 70%, #2E2E38 100%)",
+            boxShadow:"0 4px 20px rgba(10,10,20,.30), 0 1px 0 rgba(255,255,255,.04) inset",
+            display:"flex", flexDirection:"column", gap:5,
           }}>
             <div style={{
-              position:"absolute", right:-12, top:-12, width:56, height:56,
-              borderRadius:"50%", background:"rgba(255,255,255,0.06)",
-            }}/>
-            <div style={{
-              width:36, height:36, borderRadius:8, flexShrink:0,
-              background:"rgba(255,255,255,0.18)", border:"1px solid rgba(255,255,255,0.14)",
+              width:26, height:26, borderRadius:6,
+              background:"rgba(255,255,255,0.08)",
               display:"flex", alignItems:"center", justifyContent:"center",
             }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.6" width="20" height="20">
+              <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.55)" strokeWidth="1.6" width="15" height="15">
                 {icon}
               </svg>
             </div>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:7.5, fontWeight:800, letterSpacing:"0.8px",
-                textTransform:"uppercase", color:"rgba(255,255,255,0.55)", marginBottom:2 }}>{label}</div>
-              <div style={{ fontSize:12, fontWeight:900, color:"white", lineHeight:1.2 }}>{value}</div>
-              {sub && <div style={{ fontSize:8.5, color:"rgba(255,255,255,0.5)", marginTop:2 }}>{sub}</div>}
-            </div>
+            <div style={{ fontSize:7.5, fontWeight:700, letterSpacing:"2px",
+              textTransform:"uppercase", color:"rgba(255,255,255,.38)" }}>{label}</div>
+            <div style={{ fontSize:14, fontWeight:300, color:"white", lineHeight:1.2, letterSpacing:"-0.2px" }}>{value}</div>
+            {sub && <div style={{ fontSize:8, color:"rgba(255,255,255,0.28)" }}>{sub}</div>}
           </div>
         ))}
       </div>
@@ -657,7 +687,7 @@ export default function EnqueteMarche() {
   }, [code]);
 
   return (
-    <div style={{ height:"calc(100vh - 92px)", background:"#F2F2F4", fontFamily:"Barlow,system-ui,sans-serif", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+    <div style={{ height:"calc(100vh - 92px)", background:"#EEEEF4", fontFamily:"Barlow,system-ui,sans-serif", display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
       <PageHeaderBar
         title="Enquête de Marché"
@@ -670,9 +700,8 @@ export default function EnqueteMarche() {
         right={companies.length > 0 ? <CompanyDropdown companies={companies} selected={code} onSelect={setCode}/> : null}
       />
 
-      {/* ── Corps scrollable ── */}
-      <div style={{ flex:1, overflowY:"auto", padding:"16px 28px", display:"flex", flexDirection:"column", gap:12 }}>
-
+      {/* ── Corps ── */}
+      <div style={{ flex:1, overflow:"hidden", padding:"12px 28px 8px", display:"flex", flexDirection:"column", gap:10 }}>
 
       {/* Contenu */}
       {loading && (

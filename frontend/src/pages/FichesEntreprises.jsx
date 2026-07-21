@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import ReactApexChart from "react-apexcharts";
 import TunisiaMap from "../components/TunisiaMap";
 import { getLogoSrc } from "../utils/logos";
-import PageHeaderBar from "../components/PageHeaderBar";
+import PageHeaderBar, { DarkKpiBanner } from "../components/PageHeaderBar";
 
 const Y  = "#FFE600";
 const D  = "#2E2E38";
@@ -292,96 +292,238 @@ function ProfilAssurance({ code, annee, profil }) {
 }
 
 /* ══════════════════════════════════════════════════════════════ */
-/* TAB 2 — PERFORMANCE FINANCIÈRE (sparklines sur 10 ans)        */
+/* TAB 2 — PERFORMANCE FINANCIÈRE                                */
 /* ══════════════════════════════════════════════════════════════ */
-function PerformanceFinanciere({ code, evolution }) {
+const BILAN_COLORS = [D, "#44445A", "#747480", "#9898B0", "#B8B8CC", "#D4D4DE", "#E8E8EE"];
+
+function DonutSection({ title, items, total, totalLabel, colors }) {
+  const vals = items.map(it => Math.max(0, it.value ?? 0));
+  const sum  = vals.reduce((a, b) => a + b, 0) || 1;
+  /* Formatte le total en abrégeant les grands nombres pour éviter le débordement */
+  const fmtTotal = (v) => {
+    if (v == null) return "N/D";
+    if (v >= 1000) return `${(v / 1000).toFixed(1)}B`;
+    return `${v.toFixed(0)} M`;
+  };
+  const opts = {
+    chart:   { type: "donut", animations: { enabled: false }, background: "transparent" },
+    labels:  items.map(it => it.label),
+    colors:  colors || BILAN_COLORS.slice(0, items.length),
+    legend:  { show: false },
+    dataLabels: { enabled: false },
+    plotOptions: { pie: { donut: { size: "62%", labels: {
+      show: true,
+      value: { fontSize: "11px", fontWeight: 800, color: D, offsetY: -2,
+               formatter: () => fmtTotal(total) },
+      total: { show: true, label: totalLabel || "Total", fontSize: "8px", fontWeight: 700, color: G,
+               formatter: () => fmtTotal(total) },
+    }}}},
+    tooltip: { y: { formatter: v => `${v.toFixed(1)} M TND` } },
+    stroke:  { width: 1.5, colors: ["#FFFFFF"] },
+  };
+  return (
+    <div style={{ background: "white", borderRadius: 12, border: "1px solid #EBEBEB", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1.5px", color: D }}>{title}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ flexShrink: 0 }}>
+          <ReactApexChart options={opts} series={vals} type="donut" width={130} height={130} />
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+          {items.map((it, i) => {
+            const pct = sum > 0 ? ((it.value ?? 0) / sum * 100).toFixed(1) : "0";
+            return (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 7, height: 7, borderRadius: 2, flexShrink: 0, background: (colors || BILAN_COLORS)[i] }} />
+                <span style={{ fontSize: 8.5, color: D, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.label}</span>
+                <span style={{ fontSize: 8.5, fontWeight: 700, color: D, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{it.value != null ? it.value.toFixed(1) : "—"}</span>
+                <span style={{ fontSize: 7.5, color: G, flexShrink: 0, width: 32, textAlign: "right" }}>{pct}%</span>
+              </div>
+            );
+          })}
+          <div style={{ borderTop: "1px solid #F0F0F0", paddingTop: 4, display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+            <span style={{ fontSize: 8.5, fontWeight: 800, color: D }}>{totalLabel || "Total"}</span>
+            <span style={{ fontSize: 8.5, fontWeight: 800, color: D }}>{total != null ? `${total.toFixed(1)} M` : "N/D"}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PerformanceFinanciere({ code, profil, evolution, bilan }) {
+
   if (!evolution || Object.keys(evolution).length === 0) {
-    return <div style={{ color: G, padding: 40, textAlign: "center" }}>Données d'évolution non disponibles pour {LABEL[code] || code}</div>;
+    return <div style={{ color: G, padding: 40, textAlign: "center" }}>Données non disponibles pour {LABEL[code] || code}</div>;
   }
 
   const years = Object.keys(evolution).map(Number).sort();
-  const get = (field) => years.map(y => evolution[y]?.[field] ?? null);
+  const get   = (field) => years.map(y => evolution[y]?.[field] ?? null);
 
-  const indicators = [
-    { label: "Primes émises",      field: "primes_emises",   unit: "M TND", color: D,         accentBg: "#F3F3F6"  },
-    { label: "Résultat net",       field: "resultat_net",    unit: "M TND", color: "#E6A800",  accentBg: "#FFFBE6"  },
-    { label: "ROE",                field: "roe",             unit: "%",     color: "#1A7A4A",  accentBg: "#F0FAF4"  },
-    { label: "ROA",                field: "roa",             unit: "%",     color: "#1A6BB5",  accentBg: "#EFF6FF"  },
-    { label: "Part de marché",     field: "pdm",             unit: "%",     color: "#C8102E",  accentBg: "#FFF0F3"  },
-    { label: "Ratio combiné",      field: "ratio_combine",   unit: "%",     color: "#7C3AED",  accentBg: "#F5F3FF"  },
+  /* KPIs du dessus — depuis profil (dernière année) */
+  const lastYear = [...years].reverse().find(y => evolution[y]?.resultat_net != null) ?? years[years.length - 1];
+  const prevYear = [...years].filter(y => y < lastYear).reverse().find(y => evolution[y]?.resultat_net != null);
+  function delta(field) {
+    const cur = evolution[lastYear]?.[field];
+    const prv = prevYear ? evolution[prevYear]?.[field] : null;
+    if (cur == null || prv == null || prv === 0) return null;
+    return { val: (((cur - prv) / Math.abs(prv)) * 100).toFixed(1), up: cur >= prv };
+  }
+
+  /* Chart 1 — Primes & Résultat (barres M TND) */
+  const chartPrimesOpts = {
+    chart: { type: "bar", toolbar: { show: false }, animations: { enabled: false }, background: "transparent" },
+    plotOptions: { bar: { columnWidth: "55%", borderRadius: 3, grouped: true } },
+    colors: [D, Y],
+    legend: { position: "top", fontSize: "9px", fontFamily: "Barlow,system-ui,sans-serif",
+              markers: { width: 10, height: 6, radius: 2 } },
+    xaxis:  { categories: years, labels: { style: { fontSize: "9px", colors: G } }, axisBorder: { show: false }, axisTicks: { show: false } },
+    yaxis:  { title: { text: "M TND", style: { fontSize: "8px", color: G } },
+              labels: { style: { fontSize: "9px", colors: G }, formatter: v => v?.toFixed(0) } },
+    tooltip: { shared: true, intersect: false, y: { formatter: v => `${v?.toFixed(1)} M TND` } },
+    grid:   { borderColor: "#F0F0F0", strokeDashArray: 3 },
+    dataLabels: { enabled: false },
+  };
+  const chartPrimesSeries = [
+    { name: "Primes émises",          data: get("primes_emises") },
+    { name: "Résultat de l'exercice", data: get("resultat_net")  },
   ];
 
-  function SparkCard({ ind }) {
-    const data = get(ind.field);
-    const clean = data.filter(v => v != null);
-    if (clean.length === 0) return (
-      <div style={{ background: "white", borderRadius: 16, border: "1px solid #EBEBEB", padding: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
-        <div style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1.4px", color: G, marginBottom: 4 }}>{ind.label}</div>
-        <div style={{ fontSize: 18, color: "#C0C0C8", fontWeight: 700 }}>N/D</div>
-      </div>
-    );
+  /* Chart 2 — Ratios de performance (lignes %) */
+  const chartRatiosOpts = {
+    chart: { type: "line", toolbar: { show: false }, animations: { enabled: false }, background: "transparent" },
+    stroke: { width: [2.5, 2.5, 2], curve: "smooth", dashArray: [0, 0, 4] },
+    colors: [D, Y, G],
+    markers: { size: 3 },
+    legend: { position: "top", fontSize: "9px", fontFamily: "Barlow,system-ui,sans-serif",
+              markers: { width: 10, height: 6, radius: 2 } },
+    xaxis:  { categories: years, labels: { style: { fontSize: "9px", colors: G } }, axisBorder: { show: false }, axisTicks: { show: false } },
+    yaxis:  { title: { text: "%", style: { fontSize: "8px", color: G } },
+              labels: { style: { fontSize: "9px", colors: G }, formatter: v => `${v?.toFixed(1)}%` } },
+    tooltip: { shared: true, intersect: false, y: { formatter: v => `${v?.toFixed(2)}%` } },
+    grid:   { borderColor: "#F0F0F0", strokeDashArray: 3 },
+    dataLabels: { enabled: false },
+  };
+  const chartRatiosSeries = [
+    { name: "ROE (%)",          data: get("roe")           },
+    { name: "ROA (%)",          data: get("roa")           },
+    { name: "Ratio combiné (%)", data: get("ratio_combine") },
+  ];
 
-    const curr = [...data].reverse().find(v => v != null) ?? null;
-    const prev = [...data].reverse().find((v, i) => i > 0 && v != null) ?? null;
-    const delta = (prev != null && curr != null) ? (((curr - prev) / Math.abs(prev)) * 100).toFixed(1) : null;
-    const up = delta != null && parseFloat(delta) >= 0;
-
-    // ApexCharts ne supporte pas null dans sparkline — convertir en undefined
-    const safeData = data.map(v => (v === null || v === undefined ? undefined : v));
-
-    const sparkOpts = {
-      chart: { type: "area", sparkline: { enabled: true }, animations: { enabled: false } },
-      colors: [ind.color],
-      stroke: { curve: "smooth", width: 2.5 },
-      fill: { type: "gradient", gradient: { shade: "light", type: "vertical", opacityFrom: 0.35, opacityTo: 0.02 } },
-      yaxis: { min: undefined },
-      tooltip: {
-        fixed: { enabled: false },
-        x: { show: true, formatter: (_, opts) => years[opts?.dataPointIndex] ?? "" },
-        y: { formatter: v => v != null ? `${v} ${ind.unit}` : "N/D" },
-        theme: "light",
-      },
-    };
-
+  function KpiTop({ label, value, unit, d }) {
     return (
-      <div style={{ background: "white", borderRadius: 16, border: "1px solid #EBEBEB", boxShadow: "0 2px 12px rgba(0,0,0,0.05)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ background: ind.accentBg, padding: "14px 16px 10px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <div style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1.4px", color: G, marginBottom: 4 }}>{ind.label}</div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: D, lineHeight: 1, letterSpacing: "-0.5px" }}>
-                {curr != null ? `${curr} ${ind.unit}` : "N/D"}
-              </div>
-            </div>
-            {delta != null && (
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 3, background: up ? "#DCFCE7" : "#FEE2E2", color: up ? "#15803D" : "#DC2626", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 20, marginTop: 2, flexShrink: 0 }}>
-                {up ? "↗" : "↘"} {Math.abs(delta)}%
-              </div>
-            )}
-          </div>
-          {/* Valeurs par année */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-            {years.map((y, i) => (
-              <div key={y} style={{ flex: 1, textAlign: "center", minWidth: 30 }}>
-                <div style={{ fontSize: 11, fontWeight: i === years.length - 1 ? 900 : 500, color: i === years.length - 1 ? ind.color : G, lineHeight: 1 }}>
-                  {data[i] != null ? data[i] : "–"}
-                </div>
-                <div style={{ fontSize: 8, color: "rgba(116,116,128,0.6)", marginTop: 2 }}>{y}</div>
-              </div>
-            ))}
-          </div>
+      <div style={{ background: "white", borderRadius: 10, border: "1px solid #EBEBEB",
+        padding: "12px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ fontSize: 8, fontWeight: 700, color: G, textTransform: "uppercase", letterSpacing: "2px" }}>{label}</div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <span style={{ fontSize: 24, fontWeight: 900, color: value != null ? D : "#C0C0C8", lineHeight: 1 }}>
+            {value != null ? value : "N/D"}
+          </span>
+          {unit && value != null && <span style={{ fontSize: 10, color: G }}>{unit}</span>}
         </div>
-        <div style={{ marginTop: -2 }}>
-          <ReactApexChart options={sparkOpts} series={[{ data: safeData }]} type="area" height={70} />
-        </div>
+        {d && (
+          <div style={{ fontSize: 9, fontWeight: 800, color: d.up ? "#15803D" : "#DC2626" }}>
+            {d.up ? "↑" : "↓"} {Math.abs(d.val)}%
+          </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-        {indicators.map(ind => <SparkCard key={ind.field} ind={ind} />)}
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+      {/* KPIs haut — dark banner */}
+      {(()=>{
+        /* Valeurs calculées en fallback si absentes */
+        const roaVal = evolution[lastYear]?.roa != null
+          ? evolution[lastYear].roa
+          : (evolution[lastYear]?.resultat_net != null && evolution[lastYear]?.total_actif > 0)
+            ? parseFloat(((evolution[lastYear].resultat_net / evolution[lastYear].total_actif) * 100).toFixed(2))
+            : null;
+
+        /* ROE = résultat_net / capitaux_propres (depuis bilan.passif si dispo) */
+        const cpItem = bilan?.passif?.find(p => p.label?.toLowerCase().includes("capitaux propres"));
+        const roeVal = evolution[lastYear]?.roe != null
+          ? evolution[lastYear].roe
+          : (evolution[lastYear]?.resultat_net != null && cpItem?.value > 0)
+            ? parseFloat(((evolution[lastYear].resultat_net / cpItem.value) * 100).toFixed(2))
+            : null;
+
+        const mkItem = (label, rawVal, sub) => {
+          const val = rawVal;
+          const prevVal = prevYear
+            ? (label === "ROA"
+                ? (evolution[prevYear]?.roa ?? (evolution[prevYear]?.resultat_net != null && evolution[prevYear]?.total_actif > 0
+                    ? (evolution[prevYear].resultat_net / evolution[prevYear].total_actif) * 100 : null))
+                : label === "ROE"
+                  ? (evolution[prevYear]?.roe ?? null)
+                  : evolution[prevYear]?.[label === "Résultat de l'exercice" ? "resultat_net" : ""])
+            : null;
+          const dVal = (val != null && prevVal != null && prevVal !== 0)
+            ? { val: (((val - prevVal) / Math.abs(prevVal)) * 100).toFixed(1), up: val >= prevVal }
+            : null;
+          return {
+            label,
+            value: val != null ? fmt(val, label === "Résultat de l'exercice" ? 1 : 2) : "N/D",
+            sub,
+            delta: dVal ? (dVal.up ? `+${dVal.val}` : `-${Math.abs(dVal.val)}`) : undefined,
+            pos: dVal ? dVal.up : undefined,
+          };
+        };
+        const rnVal = evolution[lastYear]?.resultat_net ?? null;
+        return <DarkKpiBanner items={[
+          mkItem("Résultat de l'exercice", rnVal, "M TND"),
+          mkItem("ROA", roaVal, "%"),
+          mkItem("ROE", roeVal, "%"),
+        ]}/>;
+      })()}
+
+      {/* Structure bilan + évolution */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+
+        {/* Colonne gauche : donuts bilan */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {bilan?.actif?.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <DonutSection title={`Structure Actif ${bilan.annee || ""}`}
+                items={bilan.actif} total={bilan.total_actif} totalLabel="Total Actif" />
+              <DonutSection title={`Structure Passif ${bilan.annee || ""}`}
+                items={bilan.passif} total={bilan.total_passif} totalLabel="Total Passif"
+                colors={["#2E2E38","#5A5A74","#747480","#9898B0","#B8B8CC","#D4D4DE"]} />
+            </div>
+          )}
+          {bilan?.placements?.length > 0 && (
+            <DonutSection title={`Composition des placements ${bilan.annee || ""}`}
+              items={bilan.placements} total={bilan.total_placements} totalLabel="Total Placements"
+              colors={[Y, "#E6B800", "#D4D4DE", "#9898B0"]} />
+          )}
+          {!bilan && (
+            <div style={{ background: "white", borderRadius: 12, border: "1px solid #EBEBEB", padding: 24, textAlign: "center", color: G, fontSize: 12 }}>
+              Chargement structure du bilan…
+            </div>
+          )}
+          {bilan && bilan.actif?.length === 0 && (
+            <div style={{ background: "white", borderRadius: 12, border: "1px solid #EBEBEB", padding: 24, textAlign: "center", color: G, fontSize: 12 }}>
+              Structure du bilan non disponible pour {LABEL[code] || code}
+            </div>
+          )}
+        </div>
+
+        {/* Colonne droite : 2 graphiques clairs */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ background: "white", borderRadius: 12, border: "1px solid #EBEBEB", padding: "12px 14px 6px" }}>
+            <div style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1.5px", color: D, marginBottom: 2 }}>
+              Évolution primes &amp; résultat (M TND)
+            </div>
+            <ReactApexChart options={chartPrimesOpts} series={chartPrimesSeries} type="bar" height={130} />
+          </div>
+          <div style={{ background: "white", borderRadius: 12, border: "1px solid #EBEBEB", padding: "12px 14px 6px" }}>
+            <div style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1.5px", color: D, marginBottom: 2 }}>
+              Évolution des ratios de performance (%)
+            </div>
+            <ReactApexChart options={chartRatiosOpts} series={chartRatiosSeries} type="line" height={130} />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -397,6 +539,7 @@ export default function FichesEntreprises() {
   const [annee,      setAnnee]      = useState(null);
   const [profil,     setProfil]     = useState(null);
   const [evolution,  setEvolution]  = useState(null);
+  const [bilan,      setBilan]      = useState(null);
   const [loading,    setLoading]    = useState(false);
 
   // Charger la liste des compagnies
@@ -434,8 +577,16 @@ export default function FichesEntreprises() {
       .then(setEvolution);
   }, [code]);
 
+  // Charger le bilan (partagé entre ProfilAssurance et PerformanceFinanciere)
+  useEffect(() => {
+    if (!code) return;
+    setBilan(null);
+    fetch(`${API}/api/vue-assurance/bilan?code=${code}`)
+      .then(r => r.json()).then(setBilan).catch(() => {});
+  }, [code]);
+
   return (
-    <div style={{ height:"calc(100vh - 92px)", background:"#F9F9FB", fontFamily:"Barlow,system-ui,sans-serif", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+    <div style={{ height:"calc(100vh - 92px)", background:"#EEEEF4", fontFamily:"Barlow,system-ui,sans-serif", display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
       <PageHeaderBar
         title="Vue par Assurance"
@@ -457,7 +608,7 @@ export default function FichesEntreprises() {
         <ProfilAssurance code={code} annee={annee} profil={profil} />
       )}
       {tab === "perf" && (
-        <PerformanceFinanciere code={code} evolution={evolution} />
+        <PerformanceFinanciere code={code} profil={profil} evolution={evolution} bilan={bilan} />
       )}
 
       <div style={{ textAlign:"right", fontSize:10, color:G }}>

@@ -60,6 +60,39 @@ export function YearSelector({ year, years, onChange, noDataYears = [] }) {
   );
 }
 
+/* ══ DarkKpiBanner — bandeau KPI sombre unifié (style ApercuMarche) ══
+   items: [{ label, value, sub?, delta?, pos? }]
+*/
+export function DarkKpiBanner({ items = [] }) {
+  return (
+    <div style={{
+      background:"linear-gradient(120deg, #13131A 0%, #1E1E2A 25%, #252535 55%, #424242 80%, #696969 100%)",
+      borderRadius:8, display:"flex", overflow:"hidden", flexShrink:0,
+      boxShadow:"0 4px 24px rgba(10,10,20,.38), 0 1px 0 rgba(255,255,255,.04) inset",
+    }}>
+      {items.map((k, i) => (
+        <div key={i} style={{
+          flex:1, minWidth:0,
+          padding:"14px 20px 12px",
+          borderLeft: i > 0 ? "1px solid rgba(255,255,255,.07)" : "none",
+          display:"flex", flexDirection:"column",
+        }}>
+          <div style={{ fontSize:7.5, fontWeight:700, letterSpacing:"2px", textTransform:"uppercase", color:"rgba(255,255,255,.38)", marginBottom:8 }}>{k.label}</div>
+          <div style={{ fontSize:26, fontWeight:300, lineHeight:1, fontVariantNumeric:"tabular-nums", letterSpacing:"-0.8px", marginBottom:6, color:"#FFFFFF", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{String(k.value ?? "—")}</div>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:"auto" }}>
+            {k.sub && <span style={{ fontSize:9.5, color:"rgba(255,255,255,.30)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{k.sub}</span>}
+            {k.delta && (
+              <span style={{ fontSize:9.5, fontWeight:800, marginLeft:"auto", flexShrink:0, color: k.pos !== false ? "#4ade80" : "#f87171" }}>
+                {k.pos !== false ? "↑" : "↓"} {k.delta}
+              </span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ══ PageHeaderBar — composant principal ══
    Props :
    - title       : string

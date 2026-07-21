@@ -417,7 +417,20 @@
       "Bash(git remote *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(grep -v \"//\")",
+      "Bash(curl -s \"http://localhost:8002/api/vue-assurance/bilan?code=STAR&annee=2022\")",
+      "Bash(python -c \"import glob; print\\(glob.glob\\('C:/Users/HP/AppData/Local/Temp/claude/C--Users-HP-Desktop-SCRAPING/882fabc8-fc6e-418b-9b50-a385f1162d5f/scratchpad/*.png'\\)\\)\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in d.items\\(\\) if v is not None}, indent=2\\)\\)\")",
+      "Bash(curl -s \"http://localhost:8002/api/vue-assurance/profil?code=AMI&annee=2022\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(list\\(d.keys\\(\\)\\)\\); y=max\\(d.keys\\(\\)\\); print\\(f'Year {y}:'\\); print\\(json.dumps\\(d[y], indent=2\\)\\)\")",
+      "Bash(python -c \"import json,sys; print\\(json.dumps\\(json.load\\(sys.stdin\\), indent=2\\)\\)\")",
+      "Bash(curl -s \"http://localhost:8002/api/vue-assurance/bilan?code=AMI\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('total_actif:', d.get\\('total_actif'\\)\\); print\\('actif items:', len\\(d.get\\('actif',[]\\)\\)\\)\")",
+      "Bash(npx --yes acorn --ecma2020 --module src/pages/FichesEntreprises.jsx)",
+      "Bash(node node_modules/.bin/vite build --mode development)",
+      "Bash(node node_modules/.bin/vite build)"
     ]
   }
 }

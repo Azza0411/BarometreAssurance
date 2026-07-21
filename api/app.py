@@ -716,6 +716,78 @@ def vue_assurance_profil():
             # Réseau
             "agences_region": agences_region,
             "total_agences":  total_agences,
+            # Indicateurs supplémentaires
+            "sinistres_payes": fmt(kpis.get("Charge de sinistres"), 1_000_000),
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/vue-assurance/bilan")
+def vue_assurance_bilan():
+    """Structure du bilan (actif/passif) et composition des placements pour une compagnie/année."""
+    code  = request.args.get("code", "")
+    annee = request.args.get("annee", type=int)
+    conn  = get_connection()
+    try:
+        # Trouver le document CMF pour cette compagnie/année (ou la plus récente si non spécifiée)
+        target_doc = None
+        for doc_id, _, c, doc_annee in sorted(
+                list_documents_by_source(conn, "CMF"), key=lambda x: x[3] or 0, reverse=True):
+            if c != code:
+                continue
+            if annee is None or doc_annee == annee:
+                kpis = get_kpi_values_for_document(conn, doc_id)
+                # Vérifier qu'il y a des données de bilan
+                if kpis.get("Total actif") or kpis.get("Placements"):
+                    target_doc = (doc_annee, kpis)
+                    break
+
+        if not target_doc:
+            return jsonify({"annee": annee, "actif": [], "passif": [], "placements": [], "total_actif": None, "total_passif": None, "total_placements": None})
+
+        doc_annee, kpis = target_doc
+        def m(v):
+            if v is None or (isinstance(v, float) and abs(v) < 1000): return None
+            return round(v / 1_000_000, 2)
+
+        total_actif = m(kpis.get("Total actif"))
+        total_passif = m(kpis.get("Total actif"))  # total actif = total passif par définition
+
+        actif_items = [
+            {"label": "Placements",                               "value": m(kpis.get("Placements"))},
+            {"label": "Placements prov. techniques",              "value": m(kpis.get("Placements représentant des provisions techniques"))},
+            {"label": "Créances",                                 "value": m(kpis.get("Créances"))},
+            {"label": "Autres éléments d'actifs",                 "value": m(kpis.get("Autres éléments d'actifs"))},
+            {"label": "Actifs corporels",                         "value": m(kpis.get("Actifs corporels"))},
+            {"label": "Actifs incorporels",                       "value": m(kpis.get("Actifs incorporels"))},
+        ]
+        passif_items = [
+            {"label": "Provisions techniques brutes",             "value": m(kpis.get("Provisions techniques brutes"))},
+            {"label": "Capitaux propres",                         "value": m(kpis.get("Capitaux propres"))},
+            {"label": "Part réassureurs / provisions tech.",      "value": m(kpis.get("Part des réassureurs dans les provisions techniques"))},
+            {"label": "Provisions pour primes non acquises",      "value": m(kpis.get("Provisions pour Primes non acquises"))},
+            {"label": "Provisions d'assurance",                   "value": m(kpis.get("Provisions d'assurance"))},
+            {"label": "Autres passifs",                           "value": m(kpis.get("Autres passifs"))},
+        ]
+        placements_items = [
+            {"label": "Obligations",                              "value": m(kpis.get("Obligations"))},
+            {"label": "OPCVM",                                    "value": m(kpis.get("OPCVM"))},
+            {"label": "Actions & titres participation",           "value": m(kpis.get("Actions et titres de participation"))},
+            {"label": "Dépôts et liquidités",                     "value": m(kpis.get("Dépôts et liquidité"))},
+        ]
+
+        total_placements_raw = sum(it["value"] for it in placements_items if it["value"] is not None)
+        total_placements = round(total_placements_raw, 2) if total_placements_raw else m(kpis.get("Placements"))
+
+        return jsonify({
+            "annee":            doc_annee,
+            "total_actif":      total_actif,
+            "total_passif":     total_passif,
+            "total_placements": total_placements,
+            "actif":            [it for it in actif_items  if it["value"] is not None],
+            "passif":           [it for it in passif_items if it["value"] is not None],
+            "placements":       [it for it in placements_items if it["value"] is not None],
         })
     finally:
         conn.close()
