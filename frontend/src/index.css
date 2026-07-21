@@ -4,7 +4,11 @@
 @tailwind components;
 @tailwind utilities;
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+* { 
+  box-sizing: border-box; 
+  margin: 0; 
+  padding: 0; 
+}
 
 body {
   font-family: 'Barlow', system-ui, sans-serif;
@@ -13,18 +17,71 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-#root { display: flex; min-height: 100vh; }
+#root { 
+  display: flex; 
+  min-height: 100vh; 
+}
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: #F5F6F8; }
-::-webkit-scrollbar-thumb { background: #C0C0C8; border-radius: 4px; }
+/* ==================== KPI CARDS ==================== */
+/* ==================== KPI CARDS (Haut de page) ==================== */
+/* ==================== KPI CARDS (Haut de page) ==================== */
+.kpi-card {
+  background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 40%, #2a2a2a 70%, #1f1f1f 100%);
+  border: 1px solid rgba(255, 230, 0, 0.2);
+  transition: all 0.3s ease;
+  border-radius: 12px;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.4);
+}
+
+.kpi-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.5);
+  border-color: rgba(255, 230, 0, 0.35);
+}
+
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(to right, transparent, #ffe600, transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+
+.kpi-card:hover::before {
+  opacity: 1;
+}
+
+/* Variante pour les cartes Ratios */
+.kpi-card.ratio-card {
+  background: linear-gradient(145deg, #1f1f1f 0%, #141414 100%);
+}
+
+/* ==================== Scrollbar ==================== */
+::-webkit-scrollbar { 
+  width: 5px; 
+}
+
+::-webkit-scrollbar-track { 
+  background: #F5F6F8; 
+}
+
+::-webkit-scrollbar-thumb { 
+  background: #C0C0C8; 
+  border-radius: 4px; 
+}
 
 /* ApexCharts override */
-.apexcharts-toolbar { display: none !important; }
+.apexcharts-toolbar { 
+  display: none !important; 
+}
+
 .apexcharts-tooltip {
   font-family: 'Inter', sans-serif !important;
   box-shadow: 0 4px 20px rgba(0,0,0,.12) !important;
   border: 1px solid #E8E8ED !important;
 }
-

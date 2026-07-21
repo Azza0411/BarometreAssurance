@@ -165,30 +165,25 @@ function ProfilPays({ data, annee, chartH, winW }) {
       markers:{radius:3,width:12,height:6,offsetY:1}, itemMargin:{horizontal:14},
     },
     tooltip: { shared:true, y:{ formatter: v => v!=null ? `${Math.round(v).toLocaleString("fr-TN")} MDT` : "—" } },
-    annotations: {
-      xaxis: evData.filter(d => d.total == null).map(d => ({
-        x: String(d.annee),
-        x2: String(d.annee + 1),
-        fillColor: "#ECEAF8",
-        opacity: 0.8,
-        borderColor: "transparent",
-        label: {
-          text: "n/d",
-          position: "top",
-          offsetX: 0,
-          offsetY: 6,
-          style: {
-            background: "#4B44C8",
-            color: "#fff",
-            fontSize: "8px",
-            fontWeight: 900,
-            fontFamily: "Barlow,system-ui,sans-serif",
-            padding: { left:6, right:6, top:3, bottom:3 },
-            borderRadius: 4,
-          },
-        },
-      })),
-    },
+   annotations: {
+  xaxis: [{
+    x: "2018",
+    label: {
+      text: "Données non disponibles",
+      position: "top",
+      offsetY: -12,
+      style: {
+        background: "#2e2b2a",
+        color: "#ffffff",
+        fontSize: "9px",
+        fontWeight: 900,
+        fontFamily: "Barlow, sans-serif",
+        padding: { left: 10, right: 10, top: 4, bottom: 4 },
+        borderRadius: 6,
+      }
+    }
+  }]
+},
   };
 
   /* Ratios */
@@ -398,7 +393,8 @@ function ProfilPays({ data, annee, chartH, winW }) {
       {(() => {
         const maxPdm  = leaders[0]?.pdm_pct || 20;
         const eqShare = (100 / (leaders.length || 10));
-        const BAR_COLS = [Y, D, "#3A3A4A", "#4A4A5A", "#545464", G, "#848494", "#949498", "#ABABBB", "#BCBCCB"];
+        /* Leader=jaune EY · Challengers=anthracite EY · Followers=gris EY */
+        const BAR_COLS = [Y, "#2E2E38", "#44445A", "#5A5A74", "#70708C", "#909098", "#A8A8B4", "#C0C0CC", "#D4D4DE", "#E8E8EE"];
 
         const shortCode = code => {
           const full = COMPANY_LABELS[code] ?? code;
@@ -497,12 +493,12 @@ function ProfilPays({ data, annee, chartH, winW }) {
 
               {/* Légende bas */}
               <div style={{ marginTop:10, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-                <div style={{ width:22, height:10, background:`linear-gradient(90deg,${Y},#D4B800)`, borderRadius:2 }}/>
-                <span style={{ fontSize:7.5, color:G }}>Leader PDM</span>
-                <div style={{ width:22, height:10, background:D, borderRadius:2, marginLeft:8 }}/>
-                <span style={{ fontSize:7.5, color:G }}>Challengers</span>
-                <div style={{ width:22, height:10, background:G, borderRadius:2, marginLeft:8 }}/>
-                <span style={{ fontSize:7.5, color:G }}>Suiveurs</span>
+                <div style={{ width:22, height:10, background:Y, borderRadius:2 }}/>
+                <span style={{ fontSize:7.5, color:G }}>Leader</span>
+                <div style={{ width:22, height:10, background:"linear-gradient(90deg,#2E2E38,#70708C)", borderRadius:2, marginLeft:8 }}/>
+                <span style={{ fontSize:7.5, color:G }}>Challengers #2–5</span>
+                <div style={{ width:22, height:10, background:"linear-gradient(90deg,#909098,#E8E8EE)", borderRadius:2, marginLeft:8 }}/>
+                <span style={{ fontSize:7.5, color:G }}>Suiveurs #6+</span>
               </div>
             </div>
           </Card>
@@ -656,12 +652,26 @@ function DistributionAgences({ annee, chartH, winW }) {
         <div style={{ fontSize:10, color:G, fontStyle:"italic", padding:"7px 12px", background:WH, border:`1px solid ${BDR}`, borderRadius:6, flexShrink:0 }}>{noteAnnee}</div>
       )}
 
-      {/* KPI strip */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, flexShrink:0 }}>
-        <Kpi label="Total agences"        value={data?.total_agences!=null?data.total_agences.toLocaleString("fr-FR"):"—"} sub="agences en Tunisie" accent/>
-        <Kpi label="Moyenne par assureur" value={data?.moyenne_agences!=null?String(data.moyenne_agences):"—"} sub="agences par compagnie"/>
-        <Kpi label="Leader réseau"        value={data?.leader_reseau??"—"} sub="plus grand réseau national"/>
-        <Kpi label="Région concentrée"    value={data?.region_concentree??"—"} sub={data?.region_concentree_pct!=null?`${data.region_concentree_pct}% des agences`:""}/>
+      {/* KPI Banner — même style fond sombre que Profil Pays */}
+      <div style={{
+        background:"linear-gradient(120deg, #13131A 0%, #1E1E2A 25%, #252535 55%, #424242 80%, #696969 100%)",
+        borderRadius:8, display:"flex", overflow:"hidden", flexShrink:0,
+        boxShadow:"0 4px 24px rgba(10,10,20,.38), 0 1px 0 rgba(255,255,255,.04) inset",
+      }}>
+        {[
+          { label:"Total agences",        value: data?.total_agences!=null?data.total_agences.toLocaleString("fr-FR"):"—", sub:"agences en Tunisie" },
+          { label:"Moyenne par assureur", value: data?.moyenne_agences!=null?String(data.moyenne_agences):"—",             sub:"agences par compagnie" },
+          { label:"Leader réseau",        value: data?.leader_reseau??"—",                                                  sub:"plus grand réseau national" },
+          { label:"Région concentrée",    value: data?.region_concentree??"—",                                              sub: data?.region_concentree_pct!=null?`${data.region_concentree_pct}% des agences`:"" },
+        ].map((k, i) => (
+          <div key={i} style={{ flex:1, minWidth:0, padding:"14px 20px 12px", borderLeft: i>0?"1px solid rgba(255,255,255,.07)":"none", display:"flex", flexDirection:"column" }}>
+            <div style={{ fontSize:7.5, fontWeight:700, letterSpacing:"2px", textTransform:"uppercase", color:"rgba(255,255,255,.38)", marginBottom:8 }}>{k.label}</div>
+            <div style={{ fontSize:26, fontWeight:300, lineHeight:1, fontVariantNumeric:"tabular-nums", letterSpacing:"-0.8px", marginBottom:6, color:WH, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{k.value}</div>
+            <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:"auto" }}>
+              {k.sub && <span style={{ fontSize:9.5, color:"rgba(255,255,255,.30)" }}>{k.sub}</span>}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* 3 colonnes flex:1 */}
@@ -823,7 +833,7 @@ export default function ApercuMarche() {
         {/* ── BANNIÈRE KPI MACRO — fond sombre uniforme ── */}
         {tab==="profil" && (
           <div style={{
-            background:"linear-gradient(120deg, #13131A 0%, #1E1E2A 25%, #252535 55%, #2E2E38 80%, #38384A 100%)",
+            background:"linear-gradient(120deg, #13131A 0%, #1E1E2A 25%, #252535 55%, #424242 80%, #696969 100%)",
             borderRadius:8, display:"flex", overflow:"hidden", flexShrink:0,
             boxShadow:"0 4px 24px rgba(10,10,20,.38), 0 1px 0 rgba(255,255,255,.04) inset",
           }}>

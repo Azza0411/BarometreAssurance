@@ -87,11 +87,17 @@ function localAnswer(q, ctx) {
   if (has("combien","nombre","assureur","compagnie")) {
     return pp.nb_assureurs ? `Il y a **${pp.nb_assureurs} compagnies d'assurance** actives sur le marché tunisien en ${an}.` : null;
   }
-  // Compagnie spécifique
+  // Si la question porte sur une métrique spécifique (ratio, ROA, ROE…), ne pas confondre avec le rang PDM
+  const isAboutMetric = has("ratio","roe","roa","sinistral","technique","résultat","combine","frais","rentab","bénéf","profit");
+  if (isAboutMetric) {
+    return `Je dispose uniquement des parts de marché (PDM) dans mon contexte actuel. Pour le classement par **ratio combiné**, **ROA**, **ROE** ou résultats techniques, consultez la page **Vue par Assurance → Performance Financière** de la plateforme.`;
+  }
+
+  // Compagnie spécifique — rang PDM uniquement
   for (const c of cl) {
     if (lq.includes(c.entreprise.toLowerCase())) {
       const rank = cl.indexOf(c) + 1;
-      return `**${c.entreprise}** est classée **#${rank}** avec **${c.pdm_pct}%** de PDM en ${an}.`;
+      return `**${c.entreprise}** est classée **#${rank}** en parts de marché avec **${c.pdm_pct}%** de PDM en ${an}.`;
     }
   }
   return null;
@@ -224,16 +230,14 @@ export default function Chatbot() {
       title="Assistant IA"
       style={{
         position:"fixed", bottom:28, right:28, zIndex:9999,
-        width:56, height:56, borderRadius:"50%", border:"none", cursor:"pointer",
-        background: open
-          ? "linear-gradient(135deg,#3A3A4A 0%,#2E2E38 100%)"
-          : `linear-gradient(135deg,${Y} 0%,#C8A000 50%,#8B6E00 100%)`,
+        width:60, height:60, borderRadius:"50%", border:"none", cursor:"pointer",
+        background: open ? "linear-gradient(135deg,#3A3A4A 0%,#2E2E38 100%)" : "transparent",
         boxShadow: open
           ? "0 4px 20px rgba(46,46,56,.5)"
-          : "0 4px 20px rgba(200,160,0,.5), 0 0 0 6px rgba(255,230,0,.12)",
+          : "0 4px 24px rgba(0,0,0,.35), 0 0 0 3px rgba(255,230,0,.25)",
         display:"flex", alignItems:"center", justifyContent:"center",
+        padding:0, overflow:"hidden",
         transition:"all .25s cubic-bezier(.34,1.56,.64,1)",
-        transform: open ? "rotate(45deg)" : "scale(1)",
       }}
     >
       {open ? (
@@ -241,11 +245,11 @@ export default function Chatbot() {
           <path d="M5 5l10 10M15 5L5 15" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
         </svg>
       ) : (
-        <svg viewBox="0 0 20 20" fill="none" width="20" height="20">
-          <path d="M4 6h12M4 10h8M4 14h10" stroke={D} strokeWidth="1.8" strokeLinecap="round"/>
-          <circle cx="16" cy="14" r="3" fill={D}/>
-          <circle cx="16" cy="14" r="1" fill={Y}/>
-        </svg>
+        <img
+          src="/images/gif 9.gif"
+          alt="Assistant IA"
+          style={{ width:"100%", height:"100%", objectFit:"cover", borderRadius:"50%", display:"block" }}
+        />
       )}
     </button>
   );

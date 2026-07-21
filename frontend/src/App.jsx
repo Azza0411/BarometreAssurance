@@ -34,6 +34,12 @@ const STATS = [
 
 /* ─── modules ─── */
 const MODULES = [
+  { to:"/accueil",              label:"Accueil",
+    tag:"", desc:"", color:"#FFE600",
+    icon:<svg viewBox="0 0 20 20" fill="none" width="16" height="16">
+      <path d="M3 9.5L10 3l7 6.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M5 8.5v7a1 1 0 001 1h3v-3h2v3h3a1 1 0 001-1v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg> },
   { to:"/apercu-marche",        label:"Aperçu marché",       tag:"Macro · Tendances",
     desc:"Vue macroéconomique, taux de pénétration, densité et évolution sectorielle.",
     color:"#2563EB",
@@ -482,14 +488,6 @@ function Accueil() {
 
         <div style={{ display:"flex", alignItems:"center", height:"100%",
           flexShrink:0, borderLeft:"1px solid rgba(255,255,255,.1)" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 18px",
-            height:"100%", borderRight:"1px solid rgba(255,255,255,.1)", cursor:"pointer" }}>
-            <svg viewBox="0 0 18 18" fill="none" width="13" height="13">
-              <circle cx="7.5" cy="7.5" r="5.5" stroke="rgba(255,255,255,.6)" strokeWidth="1.5"/>
-              <path d="M12 12l3.5 3.5" stroke="rgba(255,255,255,.6)" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-            <span style={{ fontSize:12, color:"rgba(255,255,255,.6)" }}>Rechercher</span>
-          </div>
           <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 18px",
             height:"100%", cursor:"pointer" }}>
             <svg viewBox="0 0 18 18" fill="none" width="13" height="13">
@@ -784,14 +782,6 @@ function AppNavbar() {
       {/* Droite */}
       <div style={{ display:"flex", alignItems:"center", height:"100%",
         flexShrink:0, borderLeft:"1px solid rgba(255,255,255,.1)" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 18px",
-          height:"100%", borderRight:"1px solid rgba(255,255,255,.1)", cursor:"pointer" }}>
-          <svg viewBox="0 0 18 18" fill="none" width="13" height="13">
-            <circle cx="7.5" cy="7.5" r="5.5" stroke="rgba(255,255,255,.6)" strokeWidth="1.5"/>
-            <path d="M12 12l3.5 3.5" stroke="rgba(255,255,255,.6)" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-          <span style={{ fontSize:12, color:"rgba(255,255,255,.6)" }}>Rechercher</span>
-        </div>
         <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 18px",
           height:"100%", cursor:"pointer" }}>
           <svg viewBox="0 0 18 18" fill="none" width="13" height="13">
