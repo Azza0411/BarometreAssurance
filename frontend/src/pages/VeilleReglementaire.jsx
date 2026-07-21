@@ -1,45 +1,12 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import PageHeaderBar from "../components/PageHeaderBar";
 
 const Y = "#FFE600", D = "#2E2E38", G = "#747480";
 const FONT = "Barlow,system-ui,sans-serif";
 
-/* ── Données réelles (sources : cga.gov.tn + ftusanet.org) ───────────────── */
-const DOCS = [
-  { id:1,  src:"CGA",   type:"Règlement",   date:"13/06/2025", annee:2025, titre:"Règlement n°03/2025 relatif à l'externalisation des activités d'assurance",                                       pdf:true },
-  { id:2,  src:"CGA",   type:"Règlement",   date:"05/06/2025", annee:2025, titre:"Règlement n°02/2025 relatif à la plateforme de collecte automatique des données",                                 pdf:true },
-  { id:3,  src:"CGA",   type:"Avenant",     date:"05/06/2025", annee:2025, titre:"Avenant au règlement n°01/2021 relatif au reporting annuel des entreprises d'assurance",                          pdf:true },
-  { id:4,  src:"CGA",   type:"Règlement",   date:"14/03/2025", annee:2025, titre:"Règlement relatif aux pratiques commerciales dans le secteur des assurances",                                     pdf:true },
-  { id:5,  src:"CGA",   type:"Règlement",   date:"15/09/2023", annee:2023, titre:"Règlement n°01/2023 relatif au traitement et suivi des requêtes adressées au CGA",                               pdf:true },
-  { id:6,  src:"CGA",   type:"Règlement",   date:"11/11/2022", annee:2022, titre:"Règlement n°03/2022 relatif à l'organisation des contrats d'assurance collectifs",                               pdf:true },
-  { id:7,  src:"CGA",   type:"Règlement",   date:"24/06/2022", annee:2022, titre:"Règlement n°02/2022 relatif aux règles régissant la relation entre courtiers et sociétés d'assurance",           pdf:true },
-  { id:8,  src:"CGA",   type:"Règlement",   date:"24/06/2022", annee:2022, titre:"Règlement n°01/2022 relatif à la gestion financière et comptable des sociétés d'assurance Takaful",             pdf:true },
-  { id:9,  src:"CGA",   type:"Décision",    date:"01/12/2021", annee:2021, titre:"Décision n°01/2021 relative à la base de calcul des provisions pour dépréciation des créances",                 pdf:true },
-  { id:10, src:"CGA",   type:"Règlement",   date:"11/02/2021", annee:2021, titre:"Règlement CGA n°01/2021 relatif aux obligations de reporting périodique des sociétés d'assurance",              pdf:true },
-  { id:11, src:"CGA",   type:"Décision",    date:"19/06/2020", annee:2020, titre:"Décision n°01/2020 relative aux travaux préparatifs pour l'adoption des normes IFRS/IAS",                        pdf:true },
-  { id:12, src:"CGA",   type:"Communiqué",  date:"06/04/2020", annee:2020, titre:"Mesures prudentielles exceptionnelles en réponse à la crise sanitaire Covid-19",                                 pdf:true },
-  { id:13, src:"CGA",   type:"Règlement",   date:"29/04/2019", annee:2019, titre:"Règlement CGA n°01/2019 relatif aux procédures de retrait de l'agrément des intermédiaires",                    pdf:true },
-  { id:14, src:"CGA",   type:"Règlement",   date:"29/04/2019", annee:2019, titre:"Règlement CGA n°03/2019 relatif aux conditions d'acceptation des lettres de garantie des réassureurs",          pdf:true },
-  { id:15, src:"CGA",   type:"Règlement",   date:"17/10/2018", annee:2018, titre:"Règlement CGA n°04/2018 relatif aux spécifications des notes techniques contrats Vie et Capitalisation",        pdf:true },
-  { id:16, src:"CGA",   type:"Règlement",   date:"11/07/2018", annee:2018, titre:"Règlement CGA n°03/2018 relatif à l'organisation des travaux des actuaires",                                    pdf:true },
-  { id:17, src:"CGA",   type:"Règlement",   date:"02/04/2018", annee:2018, titre:"Règlement CGA n°02/2018 relatif à l'obligation d'informer le CGA des nominations dans les organes de gestion", pdf:true },
-  { id:18, src:"CGA",   type:"Décision",    date:"29/03/2017", annee:2017, titre:"Décision n°24/2017 relative à la méthode de calcul des provisions pour dépréciation des créances",             pdf:true },
-  { id:19, src:"CGA",   type:"Règlement",   date:"13/07/2016", annee:2016, titre:"Règlement CGA n°01/2016 relatif à l'assurance-vie et capitalisation",                                           pdf:true },
-  { id:20, src:"CGA",   type:"Décision",    date:"13/07/2016", annee:2016, titre:"Décision CGA n°01/2016 relative aux règles de bonne gouvernance des sociétés d'assurance",                      pdf:true },
-  { id:21, src:"CGA",   type:"Règlement",   date:"28/03/2014", annee:2014, titre:"Règlement CGA n°01/2014 relatif au rapport annuel prévu à l'article 60 du code des assurances",                 pdf:true },
-  { id:22, src:"CGA",   type:"Circulaire",  date:"31/01/2018", annee:2018, titre:"Circulaire MF n°01/2018 relative au tarif d'assurance frontière pour les véhicules étrangers",                  pdf:true },
-  { id:23, src:"CGA",   type:"Circulaire",  date:"28/02/2017", annee:2017, titre:"Circulaire MF n°01/2017 fixant le tarif de la RC du fait de l'usage des véhicules terrestres à moteur",        pdf:true },
-  { id:24, src:"CGA",   type:"Circulaire",  date:"02/10/2010", annee:2010, titre:"Circulaire MF n°258/2010 relative aux rapports des commissaires aux comptes adressés au CGA",                   pdf:true },
-  { id:25, src:"FTUSA", type:"Code",        date:"09/03/1992", annee:1992, titre:"Code des assurances",                                                                                            pdf:true },
-  { id:26, src:"FTUSA", type:"Loi",         date:"31/01/1994", annee:1994, titre:"Loi n°94-9 du 31 jan. 1994 relative à la responsabilité civile et contrôle dans la construction",               pdf:true },
-  { id:27, src:"FTUSA", type:"Loi",         date:"31/12/1980", annee:1980, titre:"Loi n°80-88 du 31 déc. 1980 relative à l'obligation d'assurance du transport des marchandises à l'importation", pdf:true },
-  { id:28, src:"FTUSA", type:"Loi",         date:"31/12/1986", annee:1986, titre:"Loi n°86-106 du 31 déc. 1986 relative au fonds de mutualité pour les dommages agricoles",                       pdf:true },
-  { id:29, src:"FTUSA", type:"Loi",         date:"06/12/1999", annee:1999, titre:"Loi n°99-95 du 6 déc. 1999 relative au fonds de garantie de financement des exportations",                      pdf:true },
-  { id:30, src:"FTUSA", type:"Décret",      date:"14/02/2002", annee:2002, titre:"Décret n°2002-571 du 14 février 2002 fixant les conditions de fonctionnement des entreprises d'assurance",      pdf:true },
-  { id:31, src:"FTUSA", type:"Décret",      date:"24/11/1981", annee:1981, titre:"Décret n°81-1257 du 24 novembre 1981 relatif à l'assurance obligatoire des véhicules automobiles",              pdf:true },
-  { id:32, src:"FTUSA", type:"Loi",         date:"31/12/2000", annee:2000, titre:"Loi n°2000-98 du 31 déc. 2000 relative au fonds de garantie des assurés",                                       pdf:true },
-  { id:33, src:"FTUSA", type:"Loi",         date:"30/12/2016", annee:2016, titre:"Loi n°2016-48 du 30 décembre 2016 portant loi de finances pour l'année 2017",                                   pdf:true },
-];
+const API = "http://localhost:8002";
+
+/* Pas de données statiques : tout vient du backend */
 
 const TYPE_COLORS = {
   Règlement:  { bg:"#EBF5FF", color:"#1E40AF", border:"#BFDBFE" },
@@ -53,9 +20,6 @@ const TYPE_COLORS = {
 };
 
 const SOURCES  = ["Toutes les sources", "CGA", "FTUSA"];
-const TYPES    = ["Tous les types", "Règlement", "Décision", "Circulaire", "Avenant", "Loi", "Code", "Décret", "Communiqué"];
-const ANNEES_LIST = ["Toutes les années", ...Array.from(new Set(DOCS.map(d => d.annee))).sort((a,b) => b-a).map(String)];
-const PAGE_SIZE = 10;
 
 /* ── Composants ── */
 function TypeBadge({ type }) {
@@ -67,53 +31,184 @@ function TypeBadge({ type }) {
   );
 }
 
-function SourceLogo({ src }) {
-  if (src === "CGA") {
-    return (
-      <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-        <img src="/imagesFond/CGA.png" alt="CGA" style={{ height:22, objectFit:"contain" }}
-          onError={e => { e.target.style.display="none"; }}/>
-        <span style={{ fontSize:10, fontWeight:700, color:D }}>CGA</span>
-      </div>
-    );
-  }
+function SourceLabel({ src }) {
+  return <span style={{ fontSize:11, fontWeight:700, color:D }}>{src}</span>;
+}
+
+function Select({ value, onChange, options, dark = false }) {
+  const [open, setOpen] = useState(false);
+  const ref = { current: null };
+
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-      <img src="/imagesFond/FTUSA.png" alt="FTUSA" style={{ height:22, objectFit:"contain" }}
-        onError={e => { e.target.style.display="none"; }}/>
-      <span style={{ fontSize:10, fontWeight:700, color:D }}>FTUSA</span>
+    <div style={{ position:"relative" }} ref={n => { ref.current = n; }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        style={{
+          display:"flex", alignItems:"center", gap:8,
+          background: dark ? "rgba(255,255,255,.08)" : "white",
+          border: dark ? "1px solid rgba(255,255,255,.18)" : "1px solid #E5E7EB",
+          borderRadius:8, padding:"8px 12px",
+          fontSize:12, fontWeight:500,
+          color: dark ? "white" : D,
+          cursor:"pointer", fontFamily:FONT, outline:"none",
+          minWidth:140, justifyContent:"space-between",
+          whiteSpace:"nowrap",
+        }}
+      >
+        <span style={{ overflow:"hidden", textOverflow:"ellipsis", maxWidth:160 }}>{value}</span>
+        <svg viewBox="0 0 12 12" fill="none" width="10" height="10" style={{ flexShrink:0, opacity:.6, transform: open ? "rotate(180deg)" : "none", transition:"transform .15s" }}>
+          <path d="M2.5 4.5L6 8l3.5-3.5" stroke={dark ? "white" : G} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+      {open && (
+        <div style={{
+          position:"absolute", top:"calc(100% + 4px)", left:0, zIndex:500,
+          background:"white", border:"1px solid #E5E7EB", borderRadius:10,
+          boxShadow:"0 8px 24px rgba(0,0,0,.14)", minWidth:"100%", overflow:"hidden",
+        }}>
+          {options.map(o => (
+            <div
+              key={o}
+              onMouseDown={() => { onChange(o); setOpen(false); }}
+              style={{
+                padding:"9px 14px", fontSize:12, fontWeight: o === value ? 700 : 400,
+                color: o === value ? Y : D,
+                background: o === value ? D : "white",
+                cursor:"pointer", whiteSpace:"nowrap",
+              }}
+              onMouseEnter={e => { if (o !== value) e.currentTarget.style.background = "#F9FAFB"; }}
+              onMouseLeave={e => { if (o !== value) e.currentTarget.style.background = "white"; }}
+            >
+              {o}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function Select({ value, onChange, options, dark = false }) {
+/* ── Modal Consulter ── */
+function ConsulterModal({ doc, onClose }) {
+  if (!doc) return null;
+  const s = TYPE_COLORS[doc.type] || { bg:"#F5F5F5", color:G, border:"#E5E7EB" };
   return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      style={{
-        appearance:"none", WebkitAppearance:"none",
-        background: dark ? "rgba(255,255,255,.08)" : "white",
-        border: dark ? "1px solid rgba(255,255,255,.18)" : "1px solid #E5E7EB",
-        borderRadius:8, padding:"8px 30px 8px 12px",
-        fontSize:12, fontWeight:500,
-        color: dark ? "white" : D,
-        cursor:"pointer", fontFamily:FONT, outline:"none",
-        backgroundImage: dark
-          ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='rgba(255,255,255,.5)' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`
-          : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%23747480' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-        backgroundRepeat:"no-repeat", backgroundPosition:"right 10px center",
-        backgroundSize:12,
-        colorScheme: dark ? "dark" : "light",
-      }}
-    >
-      {options.map(o => <option key={o} value={o}>{o}</option>)}
-    </select>
+    <div style={{ position:"fixed", inset:0, zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}
+         onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,.55)", backdropFilter:"blur(4px)" }}/>
+      <div style={{
+        position:"relative", width:"min(680px,95vw)", maxHeight:"80vh",
+        background:"white", borderRadius:16, overflow:"hidden",
+        boxShadow:"0 24px 64px rgba(0,0,0,.32)",
+        display:"flex", flexDirection:"column",
+        fontFamily:FONT,
+      }}>
+        {/* En-tête */}
+        <div style={{
+          background:"linear-gradient(120deg, #13131A 0%, #1E1E2A 35%, #252535 65%, #424242 100%)",
+          padding:"24px 28px 20px",
+        }}>
+          <div style={{ display:"flex", alignItems:"flex-start", gap:10, justifyContent:"space-between" }}>
+            <div style={{ flex:1 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                <span style={{ fontSize:9.5, fontWeight:700, padding:"3px 10px", borderRadius:20,
+                  background:s.bg, color:s.color, border:`1px solid ${s.border}` }}>{doc.type}</span>
+                <span style={{ fontSize:10, fontWeight:700, color:"rgba(255,255,255,.5)", letterSpacing:"1px" }}>
+                  {doc.src}
+                </span>
+              </div>
+              <div style={{ fontSize:15, fontWeight:800, color:"white", lineHeight:1.4 }}>
+                {doc.titre}
+              </div>
+            </div>
+            <button onClick={onClose} style={{
+              flexShrink:0, width:32, height:32, borderRadius:"50%",
+              background:"rgba(255,255,255,.10)", border:"none", cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center", color:"white", fontSize:18,
+            }}>×</button>
+          </div>
+        </div>
+
+        {/* Corps */}
+        <div style={{ flex:1, overflowY:"auto", padding:"24px 28px" }}>
+          {/* Métadonnées */}
+          <div style={{ display:"flex", gap:32, marginBottom:24, flexWrap:"wrap" }}>
+            {doc.date && (
+              <div>
+                <div style={{ fontSize:10, fontWeight:700, color:G, textTransform:"uppercase", letterSpacing:"1.5px", marginBottom:4 }}>Date de publication</div>
+                <div style={{ fontSize:13, fontWeight:600, color:D }}>{doc.date}</div>
+              </div>
+            )}
+            {doc.annee && (
+              <div>
+                <div style={{ fontSize:10, fontWeight:700, color:G, textTransform:"uppercase", letterSpacing:"1.5px", marginBottom:4 }}>Année</div>
+                <div style={{ fontSize:13, fontWeight:600, color:D }}>{doc.annee}</div>
+              </div>
+            )}
+            <div>
+              <div style={{ fontSize:10, fontWeight:700, color:G, textTransform:"uppercase", letterSpacing:"1.5px", marginBottom:4 }}>Source</div>
+              <div style={{ fontSize:13, fontWeight:600, color:D }}>{doc.src === "CGA" ? "Comité Général des Assurances" : "Fédération Tunisienne des Sociétés d'Assurance"}</div>
+            </div>
+          </div>
+
+          {/* Description contextuelle */}
+          <div style={{ padding:"16px 20px", background:"#F9FAFB", borderRadius:10, border:"1px solid #E5E7EB", marginBottom:20 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:G, textTransform:"uppercase", letterSpacing:"1.5px", marginBottom:8 }}>À propos de ce texte</div>
+            <p style={{ fontSize:13, color:D, lineHeight:1.65, margin:0 }}>
+              {doc.type === "Code"
+                ? "Document fondateur du secteur des assurances tunisien. Rassemble l'ensemble des dispositions législatives régissant les activités d'assurance, les intermédiaires, les tarifs et le contrôle prudentiel."
+                : doc.type === "Règlement"
+                ? "Texte réglementaire émis par le Comité Général des Assurances définissant des règles contraignantes applicables aux entreprises d'assurance et aux intermédiaires opérant en Tunisie."
+                : doc.type === "Décision"
+                ? "Décision administrative prise par le CGA dans l'exercice de ses attributions de supervision et de régulation du marché des assurances."
+                : doc.type === "Circulaire"
+                ? "Circulaire à caractère interprétatif ou prescriptif adressée aux professionnels du secteur par l'autorité de contrôle."
+                : "Texte officiel publié par une institution de régulation du marché des assurances tunisien."}
+            </p>
+          </div>
+        </div>
+
+        {/* Pied — actions */}
+        <div style={{ padding:"16px 28px", borderTop:"1px solid #E5E7EB", display:"flex", gap:10, flexShrink:0 }}>
+          <a href={doc.url} target="_blank" rel="noreferrer" style={{
+            flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:7,
+            background:D, color:Y, border:"none", borderRadius:8,
+            padding:"10px 16px", fontSize:12, fontWeight:800,
+            cursor:"pointer", textDecoration:"none",
+          }}>
+            <svg viewBox="0 0 16 16" fill="none" stroke={Y} strokeWidth="1.8" width="13" height="13">
+              <path d="M6 3H3a1 1 0 00-1 1v9a1 1 0 001 1h10a1 1 0 001-1v-3" strokeLinecap="round"/>
+              <path d="M10 2h4v4M14 2L9 7" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Ouvrir la source
+          </a>
+          {doc.pdf_url && (
+            <button
+              onClick={() => window.open(`${API}/api/pdf-proxy?url=${encodeURIComponent(doc.pdf_url)}`, "_blank")}
+              style={{
+                flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:7,
+                background:"white", color:D, border:"1px solid #E5E7EB", borderRadius:8,
+                padding:"10px 16px", fontSize:12, fontWeight:800, cursor:"pointer",
+              }}>
+              <svg viewBox="0 0 16 16" fill="none" stroke={D} strokeWidth="1.8" width="13" height="13">
+                <path d="M8 2v9M4 8l4 4 4-4M2 14h12" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Télécharger le PDF
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
 /* ══ PAGE ═══════════════════════════════════════════════════════════════════ */
 export default function VeilleReglementaire() {
+  const [docs,         setDocs]         = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [refreshing,   setRefreshing]   = useState(false);
+  const [modalDoc,     setModalDoc]     = useState(null);
   const [srcFilter,    setSrcFilter]    = useState("Toutes les sources");
   const [typeFilter,   setTypeFilter]   = useState("Tous les types");
   const [anneeFilter,  setAnneeFilter]  = useState("Toutes les années");
@@ -123,20 +218,55 @@ export default function VeilleReglementaire() {
   const [sortCol,      setSortCol]      = useState("date");
   const [sortAsc,      setSortAsc]      = useState(false);
 
+  const loadDocs = useCallback(() => {
+    setLoading(true);
+    fetch(`${API}/api/veille-reglementaire`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        setDocs(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { loadDocs(); }, [loadDocs]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetch(`${API}/api/veille-reglementaire/refresh`, { method: "POST" })
+      .then(r => r.json())
+      .then(data => { setDocs(Array.isArray(data.docs) ? data.docs : docs); })
+      .catch(() => {})
+      .finally(() => { setRefreshing(false); loadDocs(); });
+  };
+
+  /* Listes dynamiques dérivées des données réelles */
+  const TYPES_LIST = useMemo(() => {
+    const types = Array.from(new Set(docs.map(d => d.type).filter(Boolean))).sort();
+    return ["Tous les types", ...types];
+  }, [docs]);
+
+  const ANNEES_LIST = useMemo(() => {
+    const annees = Array.from(new Set(docs.map(d => d.annee).filter(Boolean))).sort((a,b) => b-a).map(String);
+    return ["Toutes les années", ...annees];
+  }, [docs]);
+
   /* Parse date dd/mm/yyyy → comparable string yyyy/mm/dd */
   const parseDate = (s) => {
-    const [d, m, y] = s.split("/");
-    return `${y}/${m}/${d}`;
+    if (!s) return "0000/00/00";
+    const parts = s.split("/");
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    return s + "/00/00"; // juste une année
   };
 
   const filtered = useMemo(() => {
-    let list = DOCS.filter(d => {
+    let list = docs.filter(d => {
       if (srcFilter !== "Toutes les sources" && d.src !== srcFilter) return false;
       if (typeFilter !== "Tous les types" && d.type !== typeFilter) return false;
       if (anneeFilter !== "Toutes les années" && String(d.annee) !== anneeFilter) return false;
       if (search) {
         const q = search.toLowerCase();
-        if (!d.titre.toLowerCase().includes(q)) return false;
+        if (!(d.titre || "").toLowerCase().includes(q)) return false;
       }
       return true;
     });
@@ -144,15 +274,15 @@ export default function VeilleReglementaire() {
     list = [...list].sort((a, b) => {
       let cmp = 0;
       if (sortCol === "date")   cmp = parseDate(a.date).localeCompare(parseDate(b.date));
-      if (sortCol === "type")   cmp = a.type.localeCompare(b.type);
-      if (sortCol === "titre")  cmp = a.titre.localeCompare(b.titre);
-      if (sortCol === "source") cmp = a.src.localeCompare(b.src);
-      if (sortCol === "annee")  cmp = a.annee - b.annee;
+      if (sortCol === "type")   cmp = (a.type || "").localeCompare(b.type || "");
+      if (sortCol === "titre")  cmp = (a.titre || "").localeCompare(b.titre || "");
+      if (sortCol === "source") cmp = (a.src || "").localeCompare(b.src || "");
+      if (sortCol === "annee")  cmp = (a.annee || 0) - (b.annee || 0);
       return sortAsc ? cmp : -cmp;
     });
 
     return list;
-  }, [srcFilter, typeFilter, anneeFilter, search, sortCol, sortAsc]);
+  }, [docs, srcFilter, typeFilter, anneeFilter, search, sortCol, sortAsc]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated  = filtered.slice((page - 1) * perPage, page * perPage);
@@ -185,6 +315,9 @@ export default function VeilleReglementaire() {
   });
 
   return (
+    <>
+    <style>{`@keyframes spin-veille { to { transform: rotate(360deg); } }`}</style>
+    {modalDoc && <ConsulterModal doc={modalDoc} onClose={() => setModalDoc(null)}/>}
     <div style={{ height:"calc(100vh - 92px)", background:"white", fontFamily:FONT, display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
       <PageHeaderBar
@@ -230,7 +363,7 @@ export default function VeilleReglementaire() {
           {/* Type */}
           <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
             <div style={{ fontSize:7.5, fontWeight:700, color:"rgba(255,255,255,.38)", textTransform:"uppercase", letterSpacing:"2px" }}>Type de texte</div>
-            <Select value={typeFilter} onChange={v => { setTypeFilter(v); setPage(1); }} options={TYPES} dark/>
+            <Select value={typeFilter} onChange={v => { setTypeFilter(v); setPage(1); }} options={TYPES_LIST} dark/>
           </div>
 
           {/* Année */}
@@ -251,6 +384,21 @@ export default function VeilleReglementaire() {
               <polyline points="17,4 17,9 12,9" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
             Réinitialiser
+          </button>
+
+          {/* Refresh */}
+          <button onClick={handleRefresh} disabled={refreshing} style={{
+            marginTop:14, display:"flex", alignItems:"center", gap:6,
+            background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.15)",
+            color:"rgba(255,255,255,.6)", borderRadius:8, padding:"8px 14px", fontSize:11.5, fontWeight:700,
+            cursor:refreshing?"not-allowed":"pointer", fontFamily:FONT,
+          }}>
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" width="13" height="13"
+              style={{ animation: refreshing ? "spin-veille 1s linear infinite" : "none" }}>
+              <path d="M3 10a7 7 0 1013.93-1.37" strokeLinecap="round"/>
+              <polyline points="17,4 17,9 12,9" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {refreshing ? "Actualisation…" : "Actualiser"}
           </button>
 
           {/* Compteur résultats */}
@@ -302,31 +450,46 @@ export default function VeilleReglementaire() {
                   {doc.titre}
                 </td>
                 <td style={{ padding:"12px 14px", borderBottom:"1px solid #F3F4F6" }}>
-                  <SourceLogo src={doc.src}/>
+                  <SourceLabel src={doc.src}/>
                 </td>
                 <td style={{ padding:"12px 14px", borderBottom:"1px solid #F3F4F6", color:D, fontWeight:600 }}>
                   {doc.annee}
                 </td>
                 <td style={{ padding:"12px 32px 12px 14px", borderBottom:"1px solid #F3F4F6" }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <button style={{ fontSize:11, fontWeight:700, color:D, background:"none", border:"1px solid #E5E7EB", borderRadius:6, padding:"4px 10px", cursor:"pointer", whiteSpace:"nowrap" }}>
+                    <button
+                      onClick={() => setModalDoc(doc)}
+                      style={{ fontSize:11, fontWeight:700, color:D, background:"none", border:"1px solid #E5E7EB", borderRadius:6, padding:"4px 10px", cursor:"pointer", whiteSpace:"nowrap" }}>
                       Consulter
                     </button>
-                    <button style={{ width:26, height:26, borderRadius:6, border:"1px solid #E5E7EB", background:"white", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                      <svg viewBox="0 0 16 16" fill="none" stroke={G} strokeWidth="1.5" width="12" height="12">
-                        <path d="M10 2h4v4M14 2L9 7M3 7v7h10v-4" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </button>
-                    <button style={{ width:26, height:26, borderRadius:6, border:"1px solid #E5E7EB", background:"white", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                      <svg viewBox="0 0 16 16" fill="none" stroke={G} strokeWidth="1.5" width="12" height="12">
-                        <path d="M8 2v9M4 8l4 4 4-4M2 14h12" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </button>
+                    {doc.pdf_url && (
+                      <button
+                        onClick={() => window.open(`${API}/api/pdf-proxy?url=${encodeURIComponent(doc.pdf_url)}`, "_blank")}
+                        title="Télécharger le PDF"
+                        style={{ width:26, height:26, borderRadius:6, border:"1px solid #E5E7EB", background:"white", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        <svg viewBox="0 0 16 16" fill="none" stroke={G} strokeWidth="1.5" width="12" height="12">
+                          <path d="M8 2v9M4 8l4 4 4-4M2 14h12" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
             ))}
-            {paginated.length === 0 && (
+            {loading && (
+              <tr>
+                <td colSpan={6} style={{ padding:"60px 0", textAlign:"center", color:G, fontSize:13 }}>
+                  <div style={{ display:"inline-flex", flexDirection:"column", alignItems:"center", gap:12 }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke={G} strokeWidth="2" width="28" height="28"
+                      style={{ animation:"spin-veille 1s linear infinite" }}>
+                      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" strokeLinecap="round"/>
+                    </svg>
+                    Chargement des textes réglementaires…
+                  </div>
+                </td>
+              </tr>
+            )}
+            {!loading && paginated.length === 0 && (
               <tr>
                 <td colSpan={6} style={{ padding:"48px 0", textAlign:"center", color:G, fontSize:13 }}>
                   Aucun texte ne correspond aux filtres sélectionnés
@@ -380,5 +543,6 @@ export default function VeilleReglementaire() {
         </div>
       </div>
     </div>
+    </>
   );
 }

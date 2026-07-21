@@ -867,6 +867,9 @@ export default function ApercuMarche() {
 
         {tab==="profil"  && <ProfilPays         data={profilData} annee={année} winW={winW}/>}
         {tab==="agences" && <DistributionAgences annee={année}   winW={winW}/>}
+
+        {/* ── Bande de news live ── */}
+        <NewsTicker/>
       </div>
     </div>
   );

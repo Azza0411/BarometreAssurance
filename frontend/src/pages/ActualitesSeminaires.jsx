@@ -1,379 +1,505 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { getLogoSrc } from "../utils/logos";
 import PageHeaderBar from "../components/PageHeaderBar";
 
 const Y = "#FFE600", D = "#2E2E38", G = "#747480";
 const FONT = "Barlow,system-ui,sans-serif";
+const API = "http://localhost:8002";
 
-/* ── Données (sources : ilboursa.com · atlas-mag.net · cga.gov.tn) ── */
-const ACTU = [
-  { id:1,  src:"ILBOURSA",      date:"08/07/2026", annee:2026, compagnie:"BNA Assurances",   categorie:"Innovation",             url:"https://www.ilboursa.com/marches/mobilite-electrique-bna-assurances-installe-deux-nouvelles-bornes-de-recharge-a-sfax_62826",    une:true,
-    titre:"BNA Assurances inaugure deux bornes de recharge VE à Sfax",
-    resume:"BNA Assurances a inauguré deux bornes de recharge VE/hybrides devant son siège régional de Sfax, en présence du Gouverneur Mohamed Hajri. Deuxième déploiement après le siège de Tunis." },
-  { id:2,  src:"ILBOURSA",      date:"2026",       annee:2026, compagnie:"—",                categorie:"Résultats financiers",    url:"https://www.ilboursa.com/marches/exclusif--assurance-sante-groupe-en-tunisie-treize-ans-de-derive-technique-decryptes_62269",    une:false,
-    titre:"Assurance santé groupe en Tunisie : 14 ans de dérive technique décryptés",
-    resume:"11 compagnies sur 15 affichent des résultats techniques négatifs en 2024. Déficit cumulé : -54 MDT vs -23 MDT en 2023. Ratio combiné passé de 96,4% (2011) à 109,3% (2024)." },
-  { id:3,  src:"ATLAS MAGAZINE", date:"18/05/2023", annee:2023, compagnie:"—",               categorie:"Publication",             url:"https://www.atlas-mag.net/fr/focus",  une:false,
-    titre:"Histoire du marché tunisien de l'assurance",
-    resume:"Analyse de l'évolution du marché depuis 1874 jusqu'à aujourd'hui : réformes structurelles, montée en puissance des acteurs locaux et enjeux de modernisation." },
-  { id:4,  src:"ATLAS MAGAZINE", date:"23/11/2022", annee:2022, compagnie:"—",               categorie:"Publication",             url:"https://www.atlas-mag.net/fr/fiches-pays",  une:false,
-    titre:"Le marché tunisien de l'assurance en 2021 — Fiche pays",
-    resume:"Données 2021 : dépense par habitant 82,4 USD, taux de pénétration 1,7%. Analyse comparative des compagnies et tendances post-Covid." },
-  { id:5,  src:"ATLAS MAGAZINE", date:"30/04/2019", annee:2019, compagnie:"—",               categorie:"Publication",             url:"https://www.atlas-mag.net/fr/dossiers-speciaux",  une:false,
-    titre:"L'assurance des risques agricoles en Tunisie",
-    resume:"Tour d'horizon de la couverture des risques agricoles en Tunisie : rôle de la CTAMA, régimes obligatoires et facultatifs, fonds de mutualité pour calamités naturelles." },
-  { id:6,  src:"ATLAS MAGAZINE", date:"08/01/2018", annee:2018, compagnie:"—",               categorie:"Résultats financiers",    url:"https://www.atlas-mag.net/fr/statistiques-compagnies",  une:false,
-    titre:"Marché de l'assurance au Maghreb : classement 2016 des compagnies",
-    resume:"STAR Assurances (11e) et COMAR Assurances (19e) au classement Maghreb 2016. Analyse des primes émises et positionnement des acteurs tunisiens." },
-  { id:7,  src:"CGA",           date:"13/06/2025", annee:2025, compagnie:"—",               categorie:"Réglementation",          url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:true,
-    titre:"Règlement N°03/2025 : encadrement de l'externalisation des activités d'assurance",
-    resume:"Fixe les conditions et modalités des conventions dans le cadre de l'externalisation des activités liées à l'exécution des contrats d'assurance." },
-  { id:8,  src:"CGA",           date:"05/06/2025", annee:2025, compagnie:"—",               categorie:"Réglementation",          url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Règlement N°02/2025 : plateforme automatisée de collecte de données au CGA",
-    resume:"Création d'une plateforme dédiée à la collecte automatique des données transmises par les sociétés d'assurance et de réassurance." },
-  { id:9,  src:"CGA",           date:"14/03/2025", annee:2025, compagnie:"—",               categorie:"Réglementation",          url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Règlement N°01/2025 : pratiques commerciales dans le secteur des assurances",
-    resume:"Encadrement des pratiques commerciales des sociétés d'assurance vis-à-vis des assurés et prospects." },
-  { id:10, src:"CGA",           date:"15/09/2023", annee:2023, compagnie:"—",               categorie:"Réglementation",          url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Règlement N°01/2023 : traitement des requêtes adressées au CGA",
-    resume:"Définit les procédures de traitement et de suivi des requêtes adressées au CGA par les assurés et bénéficiaires." },
-  { id:11, src:"CGA",           date:"11/11/2022", annee:2022, compagnie:"—",               categorie:"Réglementation",          url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Règlement N°03/2022 : organisation des contrats d'assurance collectifs",
-    resume:"Fixe les règles d'organisation des contrats collectifs, conventions cadres et conventions bilatérales dans le secteur." },
-  { id:12, src:"CGA",           date:"24/06/2022", annee:2022, compagnie:"—",               categorie:"Réglementation",          url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Règlement N°02/2022 : relation courtiers – sociétés d'assurance",
-    resume:"Encadrement des rapports entre les courtiers d'assurance et les sociétés : obligations réciproques, rémunération, sinistres délégués." },
-  { id:13, src:"CGA",           date:"01/12/2021", annee:2021, compagnie:"—",               categorie:"Réglementation",          url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Décision N°01/2021 : méthode de calcul des provisions pour dépréciation des créances",
-    resume:"Fixe la base et la méthode de calcul des provisions pour dépréciation des créances sur les assurés et les intermédiaires." },
-  { id:14, src:"CGA",           date:"11/02/2021", annee:2021, compagnie:"—",               categorie:"Réglementation",          url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Règlement CGA N°01/2021 : obligations de reporting et rapport annuel",
-    resume:"Fixe les obligations de reporting périodique et les éléments constitutifs du rapport annuel transmis au CGA." },
-  { id:15, src:"CGA",           date:"06/04/2020", annee:2020, compagnie:"—",               categorie:"Coopération institutionnelle", url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:true,
-    titre:"Avis du Collège CGA : mesures prudentielles Covid-19",
-    resume:"Communiqué du Collège du CGA fixant les mesures prudentielles exceptionnelles adoptées en réponse à la crise sanitaire." },
-  { id:16, src:"CGA",           date:"19/06/2020", annee:2020, compagnie:"—",               categorie:"Réglementation",          url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Décision N°01/2020 : travaux préparatifs pour l'adoption des normes IFRS/IAS",
-    resume:"Fixe les travaux préparatoires à engager par les sociétés d'assurance pour l'adoption des normes comptables internationales." },
-  { id:17, src:"CGA",           date:"29/04/2019", annee:2019, compagnie:"—",               categorie:"Réglementation",          url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Règlement CGA N°01/2019 : procédures de retrait d'agrément des intermédiaires",
-    resume:"Précise les procédures et conditions de retrait de l'agrément pour exercer la profession d'intermédiaire d'assurance." },
-  { id:18, src:"CGA",           date:"17/10/2018", annee:2018, compagnie:"—",               categorie:"Réglementation",          url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Règlement CGA N°04/2018 : notes techniques des contrats Vie et Capitalisation",
-    resume:"Définit les spécifications obligatoires à insérer dans les notes techniques des contrats d'assurance Vie et de Capitalisation." },
-  { id:19, src:"CGA",           date:"02/04/2018", annee:2018, compagnie:"—",               categorie:"Gouvernance",             url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Règlement CGA N°02/2018 : obligation d'information sur les nominations",
-    resume:"Oblige les sociétés à informer le CGA de toute nomination dans leurs structures d'administration, gestion et contrôle." },
-  { id:20, src:"CGA",           date:"29/03/2017", annee:2017, compagnie:"—",               categorie:"Réglementation",          url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Décision N°24/2017 : méthode de calcul des provisions pour dépréciation",
-    resume:"Fixe la méthode de calcul des provisions pour dépréciation des créances dans le secteur des assurances." },
-  { id:21, src:"CGA",           date:"13/07/2016", annee:2016, compagnie:"—",               categorie:"Gouvernance",             url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Décision CGA N°01/2016 : règles de bonne gouvernance des sociétés d'assurance",
-    resume:"Définit les règles de bonne gouvernance et de gestion applicables aux sociétés d'assurance et de réassurance." },
-  { id:22, src:"CGA",           date:"28/03/2014", annee:2014, compagnie:"—",               categorie:"Réglementation",          url:"https://www.cga.gov.tn/index.php?id=33&L=0",  une:false,
-    titre:"Règlement CGA N°01/2014 : documents constitutifs du rapport annuel (art. 60)",
-    resume:"Précise les documents constitutifs du rapport annuel prévu par l'article 60 du code des assurances." },
+/* ── Données statiques de secours ────────────────────────────────────────── */
+const ACTU_STATIC = [
+  { id:1, src:"ILBOURSA",       date:"08/07/2026", compagnie:"BNA Assurances", categorie:"Innovation",
+    url:"https://www.ilboursa.com/marches/mobilite-electrique-bna-assurances-installe-deux-nouvelles-bornes-de-recharge-a-sfax_62826",
+    image:null, titre:"BNA Assurances inaugure deux bornes de recharge VE à Sfax" },
+  { id:2, src:"ATLAS MAGAZINE", date:"17/07/2026", compagnie:"STAR Assurances", categorie:"Résultats financiers",
+    url:"https://www.atlas-mag.net/fr/articles/star-assurances-distribution-de-dividendes-0",
+    image:null, titre:"STAR Assurances : distribution de dividendes" },
 ];
 
-/* ── Listes de filtres ── */
-const SOURCES    = ["Toutes les sources", "ILBOURSA", "ATLAS MAGAZINE", "CGA"];
-const CATEGORIES = ["Toutes les catégories", "Réglementation", "Résultats financiers", "Gouvernance", "Coopération institutionnelle", "Publication", "Innovation"];
-const PERIODES   = ["Toutes les périodes", "30 derniers jours", "Cette année", "Année dernière"];
-const PER_PAGE_OPTS = [5, 10, 20];
+/* ── Logos compagnies — même liste que Analyse Comparative ─────────────── */
+const LOGO_COMPANIES = [
+  { key:"STAR Assurances",    logo:"/logos/STAR.png"       },
+  { key:"COMAR Assurances",   logo:"/logos/COMAR.png"      },
+  { key:"GAT Assurances",     logo:"/logos/GAT.png"        },
+  { key:"Astree Assurances",  logo:"/logos/astree.png"     },
+  { key:"Carte Assurances",   logo:"/logos/Carte.png"      },
+  { key:"Lloyd Tunisien",     logo:"/logos/LLOYD.png"      },
+  { key:"Maghrebia",          logo:"/logos/Maghrebia.png"  },
+  { key:"BH Assurance",       logo:"/logos/BH.png"         },
+  { key:"BNA Assurances",     logo:"/logos/BNA.png"        },
+  { key:"AMI Assurances",     logo:"/logos/AMI.png"        },
+  { key:"Attijari Assurance", logo:"/logos/Attijari.png"   },
+  { key:"Tunis Re",           logo:"/logos/TunisRe.png"    },
+];
 
-/* Compagnies avec actualités */
-const COMPAGNIES_ACTU = ["Toutes les compagnies", ...Array.from(new Set(ACTU.map(a => a.compagnie).filter(c => c !== "—")))];
+const SOURCES  = ["Toutes les sources", "ILBOURSA", "ATLAS MAGAZINE"];
+const PERIODES = [
+  "Toutes les périodes","Cette semaine","Ce mois",
+  "Les 3 derniers mois","Les 6 derniers mois","Cette année",
+];
+const PER_PAGE_OPTS = [5, 10, 20, 50];
 
-/* Logos carousel À la une */
-const UNE_ITEMS = ACTU.filter(a => a.une);
-
-/* Styles badges source */
+/* Styles badges */
 const SRC_STYLE = {
   "ILBOURSA":      { bg:"#DCFCE7", color:"#15803D", border:"#BBF7D0" },
   "ATLAS MAGAZINE":{ bg:"#FFF7ED", color:"#92400E", border:"#FDE68A" },
-  "CGA":           { bg:"#EFF6FF", color:"#1D4ED8", border:"#BFDBFE" },
 };
-
 const CAT_STYLE = {
-  "Réglementation":             { bg:"#FEF2F2", color:"#991B1B", border:"#FECACA" },
-  "Résultats financiers":       { bg:"#F0FDF4", color:"#15803D", border:"#BBF7D0" },
-  "Gouvernance":                { bg:"#FFFBEB", color:"#92400E", border:"#FDE68A" },
+  "Réglementation":              { bg:"#FEF2F2", color:"#991B1B", border:"#FECACA" },
+  "Résultats financiers":        { bg:"#F0FDF4", color:"#15803D", border:"#BBF7D0" },
+  "Gouvernance":                 { bg:"#FFFBEB", color:"#92400E", border:"#FDE68A" },
   "Coopération institutionnelle":{ bg:"#EFF6FF", color:"#1D4ED8", border:"#BFDBFE" },
-  "Publication":                { bg:"#F5F3FF", color:"#5B21B6", border:"#DDD6FE" },
-  "Innovation":                 { bg:"#F0FDFA", color:"#0F766E", border:"#99F6E4" },
-  "Digital":                    { bg:"#EFF6FF", color:"#1D4ED8", border:"#BFDBFE" },
-  "Partenariat":                { bg:"#FFF7ED", color:"#C2410C", border:"#FDBA74" },
+  "Publication":                 { bg:"#F5F3FF", color:"#5B21B6", border:"#DDD6FE" },
+  "Innovation":                  { bg:"#F0FDFA", color:"#0F766E", border:"#99F6E4" },
+  "Digital":                     { bg:"#EFF6FF", color:"#1D4ED8", border:"#BFDBFE" },
+  "Partenariat":                 { bg:"#FFF7ED", color:"#C2410C", border:"#FDBA74" },
+  "Actualité":                   { bg:"#F9FAFB", color:"#374151", border:"#E5E7EB" },
 };
 
 function SrcBadge({ src }) {
   const s = SRC_STYLE[src] || { bg:"#F5F5F5", color:G, border:"#E5E7EB" };
   return (
-    <span style={{ fontSize:9, fontWeight:800, padding:"2px 8px", borderRadius:20,
-      background:s.bg, color:s.color, border:`1px solid ${s.border}`, whiteSpace:"nowrap",
-      letterSpacing:"0.3px", textTransform:"uppercase" }}>
+    <span style={{ fontSize:9, fontWeight:800, padding:"2px 9px", borderRadius:20,
+      background:s.bg, color:s.color, border:`1px solid ${s.border}`,
+      letterSpacing:"0.3px", textTransform:"uppercase", whiteSpace:"nowrap" }}>
       {src}
     </span>
   );
 }
-
 function CatBadge({ cat }) {
-  const s = CAT_STYLE[cat] || { bg:"#F5F5F5", color:G, border:"#E5E7EB" };
+  const s = CAT_STYLE[cat] || { bg:"#F9FAFB", color:"#374151", border:"#E5E7EB" };
   return (
-    <span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:20,
+    <span style={{ fontSize:9, fontWeight:700, padding:"2px 9px", borderRadius:20,
       background:s.bg, color:s.color, border:`1px solid ${s.border}`, whiteSpace:"nowrap" }}>
-      {cat}
+      {cat || "—"}
     </span>
   );
 }
 
 function parseDate(str) {
   const p = str.split("/");
-  if (p.length === 3) return `${p[0]}/${p[1]}/${p[2]}`;
-  return str;
+  return p.length === 3 ? `${p[0]}/${p[1]}/${p[2]}` : str;
 }
 
-/* ── Select dropdown — variante light ou dark ── */
-function Sel({ value, onChange, options, dark = false }) {
-  if (dark) {
-    return (
-      <select value={value} onChange={e => onChange(e.target.value)} style={{
-        appearance:"none", WebkitAppearance:"none",
-        background:"rgba(255,255,255,.08)",
-        border:"1px solid rgba(255,255,255,.18)", borderRadius:8,
-        padding:"7px 30px 7px 12px",
-        fontSize:11, fontWeight:500, color:"rgba(255,255,255,.9)", cursor:"pointer",
-        fontFamily:FONT, outline:"none", colorScheme:"dark",
-        backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='rgba(255,255,255,.6)' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E")`,
-        backgroundRepeat:"no-repeat", backgroundPosition:"right 9px center", backgroundSize:11,
-      }}>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-    );
-  }
+/* ── Select dropdown dark ou light ── */
+function Sel({ value, onChange, options, dark = false, style = {} }) {
+  const arrow = dark
+    ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='rgba(255,255,255,.6)' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E")`
+    : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%23747480' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E")`;
   return (
     <select value={value} onChange={e => onChange(e.target.value)} style={{
-      appearance:"none", WebkitAppearance:"none", background:"white",
-      border:"1px solid #E5E7EB", borderRadius:8, padding:"8px 30px 8px 12px",
-      fontSize:11.5, fontWeight:500, color:D, cursor:"pointer", fontFamily:FONT,
-      outline:"none", boxShadow:"0 1px 4px rgba(0,0,0,.05)",
-      backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%23747480' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E")`,
+      appearance:"none", WebkitAppearance:"none", fontFamily:FONT, outline:"none",
+      cursor:"pointer", backgroundImage:arrow,
       backgroundRepeat:"no-repeat", backgroundPosition:"right 9px center", backgroundSize:11,
+      ...(dark ? {
+        background:"rgba(255,255,255,.08)", border:"1px solid rgba(255,255,255,.18)",
+        borderRadius:8, padding:"7px 30px 7px 12px", fontSize:11, fontWeight:500,
+        color:"rgba(255,255,255,.9)", colorScheme:"dark",
+      } : {
+        background:"white", border:"1px solid #E5E7EB", borderRadius:8,
+        padding:"8px 30px 8px 12px", fontSize:11.5, fontWeight:500, color:D,
+        boxShadow:"0 1px 4px rgba(0,0,0,.05)",
+      }),
+      ...style,
     }}>
-      {options.map(o => <option key={o} value={o}>{o}</option>)}
+      {options.map(o => <option key={o} value={o} style={{ color:D, background:"white" }}>{o}</option>)}
     </select>
   );
 }
 
-/* ── Visuel par catégorie — image réelle + overlay sombre ── */
-const CAT_IMG = {
-  "Réglementation":              "/images/News1.png",
-  "Résultats financiers":        "/images/News2.png",
-  "Gouvernance":                 "/images/News3.png",
-  "Coopération institutionnelle":"/images/News4.png",
-  "Publication":                 "/images/News1.png",
-  "Innovation":                  "/images/News2.png",
+/* ══ CAROUSEL ════════════════════════════════════════════════════════════════ */
+const NEWS_FONT = `"Barlow",system-ui,sans-serif`;
+
+/* Category badge colors (matching PDF style) */
+const CAT_CAROUSEL = {
+  "Réglementation":               { bg:"#FFE600", color:D },
+  "Résultats financiers":         { bg:"#FFE600", color:D },
+  "Gouvernance":                  { bg:"#FFE600", color:D },
+  "Coopération institutionnelle": { bg:"#FFE600", color:D },
+  "Partenariat":                  { bg:"#FFE600", color:D },
+  "Digital":                      { bg:"#FFE600", color:D },
+  "Publication":                  { bg:"#FFE600", color:D },
 };
 
-function CatVisual({ item }) {
-  const img = CAT_IMG[item.categorie] || "/images/News1.png";
-  return (
-    <div style={{ position:"relative", overflow:"hidden", minHeight:280 }}>
-      {/* Image de fond */}
-      <img src={img} alt={item.categorie}
-        style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}/>
-      {/* Overlay dégradé pour lisibilité */}
-      <div style={{
-        position:"absolute", inset:0,
-        background:"linear-gradient(135deg, rgba(0,0,0,.65) 0%, rgba(0,0,0,.25) 100%)",
-      }}/>
-      {/* Pill catégorie */}
-      <div style={{
-        position:"absolute", top:16, left:16,
-        fontSize:9.5, fontWeight:800, color:"white",
-        background:"rgba(255,255,255,.18)",
-        border:"1px solid rgba(255,255,255,.3)",
-        borderRadius:20, padding:"4px 12px",
-        letterSpacing:"1px", textTransform:"uppercase",
-        backdropFilter:"blur(4px)",
-      }}>
-        {item.categorie}
-      </div>
-      {/* Source caption */}
-      <div style={{ position:"absolute", bottom:12, right:12, fontSize:9.5, color:"rgba(255,255,255,.6)",
-        background:"rgba(0,0,0,.4)", padding:"3px 8px", borderRadius:4, fontStyle:"italic" }}>
-        Source : {item.src}
-      </div>
-    </div>
-  );
-}
-
-/* ── Carousel À la une — image plein cadre avec overlay texte ── */
-function AlaUne({ onRead }) {
+function AlaUne({ items }) {
   const [idx, setIdx] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setIdx(i => (i + 1) % UNE_ITEMS.length), 7000);
+    if (!items.length) return;
+    const t = setInterval(() => setIdx(i => (i + 1) % items.length), 7000);
     return () => clearInterval(t);
-  }, []);
+  }, [items.length]);
+  if (!items.length) return null;
+  const item = items[Math.min(idx, items.length - 1)];
+  const hasImg = !!item.image;
+  const catStyle = CAT_CAROUSEL[item.categorie] || { bg:"#FFE600", color:D };
 
-  if (!UNE_ITEMS.length) return null;
-  const item = UNE_ITEMS[idx];
-  const img = CAT_IMG[item.categorie] || "/images/News1.png";
+  const navBtnBase = {
+    position:"absolute", top:"50%", transform:"translateY(-50%)",
+    zIndex:10, background:"rgba(255,255,255,.18)", border:"none", borderRadius:"50%",
+    width:34, height:34, cursor:"pointer", display:"flex", alignItems:"center",
+    justifyContent:"center", backdropFilter:"blur(6px)",
+    boxShadow:"0 2px 8px rgba(0,0,0,.25)",
+  };
 
   return (
-    <div style={{ borderRadius:12, overflow:"hidden", position:"relative", height:220,
-      boxShadow:"0 4px 24px rgba(0,0,0,.28)", flexShrink:0 }}>
+    <div style={{
+      height: 300, borderRadius:12, overflow:"hidden",
+      boxShadow:"0 4px 24px rgba(0,0,0,.18)",
+      position:"relative", display:"flex",
+      background: "#13131A",
+    }}>
 
-      {/* Image de fond plein cadre */}
-      <img src={img} alt={item.categorie}
-        style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}/>
-
-      {/* Overlay dégradé — assez opaque pour lisibilité */}
+      {/* ── Panneau gauche — texte ── */}
       <div style={{
-        position:"absolute", inset:0,
-        background:"linear-gradient(135deg, rgba(0,0,0,.82) 0%, rgba(0,0,0,.55) 55%, rgba(0,0,0,.2) 100%)",
-      }}/>
-
-      {/* Contenu texte sur l'overlay */}
-      <div style={{ position:"absolute", inset:0, padding:"22px 28px",
-        display:"flex", flexDirection:"column", justifyContent:"space-between" }}>
-
-        {/* Haut : label + badges */}
-        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-          <span style={{ fontSize:9, fontWeight:900, color:Y, textTransform:"uppercase",
-            letterSpacing:"2.5px", display:"flex", alignItems:"center", gap:5 }}>
-            <svg viewBox="0 0 16 16" fill={Y} width="9" height="9">
-              <polygon points="8,1 10,6 15,6.5 11,10 12.5,15 8,12 3.5,15 5,10 1,6.5 6,6"/>
-            </svg>
-            À LA UNE
-          </span>
-          <CatBadge cat={item.categorie}/>
-          <SrcBadge src={item.src}/>
-          <span style={{ fontSize:10, color:"rgba(255,255,255,.55)", fontWeight:500 }}>{item.date}</span>
+        width:"52%", flexShrink:0,
+        background:"linear-gradient(120deg, #777575 0%, #424242 25%, #252535 55%, #303030 80%, #000000 100%)",
+        padding:"22px 26px 18px",
+        display:"flex", flexDirection:"column", gap:0,
+        borderRight:"1px solid rgba(255,255,255,.06)",
+        position:"relative",
+      }}>
+        {/* "À LA UNE" avec barre jaune */}
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+          <div style={{ width:4, height:20, background:Y, borderRadius:2, flexShrink:0 }}/>
+          <span style={{
+            fontSize:9, fontWeight:900, letterSpacing:"3px", textTransform:"uppercase",
+            color:Y, fontFamily:FONT,
+          }}>À LA UNE</span>
         </div>
 
-        {/* Titre */}
-        <div style={{ fontSize:20, fontWeight:900, color:"white", lineHeight:1.3,
-          letterSpacing:"-0.3px", maxWidth:"70%" }}>
+        {/* Badges : catégorie + source + date */}
+        <div style={{ display:"flex", alignItems:"center", gap:7, flexWrap:"wrap", marginBottom:14 }}>
+          {item.categorie && (
+            <span style={{
+              fontSize:9.5, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.8px",
+              background:catStyle.bg, color:catStyle.color,
+              padding:"3px 10px", borderRadius:4, fontFamily:FONT,
+            }}>{item.categorie}</span>
+          )}
+          <span style={{
+            fontSize:9.5, fontWeight:700, color:"rgba(255,255,255,.75)",
+            background:"rgba(255,255,255,.12)", padding:"3px 10px", borderRadius:4,
+            fontFamily:FONT,
+          }}>{item.src === "ILBOURSA" ? "IlBoursa" : "Atlas Magazine"}</span>
+          <span style={{
+            fontSize:9.5, fontWeight:600, color:"rgba(255,255,255,.55)",
+            background:"rgba(255,255,255,.07)", padding:"3px 10px", borderRadius:4,
+            fontFamily:FONT,
+          }}>{item.date}</span>
+        </div>
+
+        {/* Grand titre */}
+        <div style={{
+          fontFamily: NEWS_FONT,
+          fontSize: 24, fontWeight: 900,
+          color:"white", lineHeight:1.22, letterSpacing:"-0.3px",
+          display:"-webkit-box", WebkitLineClamp:3,
+          WebkitBoxOrient:"vertical", overflow:"hidden",
+          marginBottom:10,
+        }}>
           {item.titre}
         </div>
 
-        {/* Bas : bouton + navigation */}
+        {/* Résumé */}
+        {item.resume && (
+          <div style={{
+            fontSize:12, color:"rgba(255,255,255,.65)",
+            lineHeight:1.55, fontFamily:FONT,
+            display:"-webkit-box", WebkitLineClamp:2,
+            WebkitBoxOrient:"vertical", overflow:"hidden",
+            marginBottom:14,
+          }}>
+            {item.resume}
+          </div>
+        )}
+
+        {/* Spacer */}
+        <div style={{ flex:1 }}/>
+
+        {/* CTA */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
           <a href={item.url} target="_blank" rel="noreferrer" style={{
-            display:"inline-flex", alignItems:"center", gap:8,
+            display:"inline-flex", alignItems:"center", gap:6,
             background:Y, color:D, textDecoration:"none",
-            padding:"9px 18px", borderRadius:8, fontSize:12, fontWeight:800,
+            padding:"8px 18px", borderRadius:6, fontSize:11, fontWeight:800,
+            fontFamily:FONT, boxShadow:"0 2px 12px rgba(239, 233, 233, 0.67)",
+            letterSpacing:"0.2px",
           }}>
-            Lire l'article
-            <svg viewBox="0 0 16 16" fill="none" stroke={D} strokeWidth="2.2" width="11" height="11">
-              <path d="M3 8h10M9 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            Lire l'article →
           </a>
 
-          {/* Flèches + dots */}
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <button onClick={() => setIdx(i => (i - 1 + UNE_ITEMS.length) % UNE_ITEMS.length)}
-              style={{ background:"rgba(255,255,255,.15)", border:"none", borderRadius:6, width:30, height:30,
-                display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
-              <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2" width="12" height="12">
-                <path d="M10 4l-4 4 4 4" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-            <div style={{ display:"flex", gap:5 }}>
-              {UNE_ITEMS.map((_, i) => (
-                <button key={i} onClick={() => setIdx(i)} style={{
-                  width: i === idx ? 20 : 6, height:6, borderRadius:3, border:"none", cursor:"pointer",
-                  background: i === idx ? Y : "rgba(255,255,255,.35)", transition:"all .25s", padding:0,
-                }}/>
-              ))}
-            </div>
-            <button onClick={() => setIdx(i => (i + 1) % UNE_ITEMS.length)}
-              style={{ background:"rgba(255,255,255,.15)", border:"none", borderRadius:6, width:30, height:30,
-                display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
-              <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2" width="12" height="12">
-                <path d="M6 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
+          {/* Dots navigation */}
+          <div style={{ display:"flex", gap:5, alignItems:"center" }}>
+            {items.map((_, i) => (
+              <button key={i} onClick={() => setIdx(i)} style={{
+                width: i === idx ? 20 : 6, height:6, borderRadius:3,
+                border:"none", cursor:"pointer", padding:0,
+                background: i === idx ? Y : "rgba(255,255,255,.35)",
+                transition:"all .25s",
+              }}/>
+            ))}
           </div>
         </div>
       </div>
-    </div>
-  );
-}
 
-/* ── Barre logos compagnies ── */
-const LOGO_COMPANIES = ["STAR","COMAR","GAT","ASTREE","CARTE","LLOYD_TUNISIEN","MAGHREBIA","BH","BIAT","BNA","AMI"];
-
-function LogoBar({ selected, onSelect }) {
-  const ref = useRef(null);
-  return (
-    <div style={{ background:"white", border:"1px solid #E5E7EB", borderRadius:10,
-      padding:"10px 16px", display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-      <span style={{ fontSize:9, fontWeight:800, color:G, textTransform:"uppercase",
-        letterSpacing:"1.2px", whiteSpace:"nowrap", flexShrink:0 }}>
-        Filtrer par compagnie
-      </span>
-      <div style={{ width:1, height:28, background:"#E5E7EB", flexShrink:0 }}/>
-      <div ref={ref} style={{ display:"flex", alignItems:"center", gap:10, overflowX:"auto",
-        flex:1, scrollbarWidth:"none" }}>
-        {LOGO_COMPANIES.map(code => {
-          const logo = getLogoSrc(code);
-          const isActive = selected === code;
-          return (
-            <button key={code} onClick={() => onSelect(isActive ? null : code)}
-              style={{ flexShrink:0, padding:"4px 10px", borderRadius:7, cursor:"pointer",
-                border: isActive ? `2px solid ${Y}` : "1.5px solid #E5E7EB",
-                background: isActive ? "#FFFBE6" : "white",
-                display:"flex", alignItems:"center", justifyContent:"center",
-                transition:"all .15s", minWidth:60 }}>
-              {logo
-                ? <img src={logo} alt={code} style={{ height:22, maxWidth:60, objectFit:"contain" }}/>
-                : <span style={{ fontSize:9, fontWeight:700, color:D }}>{code}</span>
-              }
-            </button>
-          );
-        })}
+      {/* ── Panneau droit — image ── */}
+      <div style={{ flex:1, position:"relative", overflow:"hidden", background:"#1a1a2e" }}>
+        {hasImg ? (
+          <img
+            key={item.image}
+            src={item.image}
+            alt={item.titre}
+            style={{
+              width:"100%", height:"100%",
+              objectFit:"cover", objectPosition:"center top",
+              transition:"opacity .5s ease",
+            }}
+            onError={e => { e.target.style.display="none"; }}
+          />
+        ) : (
+          <div style={{ width:"100%", height:"100%", background:`linear-gradient(135deg,#1a1a2e 0%,${D} 100%)` }}/>
+        )}
+        {/* Gradient flou côté gauche (séparation texte/image) */}
+        <div style={{
+          position:"absolute", inset:0, left:0, top:0, width:80, height:"100%",
+          background:"linear-gradient(to right, #0D0D14 0%, rgba(13,13,20,.6) 40%, transparent 100%)",
+          pointerEvents:"none",
+        }}/>
+        {/* Photo credit */}
+        {item.src && (
+          <span style={{
+            position:"absolute", bottom:8, right:10,
+            fontSize:9, color:"rgba(255,255,255,.55)", fontFamily:FONT,
+            background:"rgba(0,0,0,.4)", padding:"2px 7px", borderRadius:3,
+          }}>
+            Photo : {item.src === "ILBOURSA" ? "IlBoursa" : "Atlas Magazine"}
+          </span>
+        )}
       </div>
-      <button onClick={() => ref.current?.scrollBy({ left:120, behavior:"smooth" })}
-        style={{ background:"#F9FAFB", border:"1px solid #E5E7EB", borderRadius:6, width:28, height:28,
-          display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", flexShrink:0 }}>
-        <svg viewBox="0 0 12 12" fill="none" stroke={G} strokeWidth="1.8" width="10" height="10">
-          <path d="M4 3l4 3-4 3" strokeLinecap="round" strokeLinejoin="round"/>
+
+      {/* Flèche gauche */}
+      <button onClick={() => setIdx(i => (i - 1 + items.length) % items.length)}
+        style={{ ...navBtnBase, left:12 }}>
+        <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2.2" width="10" height="10">
+          <path d="M8 2L4 6l4 4" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+      {/* Flèche droite */}
+      <button onClick={() => setIdx(i => (i + 1) % items.length)}
+        style={{ ...navBtnBase, right:12 }}>
+        <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2.2" width="10" height="10">
+          <path d="M4 2l4 4-4 4" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </button>
     </div>
   );
 }
 
-/* ══ PAGE ═══════════════════════════════════════════════════════════════════ */
+/* ══ LOGO BAR — bande défilante sans cadres ═════════════════════════════════ */
+const MARQUEE_STYLE = `
+@keyframes marquee-logos {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.logo-track {
+  animation: marquee-logos 36s linear infinite;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  padding: 8px 4px;
+}
+.logo-track-wrap:hover .logo-track {
+  animation-play-state: paused;
+}
+.logo-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px 6px 10px;
+  border-radius: 8px;
+  border: 1.5px solid #E5E7EB;
+  background: white;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
+.logo-item:hover {
+  border-color: #D1D5DB;
+  background: #F9FAFB;
+  box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+.logo-item.active {
+  border-color: #FFE600;
+  background: #FFFBE6;
+  box-shadow: 0 2px 8px rgba(255,230,0,.2);
+}
+`;
+
+function LogoFilterBar({ selected, onSelect, counts }) {
+
+  /* Logos dupliqués pour boucle seamless */
+  const doubled = [...LOGO_COMPANIES, ...LOGO_COMPANIES];
+
+  return (
+    <>
+      <style>{MARQUEE_STYLE}</style>
+      <div style={{
+        background:"white", border:"1px solid #E5E7EB", borderRadius:10,
+        padding:"10px 16px", boxShadow:"0 1px 6px rgba(0,0,0,.05)",
+      }}>
+        {/* ── En-tête ── */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+            <span style={{ width:3, height:13, background:Y, borderRadius:2, flexShrink:0 }}/>
+            <span style={{ fontSize:9.5, fontWeight:800, color:D, letterSpacing:"1.5px", textTransform:"uppercase", fontFamily:FONT }}>
+              Filtrer par compagnie
+            </span>
+            {selected && (
+              <span style={{ fontSize:9, color:G, fontFamily:FONT }}>
+                — <b style={{ color:D }}>{selected}</b>
+                <button onClick={() => onSelect(null)} style={{
+                  marginLeft:4, border:"none", background:"none",
+                  cursor:"pointer", color:G, fontSize:13, lineHeight:1, padding:0,
+                }}>×</button>
+              </span>
+            )}
+          </div>
+          <button onClick={() => onSelect(null)} style={{
+            padding:"3px 12px", borderRadius:20, cursor:"pointer",
+            fontFamily:FONT, fontSize:9.5, fontWeight:700,
+            background: !selected ? D : "transparent",
+            color: !selected ? "white" : G,
+            border: !selected ? `1px solid ${D}` : "1px solid #D1D5DB",
+            transition:"all .15s",
+          }}>Toutes</button>
+        </div>
+
+        {/* ── Bande défilante claire ── */}
+        <div className="logo-track-wrap" style={{ overflow:"hidden", position:"relative" }}>
+          {/* Fondu gauche */}
+          <div style={{ position:"absolute", left:0, top:0, bottom:0, width:32,
+            background:"linear-gradient(90deg,white,transparent)", zIndex:2, pointerEvents:"none" }}/>
+          {/* Fondu droit */}
+          <div style={{ position:"absolute", right:0, top:0, bottom:0, width:32,
+            background:"linear-gradient(270deg,white,transparent)", zIndex:2, pointerEvents:"none" }}/>
+
+          <div className="logo-track">
+            {doubled.map(({ key, logo }, i) => {
+              const active = selected === key;
+              return (
+                <div
+                  key={i}
+                  className={`logo-item${active ? " active" : ""}`}
+                  onClick={() => onSelect(active ? null : key)}
+                  title={key}
+                >
+                  <img
+                    src={logo}
+                    alt={key}
+                    style={{
+                      height:22, maxWidth:60, objectFit:"contain",
+                      filter: active ? "none" : "grayscale(15%) opacity(0.85)",
+                      transition:"filter .15s",
+                    }}
+                    onError={e => { e.target.style.display="none"; }}
+                  />
+                  <span style={{
+                    fontSize:9, fontWeight:600, color: active ? D : G,
+                    whiteSpace:"nowrap", fontFamily:FONT,
+                    transition:"color .15s",
+                  }}>{key.replace(" Assurances","").replace(" Assurance","")}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ══ PAGE ════════════════════════════════════════════════════════════════════ */
 export default function ActualitesSeminaires() {
+  const [actu,         setActu]         = useState(ACTU_STATIC);
   const [search,       setSearch]       = useState("");
   const [srcFilter,    setSrcFilter]    = useState("Toutes les sources");
-  const [compFilter,   setCompFilter]   = useState("Toutes les compagnies");
-  const [catFilter,    setCatFilter]    = useState("Toutes les catégories");
+  const [compFilter,   setCompFilter]   = useState(null);   // null = toutes
   const [periodeFilter,setPeriodeFilter]= useState("Toutes les périodes");
-  const [logoFilter,   setLogoFilter]   = useState(null);
   const [page,         setPage]         = useState(1);
   const [perPage,      setPerPage]      = useState(10);
   const [sortCol,      setSortCol]      = useState("date");
   const [sortAsc,      setSortAsc]      = useState(false);
 
-  const parseNum = (s) => {
+  /* Fetch live data */
+  useEffect(() => {
+    fetch(`${API}/api/actualites`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && Array.isArray(data) && data.length > 0)
+          setActu(data.map((item, i) => ({ id: 1000 + i, ...item })));
+      })
+      .catch(() => {});
+  }, []);
+
+  /* Carousel : 5 articles les plus récents toutes sources confondues, priorité image */
+  const uneItems = useMemo(() => {
+    const sortDate = a => {
+      const p = a.date.split("/");
+      return p.length === 3 ? `${p[2]}${p[1]}${p[0]}` : a.date + "0101";
+    };
+    return [...actu]
+      .sort((a, b) => {
+        const imgA = a.image ? 1 : 0, imgB = b.image ? 1 : 0;
+        if (imgB !== imgA) return imgB - imgA;
+        return sortDate(b).localeCompare(sortDate(a));
+      })
+      .slice(0, 5);
+  }, [actu]);
+
+  /* Comptage par compagnie (pour badges sur logos) */
+  const companyCounts = useMemo(() => {
+    const counts = {};
+    actu.forEach(a => {
+      if (a.compagnie && a.compagnie !== "—")
+        counts[a.compagnie] = (counts[a.compagnie] || 0) + 1;
+    });
+    return counts;
+  }, [actu]);
+
+  const parseNum = s => {
     const p = s.split("/");
     return p.length === 3 ? `${p[2]}${p[1]}${p[0]}` : `${s}0101`;
   };
 
   const filtered = useMemo(() => {
-    let list = ACTU.filter(a => {
-      if (srcFilter  !== "Toutes les sources"    && a.src       !== srcFilter)      return false;
-      if (compFilter !== "Toutes les compagnies" && a.compagnie !== compFilter)     return false;
-      if (catFilter  !== "Toutes les catégories" && a.categorie !== catFilter)      return false;
-      if (logoFilter && a.compagnie.toUpperCase().replace(/\s/g,"_") !== logoFilter &&
-          !a.compagnie.toLowerCase().includes(logoFilter.toLowerCase().replace(/_/g," "))) return false;
+    const now = new Date();
+    let list = actu.filter(a => {
+      if (srcFilter !== "Toutes les sources" && a.src !== srcFilter) return false;
+      if (compFilter && a.compagnie !== compFilter) return false;
+
+      if (periodeFilter !== "Toutes les périodes") {
+        const parts = a.date.split("/");
+        const aDate = parts.length === 3
+          ? new Date(`${parts[2]}-${parts[1]}-${parts[0]}`)
+          : new Date(`${a.date}-01-01`);
+        const diff = now - aDate;
+        const DAY  = 86400000;
+        if (periodeFilter === "Cette semaine"       && diff > 7   * DAY) return false;
+        if (periodeFilter === "Ce mois"             && diff > 31  * DAY) return false;
+        if (periodeFilter === "Les 3 derniers mois" && diff > 91  * DAY) return false;
+        if (periodeFilter === "Les 6 derniers mois" && diff > 182 * DAY) return false;
+        if (periodeFilter === "Cette année"         && aDate.getFullYear() !== now.getFullYear()) return false;
+      }
+
       if (search) {
         const q = search.toLowerCase();
-        if (!a.titre.toLowerCase().includes(q) && !a.compagnie.toLowerCase().includes(q) &&
-            !a.categorie.toLowerCase().includes(q)) return false;
+        if (
+          !a.titre.toLowerCase().includes(q) &&
+          !(a.compagnie||"").toLowerCase().includes(q) &&
+          !a.src.toLowerCase().includes(q) &&
+          !a.date.toLowerCase().includes(q)
+        ) return false;
       }
       return true;
     });
@@ -382,13 +508,13 @@ export default function ActualitesSeminaires() {
       let cmp = 0;
       if (sortCol === "date")      cmp = parseNum(a.date).localeCompare(parseNum(b.date));
       if (sortCol === "titre")     cmp = a.titre.localeCompare(b.titre);
-      if (sortCol === "compagnie") cmp = a.compagnie.localeCompare(b.compagnie);
+      if (sortCol === "compagnie") cmp = (a.compagnie||"").localeCompare(b.compagnie||"");
       if (sortCol === "src")       cmp = a.src.localeCompare(b.src);
-      if (sortCol === "categorie") cmp = a.categorie.localeCompare(b.categorie);
+      if (sortCol === "categorie") cmp = (a.categorie||"").localeCompare(b.categorie||"");
       return sortAsc ? cmp : -cmp;
     });
     return list;
-  }, [search, srcFilter, compFilter, catFilter, logoFilter, sortCol, sortAsc]);
+  }, [actu, search, srcFilter, compFilter, periodeFilter, sortCol, sortAsc]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated  = filtered.slice((page - 1) * perPage, page * perPage);
@@ -396,9 +522,8 @@ export default function ActualitesSeminaires() {
   const to   = Math.min(page * perPage, filtered.length);
 
   function reset() {
-    setSearch(""); setSrcFilter("Toutes les sources"); setCompFilter("Toutes les compagnies");
-    setCatFilter("Toutes les catégories"); setPeriodeFilter("Toutes les périodes");
-    setLogoFilter(null); setPage(1);
+    setSearch(""); setSrcFilter("Toutes les sources");
+    setCompFilter(null); setPeriodeFilter("Toutes les périodes"); setPage(1);
   }
 
   function toggleSort(col) {
@@ -412,20 +537,23 @@ export default function ActualitesSeminaires() {
     </span>
   );
 
-  const thStyle = { fontSize:11, fontWeight:700, color:"#374151", padding:"11px 14px",
+  const thStyle = {
+    fontSize:11, fontWeight:700, color:"#374151", padding:"11px 14px",
     background:"#F9FAFB", borderBottom:"2px solid #E5E7EB", cursor:"pointer",
-    userSelect:"none", whiteSpace:"nowrap", textAlign:"left" };
+    userSelect:"none", whiteSpace:"nowrap", textAlign:"left",
+  };
 
-  /* Page numbers display */
   const pageNums = useMemo(() => {
     const nums = [];
     for (let i = Math.max(1, page - 2); i <= Math.min(totalPages, page + 2); i++) nums.push(i);
     return nums;
   }, [page, totalPages]);
 
+  const hasActiveFilter = search || srcFilter !== "Toutes les sources"
+    || compFilter || periodeFilter !== "Toutes les périodes";
+
   return (
-    <div style={{ height:"calc(100vh - 92px)", background:"white", fontFamily:FONT,
-      display:"flex", flexDirection:"column", overflow:"hidden" }}>
+    <div style={{ background:"#F8F9FA", fontFamily:FONT, minHeight:"calc(100vh - 92px)" }}>
 
       <PageHeaderBar
         title="Veille d'actualités"
@@ -434,79 +562,92 @@ export default function ActualitesSeminaires() {
             <div style={{ display:"flex", alignItems:"center", gap:7, background:"#F9FAFB",
               border:"1px solid #E5E7EB", borderRadius:20, padding:"5px 14px" }}>
               <div style={{ width:7, height:7, borderRadius:"50%", background:"#22C55E" }}/>
-              <span style={{ fontSize:11, fontWeight:600, color:D }}>IlBoursa · Atlas Magazine · CGA</span>
-            </div>
-            <div style={{ display:"flex", alignItems:"center", gap:8, background:"white",
-              border:"1px solid #E5E7EB", borderRadius:8, padding:"7px 12px", width:240,
-              boxShadow:"0 1px 4px rgba(0,0,0,.05)" }}>
-              <svg viewBox="0 0 20 20" fill="none" stroke={G} strokeWidth="1.6" width="13" height="13">
-                <circle cx="9" cy="9" r="6"/><path d="M15 15l3 3" strokeLinecap="round"/>
-              </svg>
-              <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-                placeholder="Rechercher..."
-                style={{ flex:1, border:"none", outline:"none", fontSize:11.5, color:D,
-                  background:"transparent", fontFamily:FONT }}/>
-              {search && (
-                <button onClick={() => { setSearch(""); setPage(1); }}
-                  style={{ border:"none", background:"none", cursor:"pointer", color:G, fontSize:14, lineHeight:1 }}>×</button>
-              )}
+              <span style={{ fontSize:11, fontWeight:600, color:D }}>Sources · IlBoursa · Atlas Magazine</span>
             </div>
           </div>
         }
       />
 
-      {/* ── Corps scrollable ── */}
-      <div style={{ flex:1, overflowY:"auto", padding:"16px 32px 20px",
-        display:"flex", flexDirection:"column", gap:14 }}>
+      {/* ── Carousel ── */}
+      <div style={{ padding:"16px 32px 0" }}>
+        <AlaUne items={uneItems}/>
+      </div>
 
-        {/* Carousel */}
-        <AlaUne/>
+      {/* ── Barre filtres + logos — sticky ── */}
+      <div style={{ position:"sticky", top:0, zIndex:20, background:"#F8F9FA", padding:"12px 32px 0", display:"flex", flexDirection:"column", gap:10 }}>
 
-        {/* Filtres — dark gradient comme Aperçu Marché */}
+        {/* ── Barre filtres ── */}
         <div style={{
           background:"linear-gradient(120deg, #13131A 0%, #1E1E2A 25%, #252535 55%, #424242 80%, #696969 100%)",
-          borderRadius:10, padding:"12px 18px",
-          display:"flex", alignItems:"center", gap:10, flexShrink:0, flexWrap:"wrap",
-          boxShadow:"0 4px 16px rgba(0,0,0,.25)",
+          padding:"14px 20px", borderRadius:10,
+          boxShadow:"0 2px 12px rgba(10,10,20,.3)",
+          display:"flex", alignItems:"center", gap:10, flexWrap:"wrap",
         }}>
-          <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
-            <span style={{ fontSize:8.5, fontWeight:700, color:"rgba(255,255,255,.38)", letterSpacing:"1.5px", textTransform:"uppercase" }}>Source</span>
-            <Sel dark value={srcFilter}     onChange={v => { setSrcFilter(v);     setPage(1); }} options={SOURCES}/>
+          {/* Recherche */}
+          <div style={{ display:"flex", alignItems:"center", gap:8,
+            background:"rgba(255,255,255,.08)", border:"1px solid rgba(255,255,255,.14)",
+            borderRadius:8, padding:"7px 12px", flex:"0 0 240px" }}>
+            <svg viewBox="0 0 20 20" fill="none" stroke="rgba(255,255,255,.5)" strokeWidth="1.6" width="14" height="14">
+              <circle cx="9" cy="9" r="6"/><path d="M15 15l3 3" strokeLinecap="round"/>
+            </svg>
+            <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+              placeholder="Titre, compagnie, source, date (ex: 07/2026)…"
+              style={{ flex:1, border:"none", outline:"none", fontSize:11, color:"white",
+                background:"transparent", fontFamily:FONT }}/>
+            {search && (
+              <button onClick={() => { setSearch(""); setPage(1); }}
+                style={{ border:"none", background:"none", cursor:"pointer", color:"rgba(255,255,255,.5)", fontSize:14, lineHeight:1 }}>×</button>
+            )}
           </div>
-          <div style={{ width:1, height:40, background:"rgba(255,255,255,.1)", flexShrink:0 }}/>
-          <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
-            <span style={{ fontSize:8.5, fontWeight:700, color:"rgba(255,255,255,.38)", letterSpacing:"1.5px", textTransform:"uppercase" }}>Compagnie</span>
-            <Sel dark value={compFilter}    onChange={v => { setCompFilter(v);    setPage(1); }} options={COMPAGNIES_ACTU}/>
+
+          <div style={{ width:1, height:32, background:"rgba(255,255,255,.10)", flexShrink:0 }}/>
+
+          {/* Source */}
+          <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+            <span style={{ fontSize:7.5, fontWeight:700, color:"rgba(255,255,255,.38)", letterSpacing:"2px", textTransform:"uppercase" }}>Source</span>
+            <Sel value={srcFilter} onChange={v => { setSrcFilter(v); setPage(1); }} options={SOURCES} dark/>
           </div>
-          <div style={{ width:1, height:40, background:"rgba(255,255,255,.1)", flexShrink:0 }}/>
-          <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
-            <span style={{ fontSize:8.5, fontWeight:700, color:"rgba(255,255,255,.38)", letterSpacing:"1.5px", textTransform:"uppercase" }}>Catégorie</span>
-            <Sel dark value={catFilter}     onChange={v => { setCatFilter(v);     setPage(1); }} options={CATEGORIES}/>
+
+          <div style={{ width:1, height:32, background:"rgba(255,255,255,.10)", flexShrink:0 }}/>
+
+          {/* Période */}
+          <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+            <span style={{ fontSize:7.5, fontWeight:700, color:"rgba(255,255,255,.38)", letterSpacing:"2px", textTransform:"uppercase" }}>Période</span>
+            <Sel value={periodeFilter} onChange={v => { setPeriodeFilter(v); setPage(1); }} options={PERIODES} dark/>
           </div>
-          <div style={{ width:1, height:40, background:"rgba(255,255,255,.1)", flexShrink:0 }}/>
-          <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
-            <span style={{ fontSize:8.5, fontWeight:700, color:"rgba(255,255,255,.38)", letterSpacing:"1.5px", textTransform:"uppercase" }}>Période</span>
-            <Sel dark value={periodeFilter} onChange={v => { setPeriodeFilter(v); setPage(1); }} options={PERIODES}/>
-          </div>
-          <button onClick={reset} style={{ display:"flex", alignItems:"center", gap:6, marginLeft:"auto",
-            background:"transparent", border:"1.5px solid rgba(255,230,0,.55)", color:Y,
-            borderRadius:8, padding:"7px 14px", fontSize:11, fontWeight:700, cursor:"pointer",
-            fontFamily:FONT }}>
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" width="12" height="12">
+
+          {/* Réinitialiser */}
+          <button onClick={reset} style={{
+            marginTop:14, display:"flex", alignItems:"center", gap:6,
+            background:"rgba(255,230,0,.12)", border:"1px solid rgba(255,230,0,.35)",
+            color:Y, borderRadius:8, padding:"8px 14px", fontSize:11.5, fontWeight:700,
+            cursor:"pointer", fontFamily:FONT,
+          }}>
+            <svg viewBox="0 0 20 20" fill="none" stroke={Y} strokeWidth="1.8" width="13" height="13">
               <path d="M3 10a7 7 0 1013.93-1.37" strokeLinecap="round"/>
               <polyline points="17,4 17,9 12,9" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
             Réinitialiser
           </button>
-          <span style={{ fontSize:10, fontWeight:700, color:"rgba(255,255,255,.45)", whiteSpace:"nowrap" }}>
+
+          <div style={{ marginLeft:"auto", fontSize:10, color:"rgba(255,255,255,.38)", fontWeight:600 }}>
             {filtered.length} actualité{filtered.length !== 1 ? "s" : ""}
-          </span>
+          </div>
         </div>
 
-        {/* Barre logos */}
-        <LogoBar selected={logoFilter} onSelect={c => { setLogoFilter(c); setPage(1); }}/>
+        {/* ── Logo bar ── */}
+        <LogoFilterBar
+          selected={compFilter}
+          onSelect={key => { setCompFilter(key); setPage(1); }}
+          counts={companyCounts}
+        />
 
-        {/* Table */}
+      </div>{/* end sticky bar */}
+
+      {/* ── Table + pagination ── */}
+      <div style={{ padding:"14px 32px 40px", display:"flex", flexDirection:"column", gap:14 }}>
+
+        {/* ── Table ── */}
         <div style={{ background:"white", border:"1px solid #E5E7EB", borderRadius:10, overflow:"hidden" }}>
           <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
             <thead>
@@ -514,17 +655,15 @@ export default function ActualitesSeminaires() {
                 <th style={thStyle} onClick={() => toggleSort("date")}>
                   Date <SortIcon col="date"/>
                 </th>
-                <th style={{ ...thStyle, width:"40%" }} onClick={() => toggleSort("titre")}>
+                <th style={{ ...thStyle, width:"28%" }} onClick={() => toggleSort("titre")}>
                   Actualité <SortIcon col="titre"/>
                 </th>
+                <th style={{ ...thStyle, width:"22%", cursor:"default" }}>Résumé</th>
                 <th style={thStyle} onClick={() => toggleSort("compagnie")}>
                   Compagnie <SortIcon col="compagnie"/>
                 </th>
                 <th style={thStyle} onClick={() => toggleSort("src")}>
                   Source <SortIcon col="src"/>
-                </th>
-                <th style={thStyle} onClick={() => toggleSort("categorie")}>
-                  Catégorie <SortIcon col="categorie"/>
                 </th>
                 <th style={{ ...thStyle, cursor:"default" }}>Lien</th>
               </tr>
@@ -532,13 +671,13 @@ export default function ActualitesSeminaires() {
             <tbody>
               {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding:"40px", textAlign:"center", color:G, fontSize:13 }}>
+                  <td colSpan={6} style={{ padding:"48px", textAlign:"center", color:G, fontSize:13 }}>
                     Aucune actualité ne correspond aux filtres sélectionnés.
                   </td>
                 </tr>
               ) : paginated.map((a, i) => (
-                <tr key={a.id} style={{ background: i % 2 === 0 ? "white" : "#FAFAFA",
-                  borderBottom:"1px solid #F0F0F0" }}
+                <tr key={a.id || i}
+                  style={{ background: i % 2 === 0 ? "white" : "#FAFAFA", borderBottom:"1px solid #F0F0F0" }}
                   onMouseEnter={e => e.currentTarget.style.background="#FFFBE6"}
                   onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "white" : "#FAFAFA"}>
                   <td style={{ padding:"12px 14px", whiteSpace:"nowrap", color:G, fontSize:11, fontWeight:500 }}>
@@ -547,14 +686,19 @@ export default function ActualitesSeminaires() {
                   <td style={{ padding:"12px 14px", color:D, fontWeight:600, lineHeight:1.45 }}>
                     {a.titre}
                   </td>
-                  <td style={{ padding:"12px 14px", color:D, whiteSpace:"nowrap" }}>
-                    {a.compagnie}
+                  <td style={{ padding:"10px 14px", color:G, fontSize:11, lineHeight:1.5, maxWidth:220 }}>
+                    {a.resume ? (
+                      <span style={{
+                        display:"-webkit-box", WebkitLineClamp:2,
+                        WebkitBoxOrient:"vertical", overflow:"hidden",
+                      }}>{a.resume}</span>
+                    ) : <span style={{ color:"#C0C0C8", fontStyle:"italic" }}>—</span>}
+                  </td>
+                  <td style={{ padding:"12px 14px", color:D, whiteSpace:"nowrap", fontSize:11 }}>
+                    {a.compagnie || "—"}
                   </td>
                   <td style={{ padding:"12px 14px", whiteSpace:"nowrap" }}>
                     <SrcBadge src={a.src}/>
-                  </td>
-                  <td style={{ padding:"12px 14px", whiteSpace:"nowrap" }}>
-                    <CatBadge cat={a.categorie}/>
                   </td>
                   <td style={{ padding:"12px 14px", whiteSpace:"nowrap" }}>
                     <a href={a.url} target="_blank" rel="noreferrer"
@@ -572,25 +716,28 @@ export default function ActualitesSeminaires() {
           </table>
         </div>
 
-        {/* Pagination */}
+        {/* ── Pagination ── */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-          padding:"8px 0", flexShrink:0, flexWrap:"wrap", gap:10 }}>
-          <span style={{ fontSize:12, color:G }}>
-            Affichage de <b style={{ color:D }}>{from}</b> à <b style={{ color:D }}>{to}</b> sur{" "}
-            <b style={{ color:D }}>{filtered.length}</b> actualité{filtered.length !== 1 ? "s" : ""}
-          </span>
+          padding:"4px 0", flexWrap:"wrap", gap:10 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ fontSize:12, color:G }}>
+              Affichage de <b style={{ color:D }}>{from}</b> à <b style={{ color:D }}>{to}</b> sur{" "}
+              <b style={{ color:D }}>{filtered.length}</b> actualité{filtered.length !== 1 ? "s" : ""}
+            </span>
+            <Sel value={String(perPage)} onChange={v => { setPerPage(Number(v)); setPage(1); }}
+              options={PER_PAGE_OPTS.map(String)} style={{ padding:"6px 28px 6px 10px", fontSize:11 }}/>
+            <span style={{ fontSize:12, color:G }}>par page</span>
+          </div>
 
-          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            {/* Précédent */}
+          <div style={{ display:"flex", alignItems:"center", gap:5 }}>
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
               style={{ padding:"6px 10px", border:"1px solid #E5E7EB", borderRadius:7, background:"white",
                 cursor: page === 1 ? "default" : "pointer", color: page === 1 ? "#C0C0C8" : D,
-                fontFamily:FONT, fontSize:11, fontWeight:600, display:"flex", alignItems:"center", gap:4 }}>
+                fontFamily:FONT, fontSize:11, fontWeight:600, display:"flex", alignItems:"center" }}>
               <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" width="9" height="9">
                 <path d="M8 3L4 6l4 3" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-
             {pageNums.map(n => (
               <button key={n} onClick={() => setPage(n)}
                 style={{ width:32, height:32, border: n === page ? "none" : "1px solid #E5E7EB",
@@ -600,32 +747,19 @@ export default function ActualitesSeminaires() {
                 {n}
               </button>
             ))}
-
-            {/* Suivant */}
             <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
               style={{ padding:"6px 10px", border:"1px solid #E5E7EB", borderRadius:7, background:"white",
                 cursor: page === totalPages ? "default" : "pointer",
                 color: page === totalPages ? "#C0C0C8" : D,
-                fontFamily:FONT, fontSize:11, fontWeight:600, display:"flex", alignItems:"center", gap:4 }}>
+                fontFamily:FONT, fontSize:11, fontWeight:600, display:"flex", alignItems:"center" }}>
               <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" width="9" height="9">
                 <path d="M4 3l4 3-4 3" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-
-            {/* Par page */}
-            <div style={{ display:"flex", alignItems:"center", gap:6, marginLeft:8 }}>
-              <span style={{ fontSize:11, color:G }}>Afficher</span>
-              <Sel value={String(perPage)} onChange={v => { setPerPage(+v); setPage(1); }}
-                options={PER_PAGE_OPTS.map(String)}/>
-              <span style={{ fontSize:11, color:G }}>par page</span>
-            </div>
           </div>
         </div>
 
-        <div style={{ textAlign:"right", fontSize:10, color:G, flexShrink:0 }}>
-          Source : IlBoursa · Atlas Magazine · CGA · Données actualisées Avril 2026
-        </div>
-      </div>
+      </div>{/* end table area */}
     </div>
   );
 }

@@ -430,7 +430,26 @@
       "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('total_actif:', d.get\\('total_actif'\\)\\); print\\('actif items:', len\\(d.get\\('actif',[]\\)\\)\\)\")",
       "Bash(npx --yes acorn --ecma2020 --module src/pages/FichesEntreprises.jsx)",
       "Bash(node node_modules/.bin/vite build --mode development)",
-      "Bash(node node_modules/.bin/vite build)"
+      "Bash(node node_modules/.bin/vite build)",
+      "Bash(python -c \"import requests, bs4; print\\('ok'\\)\")",
+      "Bash(curl -s -X POST http://localhost:8002/api/cache/clear)",
+      "Bash(curl -s http://localhost:8002/api/actualites)",
+      "Bash(findstr :8002)",
+      "Bash(findstr LISTEN)",
+      "Bash(start /B python api/app.py)",
+      "Bash(Start-Sleep -Seconds 3)",
+      "Bash(curl -s http://localhost:8002/api/cache/clear -X POST)",
+      "Bash(curl -s \"http://localhost:8002/api/actualites\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); imgs=[x for x in d if x.get\\('image'\\)]; print\\(f'Total: {len\\(d\\)}, avec image: {len\\(imgs\\)}'\\); [print\\(x[\\\\\"src\\\\\"], x[\\\\\"image\\\\\"][:80] if x[\\\\\"image\\\\\"] else \\\\\"None\\\\\"\\) for x in d[:6]]\")",
+      "Bash(awk '{print $5}')",
+      "Bash(python api/app.py)",
+      "Bash(curl -s http://localhost:8002/api/health)",
+      "Bash(curl -s http://localhost:8002/)",
+      "Bash(python -c \"import json,sys; data=json.load\\(sys.stdin\\); srcs=[a['src'] for a in data]; print\\('Total:', len\\(data\\)\\); print\\('ILBOURSA:', srcs.count\\('ILBOURSA'\\)\\); print\\('ATLAS:', srcs.count\\('ATLAS MAGAZINE'\\)\\); [print\\(a['src'], '|', a['date'], '|', a['titre'][:60]\\) for a in data[:8]]\")",
+      "Bash(python -c \"import json,sys; data=json.load\\(sys.stdin\\); il=[a for a in data if a['src']=='ILBOURSA']; [print\\(a['date'],'|',a['titre']\\) for a in il]\")",
+      "Bash(node_modules\\\\.bin\\\\vite build *)",
+      "Bash(curl -s http://localhost:8002/api/veille-reglementaire)",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d\\), 'docs'\\); [print\\(x['titre'][:80], '|', x['type'], '|', x['date']\\) for x in d[:5]]\")"
     ]
   }
 }

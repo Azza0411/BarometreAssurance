@@ -231,24 +231,29 @@ export default function Chatbot() {
       style={{
         position:"fixed", bottom:28, right:28, zIndex:9999,
         width:60, height:60, borderRadius:"50%", border:"none", cursor:"pointer",
-        background: open ? "linear-gradient(135deg,#3A3A4A 0%,#2E2E38 100%)" : "transparent",
+        background: "transparent",
         boxShadow: open
           ? "0 4px 20px rgba(46,46,56,.5)"
           : "0 4px 24px rgba(0,0,0,.35), 0 0 0 3px rgba(255,230,0,.25)",
         display:"flex", alignItems:"center", justifyContent:"center",
-        padding:0, overflow:"hidden",
+        padding:0, overflow:"visible",
         transition:"all .25s cubic-bezier(.34,1.56,.64,1)",
       }}
     >
       {open ? (
-        <svg viewBox="0 0 20 20" fill="none" width="20" height="20">
-          <path d="M5 5l10 10M15 5L5 15" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-        </svg>
+        /* Quand le chat est ouvert : gif 8 légèrement plus grand que le cercle */
+        <img
+          src="/images/gif 8.webp"
+          alt="Assistant IA"
+          style={{ width:76, height:76, objectFit:"cover", borderRadius:"50%", display:"block",
+                   boxShadow:"0 0 0 3px rgba(255,230,0,.35)" }}
+        />
       ) : (
+        /* Fermé : gif 9 dépasse légèrement le cercle de 60 px */
         <img
           src="/images/gif 9.gif"
           alt="Assistant IA"
-          style={{ width:"100%", height:"100%", objectFit:"cover", borderRadius:"50%", display:"block" }}
+          style={{ width:76, height:76, objectFit:"cover", borderRadius:"50%", display:"block" }}
         />
       )}
     </button>
