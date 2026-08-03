@@ -14,6 +14,7 @@ Deux sources complementaires :
 
 import datetime
 import re
+import time
 
 import requests
 
@@ -56,14 +57,42 @@ PIB_QUERY = f"""
 YEAR_SET_RE = re.compile(r'Period="YEARS:(\d{4})"[^>]*>([\d.\-]+)</Set>')
 
 
+def _get_with_retries(url, timeout=30, retries=3):
+    """Meme approche que bvmt_scraper/ftusa_scraper/cga_scraper : le site peut
+    echouer ponctuellement (timeout, 5xx passager), quelques tentatives suffisent."""
+    for attempt in range(1, retries + 1):
+        try:
+            response = requests.get(url, headers=REQUEST_HEADERS, timeout=timeout)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as exc:
+            if attempt == retries:
+                raise
+            print(f"  [WARN] Tentative {attempt}/{retries} echouee pour {url} : {exc}")
+            time.sleep(1.5)
+
+
+def _post_with_retries(url, headers, data, timeout=30, retries=3):
+    """Meme logique que _get_with_retries, pour l'appel POST vers l'API INS."""
+    for attempt in range(1, retries + 1):
+        try:
+            response = requests.post(url, headers=headers, data=data, timeout=timeout)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as exc:
+            if attempt == retries:
+                raise
+            print(f"  [WARN] Tentative {attempt}/{retries} echouee pour {url} : {exc}")
+            time.sleep(1.5)
+
+
 def _fetch_series(query_xml):
-    response = requests.post(
+    response = _post_with_retries(
         API_BASE_URL,
         headers={**REQUEST_HEADERS, "Content-Type": "application/xml"},
         data=query_xml,
         timeout=30,
     )
-    response.raise_for_status()
     return {int(year): float(value) for year, value in YEAR_SET_RE.findall(response.text)}
 
 
@@ -71,8 +100,7 @@ def _fetch_population_jan():
     """Scrape ins.tn/statistiques/111 : tableau 'Population au 1er Janvier'
     dont les annees sont en colonnes (<thead>) et la population totale en <tbody>.
     Renvoie {annee: population}."""
-    resp = requests.get(INS_STATS_POP_URL, headers=REQUEST_HEADERS, timeout=30)
-    resp.raise_for_status()
+    resp = _get_with_retries(INS_STATS_POP_URL, timeout=30)
     html = resp.text
 
     # Annees en colonnes dans le <thead>

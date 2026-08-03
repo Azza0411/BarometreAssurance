@@ -46,6 +46,29 @@ CREATE TABLE IF NOT EXISTS kpi_values (
     valeur_nombre DOUBLE NULL,
     valeur_texte  VARCHAR(500) NULL,
     date_ajout    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_document_kpi (document_id, kpi),
+    -- tableau fait partie de la cle : deux tableaux differents produisant
+    -- par erreur le meme nom de KPI ne doivent jamais s'ecraser en silence.
+    UNIQUE KEY uq_document_tableau_kpi (document_id, tableau, kpi),
     CONSTRAINT fk_kpi_document FOREIGN KEY (document_id) REFERENCES documents(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Anomalies detectees au moment de l'extraction/nettoyage (desequilibre
+-- Actif/Passif, variation annee sur annee implausible...) : jusqu'ici
+-- seulement journalisees en JSON Lines dans logs/pipeline.log, invisibles
+-- depuis les pages Qualite/Anomalies (api/services/quality.py,
+-- pipeline_audit.py, anomalies_service.py), qui recalculent leurs propres
+-- constats a chaque requete sans jamais lire ce log. Cette table les rend
+-- interrogeables par l'API, et fournit par la meme occasion un historique
+-- reel (detected_at) pour le suivi de tendance qualite dans le temps.
+CREATE TABLE IF NOT EXISTS anomalies_detectees (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    source      VARCHAR(50)  NOT NULL,   -- ex: 'extraction_balance', 'extraction_yoy'
+    code        VARCHAR(50)  NULL,       -- societe concernee (NULL si sectoriel)
+    annee       SMALLINT     NULL,
+    kpi         VARCHAR(255) NULL,
+    gravite     VARCHAR(20)  NOT NULL,   -- 'critique' | 'erreur' | 'avertissement' | 'info'
+    details     TEXT         NULL,       -- JSON libre (valeurs, ecart, annee precedente...)
+    INDEX idx_anomalies_annee (annee),
+    INDEX idx_anomalies_code (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

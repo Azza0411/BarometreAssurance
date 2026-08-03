@@ -10,6 +10,10 @@ import AnalyseComparative from "./pages/AnalyseComparative";
 import EnqueteMarche      from "./pages/EnqueteMarche";
 import VeilleReglementaire    from "./pages/VeilleReglementaire";
 import ActualitesSeminaires   from "./pages/ActualitesSeminaires";
+import QualiteDonnees         from "./pages/QualiteDonnees";
+import KpiDetail              from "./pages/KpiDetail";
+import RapportPipeline        from "./pages/RapportPipeline";
+import AnomaliesSysteme       from "./pages/AnomaliesSysteme";
 
 /* ─── palette tokens ─── */
 const C = {
@@ -763,9 +767,9 @@ function AppNavbar() {
               onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}
               style={{
                 background:"none", border:"none", cursor:"pointer",
-                padding:"0 14px", height:"100%",
+                padding:"0 10px", height:"100%",
                 display:"flex", alignItems:"center",
-                fontSize:14,
+                fontSize:12.5,
                 fontWeight: isActive || isH ? 600 : 400,
                 color: isActive ? C.yellow : isH ? "white" : "rgba(255,255,255,.65)",
                 borderBottom:`3px solid ${isActive ? C.yellow : isH ? "rgba(255,255,255,.3)" : "transparent"}`,
@@ -779,17 +783,95 @@ function AppNavbar() {
         })}
       </div>
 
-      {/* Droite */}
-      <div style={{ display:"flex", alignItems:"center", height:"100%",
-        flexShrink:0, borderLeft:"1px solid rgba(255,255,255,.1)" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 18px",
-          height:"100%", cursor:"pointer" }}>
-          <svg viewBox="0 0 18 18" fill="none" width="13" height="13">
-            <circle cx="9" cy="9" r="7.5" stroke="rgba(255,255,255,.6)" strokeWidth="1.3"/>
-            <ellipse cx="9" cy="9" rx="3.2" ry="7.5" stroke="rgba(255,255,255,.6)" strokeWidth="1.3"/>
-            <path d="M1.5 9h15" stroke="rgba(255,255,255,.6)" strokeWidth="1.3"/>
-          </svg>
-          <span style={{ fontSize:12, color:"rgba(255,255,255,.6)" }}>Tunisie</span>
+      {/* Droite : séparateur | bouton 🛡️ Qualité | globe */}
+      <div style={{ display:"flex", alignItems:"center", height:"100%", flexShrink:0 }}>
+        {/* Séparateur vertical */}
+        <div style={{ width:1, height:36, background:"rgba(255,255,255,.12)", margin:"0 4px" }}/>
+
+        {/* Bouton Anomalies */}
+        {(() => {
+          const isAnom = loc.pathname === "/anomalies-systeme";
+          return (
+            <button onClick={() => nav("/anomalies-systeme")}
+              style={{
+                background: isAnom ? "rgba(99,102,241,.14)" : "none",
+                border:`1px solid ${isAnom ? "rgba(99,102,241,.4)" : "transparent"}`,
+                borderRadius:8, cursor:"pointer",
+                padding:"7px 12px", margin:"0 2px",
+                display:"flex", alignItems:"center", gap:6,
+                fontSize:11.5, fontWeight: isAnom ? 700 : 500,
+                color: isAnom ? "#818CF8" : "rgba(255,255,255,.55)",
+                transition:"all .15s",
+              }}
+              onMouseEnter={e => {
+                if (!isAnom) {
+                  e.currentTarget.style.background = "rgba(99,102,241,.08)";
+                  e.currentTarget.style.color = "rgba(255,255,255,.85)";
+                }
+              }}
+              onMouseLeave={e => {
+                if (!isAnom) {
+                  e.currentTarget.style.background = "none";
+                  e.currentTarget.style.color = "rgba(255,255,255,.55)";
+                }
+              }}>
+              ⚠️ Anomalies
+            </button>
+          );
+        })()}
+
+        {/* Bouton Qualité des données */}
+        {(() => {
+          const isQualite = loc.pathname === "/qualite-donnees";
+          return (
+            <button onClick={() => nav("/qualite-donnees")}
+              style={{
+                background: isQualite ? "rgba(255,230,0,.12)" : "none",
+                border:`1px solid ${isQualite ? "rgba(255,230,0,.35)" : "transparent"}`,
+                borderRadius:8, cursor:"pointer",
+                padding:"7px 14px", margin:"0 8px",
+                display:"flex", alignItems:"center", gap:7,
+                fontSize:12, fontWeight: isQualite ? 700 : 500,
+                color: isQualite ? C.yellow : "rgba(255,255,255,.55)",
+                transition:"all .15s",
+              }}
+              onMouseEnter={e => {
+                if (!isQualite) {
+                  e.currentTarget.style.background = "rgba(255,230,0,.08)";
+                  e.currentTarget.style.color = "rgba(255,255,255,.85)";
+                  e.currentTarget.style.border = "1px solid rgba(255,230,0,.2)";
+                }
+              }}
+              onMouseLeave={e => {
+                if (!isQualite) {
+                  e.currentTarget.style.background = "none";
+                  e.currentTarget.style.color = "rgba(255,255,255,.55)";
+                  e.currentTarget.style.border = "1px solid transparent";
+                }
+              }}>
+              <svg viewBox="0 0 20 20" fill="none" width="14" height="14">
+                <path d="M10 2L3 5.5v5c0 3.6 3 6.8 7 8 4-1.2 7-4.4 7-8v-5L10 2z"
+                  stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                <path d="M7.5 10l1.8 1.8 3.2-3.2" stroke="currentColor"
+                  strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Qualité
+            </button>
+          );
+        })()}
+
+        {/* Globe Tunisie */}
+        <div style={{ display:"flex", alignItems:"center", height:"100%",
+          borderLeft:"1px solid rgba(255,255,255,.1)" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 18px",
+            height:"100%", cursor:"pointer" }}>
+            <svg viewBox="0 0 18 18" fill="none" width="13" height="13">
+              <circle cx="9" cy="9" r="7.5" stroke="rgba(255,255,255,.6)" strokeWidth="1.3"/>
+              <ellipse cx="9" cy="9" rx="3.2" ry="7.5" stroke="rgba(255,255,255,.6)" strokeWidth="1.3"/>
+              <path d="M1.5 9h15" stroke="rgba(255,255,255,.6)" strokeWidth="1.3"/>
+            </svg>
+            <span style={{ fontSize:12, color:"rgba(255,255,255,.6)" }}>Tunisie</span>
+          </div>
         </div>
       </div>
     </nav>
@@ -816,10 +898,13 @@ function AppShell() {
 
   if (location.pathname === "/accueil" || location.pathname === "/") {
     return (
-      <Routes>
-        <Route path="/"        element={<Navigate to="/accueil" replace/>}/>
-        <Route path="/accueil" element={<Accueil/>}/>
-      </Routes>
+      <>
+        <Routes>
+          <Route path="/"        element={<Navigate to="/accueil" replace/>}/>
+          <Route path="/accueil" element={<Accueil/>}/>
+        </Routes>
+        <Chatbot/>
+      </>
     );
   }
 
@@ -849,6 +934,10 @@ function AppShell() {
             <Route path="/enquete-marche"        element={<EnqueteMarche/>}/>
             <Route path="/veille-reglementaire"  element={<VeilleReglementaire/>}/>
             <Route path="/actualites-seminaires" element={<ActualitesSeminaires/>}/>
+            <Route path="/qualite-donnees"       element={<QualiteDonnees/>}/>
+            <Route path="/kpi-detail"            element={<KpiDetail/>}/>
+            <Route path="/rapport-pipeline"      element={<RapportPipeline/>}/>
+            <Route path="/anomalies-systeme"     element={<AnomaliesSysteme/>}/>
           </Routes>
         </PageTransition>
       </main>

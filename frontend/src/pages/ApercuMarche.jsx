@@ -41,7 +41,7 @@ function useWindowSize() {
   return s;
 }
 
-const API = "http://localhost:8002";
+const API = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
 
 function fmt(v, d=1) { return v==null ? "—" : Number(v).toLocaleString("fr-TN",{minimumFractionDigits:d,maximumFractionDigits:d}); }
 function fmtG(v) { return v==null ? null : `${v>=0?"+":""}${Number(v).toFixed(1)}%`; }

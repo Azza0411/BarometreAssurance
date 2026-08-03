@@ -20,7 +20,13 @@ import re
 import requests
 
 from extraction.bilan_kpi_extractor import USER_AGENT
-from extraction.annexe13_kpi_extractor import _extract_numeric_clusters, _label_text, _page_lines, _normalizer
+from extraction.annexe13_kpi_extractor import (
+    _extract_numeric_clusters,
+    _is_plausible,
+    _label_text,
+    _page_lines,
+    _normalizer,
+)
 
 # Cette annexe peut se trouver très loin dans le document (voir Annexe 13).
 MAX_PAGES_SCANNED = 120
@@ -63,6 +69,16 @@ def _is_target_page(page, lines_checked=4):
 
 _RACCORDEMENT_RE = re.compile(r"raccordement")
 
+# Sections qui marquent la FIN d'un groupe "Charges de prestations" dans le
+# forward scan : dès qu'une sous-ligne commence par l'un de ces termes, on
+# arrête l'accumulation (ces lignes n'appartiennent pas au groupe CP).
+_SECTION_STOP_RE = re.compile(
+    r"^(solde|frais d acquisition|charges d acquisition et de gestion|"
+    r"produits|resultat technique|part des reassureurs|retrocessionn|"
+    r"provisions pour primes non acquises|participations aux benefices|commissions)"
+)
+_FORWARD_SCAN_WINDOW = 6
+
 
 def _find_total_value(pdf, pattern, max_pages=MAX_PAGES_SCANNED):
     """Cherche, sur les pages "Résultat technique par catégorie... Vie", la
@@ -70,7 +86,13 @@ def _find_total_value(pdf, pattern, max_pages=MAX_PAGES_SCANNED):
     DERNIÈRE valeur numérique de cette ligne.
 
     Les pages "raccordement" (colonne unique) sont scannées EN PREMIER pour
-    éviter de lire une colonne de branche dans les tableaux multi-colonnes."""
+    éviter de lire une colonne de branche dans les tableaux multi-colonnes.
+
+    Si la ligne correspondante n'a pas de valeur inline (en-tête de section
+    sans total, ex: COMAR/CARTE où "Charges de prestations" est suivi de
+    sous-lignes "Prestations et frais payés" + "Charges des provisions"),
+    on accumule les valeurs des sous-lignes suivantes jusqu'au prochain
+    marqueur de section."""
     target_pages = []
     for page in pdf.pages[:max_pages]:
         if not _is_target_page(page):
@@ -84,15 +106,30 @@ def _find_total_value(pdf, pattern, max_pages=MAX_PAGES_SCANNED):
         lines = _page_lines(page)
         if not lines:
             continue
-        for line in lines:
+        for idx, line in enumerate(lines):
             label = _label_text(line)
             if label is None or not pattern.search(label):
                 continue
             if PRIOR_YEAR_EXCLUSION_RE.search(label):
                 continue
             clusters = _extract_numeric_clusters(line)
-            if clusters:
+            # Rejette un renvoi de note ou un numéro de page/ligne capturé par
+            # erreur (voir bilan_kpi_extractor._is_plausible / CAS_PARTICULIERS) :
+            # on retombe alors sur l'accumulation des sous-lignes.
+            if clusters and _is_plausible(clusters[-1][0]):
                 return clusters[-1][0]
+            # En-tête sans valeur (ou valeur inline implausible) : accumuler
+            # les sous-lignes suivantes
+            total = None
+            for j in range(idx + 1, min(idx + 1 + _FORWARD_SCAN_WINDOW, len(lines))):
+                nxt_label = _label_text(lines[j])
+                if nxt_label and _SECTION_STOP_RE.search(nxt_label):
+                    break
+                nxt_clusters = _extract_numeric_clusters(lines[j])
+                if nxt_clusters and _is_plausible(nxt_clusters[-1][0]):
+                    total = (total or 0) + nxt_clusters[-1][0]
+            if total is not None:
+                return total
     return None
 
 

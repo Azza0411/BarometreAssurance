@@ -12,6 +12,7 @@ pas besoin de l'annee deduite du contenu du PDF.
 """
 
 import re
+import time
 
 import requests
 
@@ -28,6 +29,21 @@ REPORTS_PAGE_URL = f"{BASE_URL}/index.php?id=96&L=0"
 NB_YEARS = 10
 
 REQUEST_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; InsuranceKPIBot/1.0)"}
+
+
+def _get_with_retries(url, timeout=30, retries=3):
+    """Meme approche que bvmt_scraper/ftusa_scraper : le site peut echouer
+    ponctuellement (timeout, 5xx passager), quelques tentatives suffisent."""
+    for attempt in range(1, retries + 1):
+        try:
+            response = requests.get(url, headers=REQUEST_HEADERS, timeout=timeout)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as exc:
+            if attempt == retries:
+                raise
+            print(f"  [WARN] Tentative {attempt}/{retries} echouee pour {url} : {exc}")
+            time.sleep(1.5)
 
 REPORT_LINK_RE = re.compile(
     r'<a href="([^"]+\.pdf)"[^>]*>(?:(?!</a>).)*?Rapport annuel du secteur des assurances (\d{4})', re.S
@@ -57,8 +73,7 @@ def _fetch_report_links():
     principale. Les rapports plus récents (2023, 2024…) sont sur des pages
     de news intermédiaires et hébergés sur Google Drive ; cette fonction les
     suit automatiquement."""
-    response = requests.get(REPORTS_PAGE_URL, headers=REQUEST_HEADERS, timeout=30)
-    response.raise_for_status()
+    response = _get_with_retries(REPORTS_PAGE_URL, timeout=30)
     by_year = {}
 
     # Liens PDF directs (2022 et antérieurs)
@@ -75,8 +90,7 @@ def _fetch_report_links():
         path = raw_path.replace("&amp;", "&")
         news_url = path if path.startswith("http") else f"{BASE_URL}/{path}"
         try:
-            news_resp = requests.get(news_url, headers=REQUEST_HEADERS, timeout=30)
-            news_resp.raise_for_status()
+            news_resp = _get_with_retries(news_url, timeout=30)
             m = GDRIVE_LINK_RE.search(news_resp.text)
             if m:
                 by_year[year] = _gdrive_download_url(m.group(1))

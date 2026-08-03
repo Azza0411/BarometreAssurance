@@ -1,6 +1,8 @@
 # ── Données brutes (trop volumineuses pour GitHub) ──────────────────────────
 data/cmf/
 data/html/
+data/cga/
+data/ftusa/
 
 # ── Frontend build & dépendances ────────────────────────────────────────────
 frontend/node_modules/

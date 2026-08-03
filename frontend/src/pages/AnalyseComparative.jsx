@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo } from "react";
 import ReactApexChart from "react-apexcharts";
 import { getLogoSrc } from "../utils/logos";
 import { YearSelector, DarkKpiBanner } from "../components/PageHeaderBar";
+import { kpiLabel } from "../utils/kpiCatalog";
 
-const API = "http://localhost:8002";
+const API = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
 const Y   = "#FFE600";
 const D   = "#2E2E38";
 const G   = "#747480";
@@ -16,11 +17,11 @@ const COLOR_ND         = "#E5E7EB";   // pas de données
 
 /* ── Seuils de catégorisation ──
    Leader     : rang 1 (meilleur score absolu)
-   Challengers: rangs 2 à 5
-   Followers  : rangs 6 et au-delà                */
+   Challengers: rangs 2 à 3
+   Followers  : rangs 4 et au-delà                */
 function getTier(rank) {
   if (rank === 1) return "leader";
-  if (rank <= 5)  return "challenger";
+  if (rank <= 3)  return "challenger";
   return "follower";
 }
 function tierColor(rank) {
@@ -31,7 +32,7 @@ function tierColor(rank) {
 }
 function tierLabel(rank) {
   if (rank === 1) return "Leader";
-  if (rank <= 5)  return "Challenger";
+  if (rank <= 3)  return "Challenger";
   return "Follower";
 }
 
@@ -44,12 +45,17 @@ const ASSUREUR_LABELS = {
   LLOYD_TUNISIEN:"LLOYD", MAGHREBIA:"MAGHREBIA", BH:"BH",
   BIAT:"BIAT", TUNIS_RE:"TUNIS RE", COTUNACE:"COTUNACE",
 };
+// Libellés repris de frontend/src/utils/kpiCatalog.js (source unique du nom
+// affiché) — seuls le champ backend, l'unité de formatage et le sens
+// "plus bas = mieux" restent propres à cette page.
 const INDICATEURS = {
-  "Ratio combiné":      { field:"ratio_combine", unit:"%",    lowerBetter:true  },
-  "Ratio sinistralité": { field:"ratio_sp",      unit:"%",    lowerBetter:true  },
-  "Ratio de frais":     { field:"ratio_frais",   unit:"%",    lowerBetter:true  },
-  "Part de marché":     { field:"pdm",           unit:"%",    lowerBetter:false },
-  "Primes émises":      { field:"primes",        unit:" MDT", lowerBetter:false },
+  [kpiLabel("Ratio combiné (%)")]:             { field:"ratio_combine",     unit:"%",    lowerBetter:true  },
+  [kpiLabel("Ratio de sinistralité (%)")]:     { field:"ratio_sp",           unit:"%",    lowerBetter:true  },
+  [kpiLabel("Ratio de frais de gestion (%)")]: { field:"ratio_frais",        unit:"%",    lowerBetter:true  },
+  [kpiLabel("Part de marché (%)")]:            { field:"pdm",                unit:"%",    lowerBetter:false },
+  [kpiLabel("Primes émises par assurance")]:   { field:"primes",             unit:" MDT", lowerBetter:false },
+  [kpiLabel("ROE (%)")]:                       { field:"roe",                unit:"%",    lowerBetter:false },
+  [kpiLabel("ROA (%)")]:                       { field:"roa",                unit:"%",    lowerBetter:false },
 };
 const SANS_DONNEES = [
   "AMI","BNA","UIB","HAYETT","CTAMA",
@@ -103,7 +109,17 @@ export default function AnalyseComparative() {
   const [showAssDD,     setShowAssDD]     = useState(false);
   const [annee,         setAnnee]         = useState(2024);
   const [apiData,       setApiData]       = useState({});
-  const années = [2024,2023,2022,2021,2020,2019,2018,2017,2016,2015,2014];
+  // Années réellement présentes en base (même source que Qualité Data,
+  // Anomalies Système et KpiDetail) au lieu d'une liste codée en dur qui
+  // finissait à 2024 et masquait silencieusement les années plus récentes.
+  const [années,        setAnnées]        = useState([2024,2023,2022,2021,2020,2019,2018,2017,2016,2015,2014]);
+
+  useEffect(() => {
+    fetch(`${API}/api/annees-disponibles?source=CMF`)
+      .then(r => r.json())
+      .then(d => { if (d.annees?.length) setAnnées(d.annees); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     setApiData({});
@@ -322,8 +338,8 @@ export default function AnalyseComparative() {
               <div style={{ display:"flex", alignItems:"center", gap:14 }}>
                 {[
                   { color:COLOR_LEADER,     label:"Leader #1" },
-                  { color:COLOR_CHALLENGER, label:"Challengers #2–5" },
-                  { color:COLOR_FOLLOWER,   label:"Followers #6+" },
+                  { color:COLOR_CHALLENGER, label:"Challengers #2–3" },
+                  { color:COLOR_FOLLOWER,   label:"Followers #4+" },
                 ].map(l => (
                   <div key={l.label} style={{ display:"flex", alignItems:"center", gap:5 }}>
                     <div style={{ width:10, height:10, borderRadius:2, background:l.color, flexShrink:0 }}/>

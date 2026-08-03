@@ -23,6 +23,7 @@ from extraction.bilan_kpi_extractor import (
     USER_AGENT,
     _cluster_lines,
     _extract_numeric_clusters,
+    _is_plausible,
     _normalizer,
 )
 
@@ -105,6 +106,16 @@ def _is_target_page(page, lines_checked=4):
     return not VIE_RE.search(normalized)
 
 
+# Sections qui marquent la FIN d'un groupe "Charges de prestations" dans le
+# forward scan.
+_SECTION_STOP_RE = re.compile(
+    r"^(solde|frais d acquisition|charges d acquisition et de gestion|"
+    r"produits|resultat technique|part des reassureurs|retrocessionn|"
+    r"provisions pour primes non acquises|participations aux benefices|commissions)"
+)
+_FORWARD_SCAN_WINDOW = 6
+
+
 def _find_total_value(pdf, pattern, max_pages=MAX_PAGES_SCANNED):
     """Cherche, sur les pages "Résultat technique par catégorie... Non Vie"
     (ou table combinée), la première ligne dont le libellé correspond à
@@ -112,7 +123,11 @@ def _find_total_value(pdf, pattern, max_pages=MAX_PAGES_SCANNED):
 
     Les pages "raccordement" (colonne unique = total direct) sont scannées
     EN PREMIER pour éviter de lire une colonne de branche dans les tableaux
-    multi-colonnes sans colonne "Total" explicite (ex: GAT)."""
+    multi-colonnes sans colonne "Total" explicite (ex: GAT).
+
+    Si la ligne correspondante n'a pas de valeur inline (en-tête de section
+    sans total, ex: COMAR/CARTE), on accumule les sous-lignes suivantes
+    jusqu'au prochain marqueur de section."""
     target_pages = []
     for page in pdf.pages[:max_pages]:
         if not _is_target_page(page):
@@ -136,18 +151,26 @@ def _find_total_value(pdf, pattern, max_pages=MAX_PAGES_SCANNED):
             if NOTE_REFERENCE_RE.search(label):
                 continue
             clusters = _extract_numeric_clusters(line)
-            if clusters:
+            # Un renvoi de note ou un numéro de page/ligne capturé par erreur
+            # (ex: COTUNACE "Charges de prestations" = 20.0) est rejeté par
+            # _is_plausible : on retombe alors sur le forward scan des
+            # sous-lignes plutôt que de renvoyer ce chiffre tel quel.
+            if clusters and _is_plausible(clusters[-1][0]):
                 return clusters[-1][0]
-            # Certains PDF (ex: STAR 2023 raccordement) placent la valeur sur
-            # la ligne suivante (label seul sur une ligne, nombre seul en-dessous).
-            # Si la ligne courante n'a aucun cluster, on tente la ligne suivante
-            # à condition qu'elle ne soit pas un nouveau label.
-            if idx + 1 < len(lines):
-                next_line = lines[idx + 1]
-                next_label = _label_text(next_line)
-                next_clusters = _extract_numeric_clusters(next_line)
-                if next_clusters and (next_label is None or next_label == ""):
-                    return next_clusters[-1][0]
+            # Ligne sans valeur inline (ou valeur inline implausible) :
+            # forward scan des sous-lignes. Gère deux cas :
+            #   1. Label seul + nombre sur la ligne suivante sans label (STAR 2023)
+            #   2. En-tête de section + sous-lignes labelées (COMAR/CARTE)
+            total = None
+            for j in range(idx + 1, min(idx + 1 + _FORWARD_SCAN_WINDOW, len(lines))):
+                nxt_label = _label_text(lines[j])
+                if nxt_label and _SECTION_STOP_RE.search(nxt_label):
+                    break
+                nxt_clusters = _extract_numeric_clusters(lines[j])
+                if nxt_clusters and _is_plausible(nxt_clusters[-1][0]):
+                    total = (total or 0) + nxt_clusters[-1][0]
+            if total is not None:
+                return total
     return None
 
 

@@ -33,6 +33,7 @@ import io
 import os
 import re
 import sys
+import time
 
 import pdfplumber
 import requests
@@ -48,6 +49,7 @@ from database.repository import (
     get_kpi_values_for_document,
     init_schema,
     list_all_documents,
+    save_anomaly,
     save_kpi_value,
 )
 from extraction.annexe12_kpi_extractor import KPI_PATTERNS as ANNEXE12_KPI_PATTERNS
@@ -55,7 +57,13 @@ from extraction.annexe12_kpi_extractor import extract_annexe12_kpis
 from extraction.annexe13_kpi_extractor import KPI_PATTERNS as ANNEXE13_KPI_PATTERNS
 from extraction.annexe13_kpi_extractor import extract_annexe13_kpis
 from extraction.bilan_kpi_extractor import KPI_DEFINITIONS as BILAN_KPI_DEFINITIONS
-from extraction.bilan_kpi_extractor import USER_AGENT, _normalizer, extract_all_bilan_kpis
+from extraction.bilan_kpi_extractor import (
+    USER_AGENT,
+    _find_row_value,
+    _is_passif_page,
+    _normalizer,
+    extract_all_bilan_kpis,
+)
 from extraction.bvmt_bulletin_kpi_extractor import extract_bulletin_cloture
 from extraction.bvmt_kpi_extractor import KPI_NAMES as BVMT_KPI_NAMES
 from extraction.bvmt_kpi_extractor import extract_bvmt_kpis
@@ -64,10 +72,30 @@ from extraction.ftusa_kpi_extractor import KPI_NAMES as FTUSA_KPI_NAMES
 from extraction.ftusa_kpi_extractor import extract_ftusa_kpis
 from extraction.presentation_kpi_extractor import KPI_NAMES as PRESENTATION_KPI_NAMES
 from extraction.presentation_kpi_extractor import extract_presentation_kpis
+import extraction.calculated_kpi_extractor as calculated_kpi_extractor
+from extraction.data_cleaning import check_yoy_consistency
 from extraction.resultat_kpi_extractor import KPI_NAMES as RESULTAT_KPI_NAMES
 from extraction.resultat_kpi_extractor import extract_resultat_kpis
+from utils.pdf_utils import is_valid_pdf
+from utils.pipeline_logging import get_logger, log_json
+
+_logger = get_logger("pipeline")
 
 OUTPUT_DIR = os.path.join("data", "kpis")
+
+# Répertoire racine data/ (ancré sur ce fichier, pas le CWD du process) —
+# utilisé pour persister les PDF FTUSA/CGA téléchargés ici (voir
+# _run_ftusa/_run_cga). Avant ce correctif, ces PDF n'étaient jamais écrits
+# sur disque (contrairement à CMF) : la page Traçabilité KPI ne pouvait donc
+# les ouvrir pour aucune de ces deux sources.
+_DATA_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+
+
+def _save_sectoral_pdf(source: str, annee, content: bytes) -> None:
+    directory = os.path.join(_DATA_ROOT, source.lower())
+    os.makedirs(directory, exist_ok=True)
+    with open(os.path.join(directory, f"{source.upper()}_{annee}.pdf"), "wb") as f:
+        f.write(content)
 FAILURE_REPORT_PATH = os.path.join(OUTPUT_DIR, "echecs_extraction.xlsx")
 
 # Sociétés Takaful : le Bilan y est structuré différemment (colonnes "Fonds
@@ -103,6 +131,65 @@ KPI_TABLE_LABEL.update(
 )
 
 
+def _get_with_retries(url, timeout, retries=3):
+    """Meme approche que les scrapers de collecte (ex: scraping/ftusa_scraper.py) :
+    un blip reseau ponctuel ne doit pas faire perdre les KPI d'un document
+    pour tout un cycle de pipeline avant la prochaine execution planifiee.
+
+    Verifie aussi que le contenu recu est bien un PDF (`is_valid_pdf`) : un
+    lien expire ou une redirection vers une page de login/erreur renvoie
+    souvent un statut HTTP 200 avec du HTML au lieu du PDF attendu, ce que
+    pdfplumber signalerait plus loin par une exception peu explicite. Tous
+    les appels de cette fonction dans ce fichier telechargent un PDF a
+    parser -> le controle est fait ici, pas chez l'appelant."""
+    for attempt in range(1, retries + 1):
+        try:
+            response = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
+            response.raise_for_status()
+            if not is_valid_pdf(response.content):
+                raise ValueError(f"Contenu recu non-PDF (probablement une page d'erreur) : {url}")
+            return response
+        except (requests.RequestException, ValueError):
+            if attempt == retries:
+                raise
+            time.sleep(1.5)
+
+
+# Total actif doit s'equilibrer a la dinar pres avec le total combine
+# Capitaux propres + Passif (partie double comptable) : au-dela, l'un des
+# deux (ou les deux) est probablement mal extrait.
+BALANCE_CHECK_TOLERANCE = 1.0
+
+# Le KPI "Total Passif" (TOTAL_PASSIF_RE dans bilan_kpi_extractor) capture le
+# passif SEUL (ex: "Total du Passif" / "Total des passifs"), pas la ligne qui
+# s'equilibre reellement avec le Total actif : celle-ci est la ligne
+# combinee "Total des capitaux propres et (du) passif(s)" (verifie sur des
+# PDF reels COMAR : "TOTAL DES CAPITAUX PROPRES ET DU PASSIF" ; GAT : "Total
+# des capitaux propres et passifs") -> KPI dedie pour ce controle, non
+# enregistre en base (pas ajoute a KPI_DEFINITIONS/KPI_NAMES) car il ferait
+# doublon avec les KPI "Capitaux propres" + "Total Passif" deja exposes.
+TOTAL_CP_ET_PASSIF_RE = re.compile(r"^total (des )?capitaux propres et (du )?passifs?\b")
+
+
+def _check_balance(pdf, kpis):
+    """Verifie l'equilibre comptable Total actif = Capitaux propres + Passif.
+    Contrairement au garde-fou de plausibilite (bilan_kpi_extractor._is_plausible),
+    qui rejette une valeur individuelle implausible, ce controle porte sur la
+    coherence entre deux valeurs chacune individuellement plausibles : on ne
+    sait pas laquelle des deux est en cause (ou si les deux le sont), donc on
+    ne rejette rien ici, on journalise seulement l'ecart pour investigation.
+    Renvoie l'ecart absolu si superieur a la tolerance, 0.0 si equilibre,
+    None si le controle ne s'applique pas (ligne combinee introuvable)."""
+    actif = kpis.get("Total actif")
+    if not isinstance(actif, (int, float)):
+        return None
+    combined_passif = _find_row_value(pdf, TOTAL_CP_ET_PASSIF_RE, header_token=None, page_filter=_is_passif_page)
+    if not isinstance(combined_passif, (int, float)):
+        return None
+    ecart = abs(actif - combined_passif)
+    return ecart if ecart > BALANCE_CHECK_TOLERANCE else 0.0
+
+
 def _extract_all_kpis(pdf):
     kpis = extract_all_bilan_kpis(pdf)
     kpis.update(extract_annexe13_kpis(pdf))
@@ -126,6 +213,20 @@ def _classify_cause(pdf, company_code):
     if total_chars < 50:
         return "PDF scanne / image (texte non extractible)"
     return "Motif introuvable, ligne absente du document, ou format non reconnu"
+
+
+def _log_source_result(source, kpi_values_saved, documents_with_kpi, download_errors, **extra):
+    """Journalise le resultat d'une sous-pipeline d'extraction dans
+    logs/pipeline.log, avec la meme distinction ok/empty que
+    pipelines/run_pipeline.py pour la collecte : 0 valeur de KPI enregistree
+    n'est pas forcement une panne (aucun nouveau document ce cycle), mais
+    doit rester visible separement d'un succes normal plutot que d'etre
+    invisible entre deux print() console."""
+    event = "kpi_extraction_empty" if kpi_values_saved == 0 else "kpi_extraction_ok"
+    log_json(
+        _logger, event, source=source, kpi_values_saved=kpi_values_saved,
+        documents_with_kpi=documents_with_kpi, download_errors=download_errors, **extra,
+    )
 
 
 def _write_failure_report(failures):
@@ -161,8 +262,8 @@ def _run_ftusa(conn):
     for document_id, _source_nom, _code, _nom_entreprise, nom_pdf, annee, lien in documents:
         print(f"[STEP] FTUSA {annee} : {lien}")
         try:
-            response = requests.get(lien, headers={"User-Agent": USER_AGENT}, timeout=60)
-            response.raise_for_status()
+            response = _get_with_retries(lien, timeout=60)
+            _save_sectoral_pdf("FTUSA", annee, response.content)
             with pdfplumber.open(io.BytesIO(response.content)) as pdf:
                 kpis = extract_ftusa_kpis(pdf)
         except Exception as exc:
@@ -183,6 +284,7 @@ def _run_ftusa(conn):
     print(f"  Documents avec au moins 1 KPI   : {documents_with_kpi}")
     print(f"  Valeurs de KPI enregistrees      : {kpi_values_saved}")
     print(f"  Erreurs telechargement/lecture  : {download_errors}\n")
+    _log_source_result("FTUSA", kpi_values_saved, documents_with_kpi, download_errors)
 
     return {
         "documents_with_kpi": documents_with_kpi,
@@ -206,8 +308,7 @@ def _run_bvmt(conn):
     for document_id, _source_nom, code, _nom_entreprise, nom_pdf, annee, lien in documents:
         print(f"[STEP] BVMT {code} {annee} : {lien}")
         try:
-            response = requests.get(lien, headers={"User-Agent": USER_AGENT}, timeout=60)
-            response.raise_for_status()
+            response = _get_with_retries(lien, timeout=60)
             with pdfplumber.open(io.BytesIO(response.content)) as pdf:
                 kpis = extract_bvmt_kpis(pdf)
         except Exception as exc:
@@ -228,6 +329,7 @@ def _run_bvmt(conn):
     print(f"  Documents avec au moins 1 KPI   : {documents_with_kpi}")
     print(f"  Valeurs de KPI enregistrees      : {kpi_values_saved}")
     print(f"  Erreurs telechargement/lecture  : {download_errors}\n")
+    _log_source_result("BVMT", kpi_values_saved, documents_with_kpi, download_errors)
 
     return {
         "documents_with_kpi": documents_with_kpi,
@@ -265,8 +367,7 @@ def _run_bvmt_bulletin(conn):
     for document_id, _source_nom, _code, _nom_entreprise, _nom_pdf, annee, lien in bulletin_docs:
         print(f"[STEP] BVMT bulletin {annee} : {lien}")
         try:
-            response = requests.get(lien, headers={"User-Agent": USER_AGENT}, timeout=60)
-            response.raise_for_status()
+            response = _get_with_retries(lien, timeout=60)
             with pdfplumber.open(io.BytesIO(response.content)) as pdf:
                 cloture_by_code = extract_bulletin_cloture(pdf, mnemo_to_code, name_to_code)
         except Exception as exc:
@@ -287,6 +388,7 @@ def _run_bvmt_bulletin(conn):
     print(f"  Documents avec au moins 1 KPI   : {documents_with_kpi}")
     print(f"  Valeurs de KPI enregistrees      : {kpi_values_saved}")
     print(f"  Erreurs telechargement/lecture  : {download_errors}\n")
+    _log_source_result("BVMT_BULLETIN", kpi_values_saved, documents_with_kpi, download_errors)
 
     return {
         "documents_with_kpi": documents_with_kpi,
@@ -311,8 +413,8 @@ def _run_cga(conn):
     for document_id, _source_nom, _code, _nom_entreprise, nom_pdf, annee, lien in documents:
         print(f"[STEP] CGA {annee} : {lien}")
         try:
-            response = requests.get(lien, headers={"User-Agent": USER_AGENT}, timeout=60)
-            response.raise_for_status()
+            response = _get_with_retries(lien, timeout=60)
+            _save_sectoral_pdf("CGA", annee, response.content)
             with pdfplumber.open(io.BytesIO(response.content)) as pdf:
                 kpis = extract_cga_kpis(pdf)
         except Exception as exc:
@@ -335,6 +437,7 @@ def _run_cga(conn):
     print(f"  Documents avec au moins 1 KPI   : {documents_with_kpi}")
     print(f"  Valeurs de KPI enregistrees      : {kpi_values_saved}")
     print(f"  Erreurs telechargement/lecture  : {download_errors}\n")
+    _log_source_result("CGA", kpi_values_saved, documents_with_kpi, download_errors)
 
     return {
         "documents_with_kpi": documents_with_kpi,
@@ -357,17 +460,43 @@ def run():
     print(f"\n===== EXTRACTION KPI : {len(documents)} document(s) en base, {len(KPI_NAMES)} KPI =====\n")
 
     failures = {name: [] for name in KPI_NAMES}
-    kpi_values_saved = documents_with_kpi = download_errors = 0
+    kpi_values_saved = documents_with_kpi = download_errors = balance_mismatches = yoy_anomalies = 0
 
     for document_id, _source_nom, code, nom_entreprise, nom_pdf, annee, lien in documents:
         print(f"[STEP] {code} {annee} : {lien}")
         try:
-            response = requests.get(lien, headers={"User-Agent": USER_AGENT}, timeout=30)
-            response.raise_for_status()
+            response = _get_with_retries(lien, timeout=30)
             with pdfplumber.open(io.BytesIO(response.content)) as pdf:
                 kpis = _extract_all_kpis(pdf)
                 missing = [name for name in KPI_NAMES if kpis.get(name) is None]
                 cause = _classify_cause(pdf, code) if missing else None
+
+                ecart = _check_balance(pdf, kpis)
+                if ecart:
+                    print(f"  [WARN] Desequilibre Bilan : Total actif != Capitaux propres + Passif (ecart={ecart:,.3f} TND)")
+                    details = {"total_actif": kpis.get("Total actif"), "ecart": round(ecart, 3)}
+                    log_json(_logger, "balance_check_failed", company=code, annee=annee, **details)
+                    # Persiste en base (pas seulement dans logs/pipeline.log) pour que
+                    # les pages Qualite/Anomalies puissent lire ce signal (voir
+                    # api/services/quality.py, pipeline_audit.py, anomalies_service.py).
+                    save_anomaly(
+                        conn, source="extraction_balance", gravite="erreur",
+                        code=code, annee=annee, kpi="Total actif", details=details,
+                    )
+                    balance_mismatches += 1
+
+                for flag in check_yoy_consistency(conn, code, annee, kpis):
+                    print(
+                        f"  [WARN] Variation YoY suspecte {flag['kpi']} : "
+                        f"{flag['valeur_precedente']:,.0f} ({flag['annee_precedente']}) -> "
+                        f"{flag['valeur_actuelle']:,.0f} ({annee}) [{flag['variation_pct']:+.1f}%]"
+                    )
+                    log_json(_logger, "yoy_anomaly", company=code, annee=annee, **flag)
+                    save_anomaly(
+                        conn, source="extraction_yoy", gravite="avertissement",
+                        code=code, annee=annee, kpi=flag["kpi"], details=flag,
+                    )
+                    yoy_anomalies += 1
         except Exception as exc:
             print(f"  [ERROR] Echec de telechargement/lecture : {exc}")
             download_errors += 1
@@ -399,25 +528,52 @@ def run():
     print(f"  Documents avec au moins 1 KPI   : {documents_with_kpi}")
     print(f"  Valeurs de KPI enregistrees      : {kpi_values_saved}")
     print(f"  Erreurs telechargement/lecture  : {download_errors}")
+    print(f"  Desequilibres Bilan (Actif!=Passif) : {balance_mismatches}")
+    print(f"  Anomalies annee sur annee (YoY)  : {yoy_anomalies}")
     for name in KPI_NAMES:
         print(f"  Echecs {name:60s} : {len(failures[name])}")
     print(f"  Rapport d'echecs                : {FAILURE_REPORT_PATH}\n")
+    _log_source_result(
+        "CMF", kpi_values_saved, documents_with_kpi, download_errors,
+        nb_documents=len(documents), nb_failures_total=sum(len(v) for v in failures.values()),
+        balance_mismatches=balance_mismatches, yoy_anomalies=yoy_anomalies,
+    )
 
     ftusa_stats = _run_ftusa(conn)
     bvmt_stats = _run_bvmt(conn)
     bvmt_bulletin_stats = _run_bvmt_bulletin(conn)
     cga_stats = _run_cga(conn)
+
+    # Modelisation : KPI calcules (ratios, ROE/ROA, part de marche, taux de
+    # penetration...) a partir des KPI bruts que les 5 etapes ci-dessus
+    # viennent d'enregistrer. Doit s'executer APRES elles (CMF, FTUSA, BVMT,
+    # BVMT bulletin, CGA sont tous des entrees possibles selon la famille de
+    # calcul) - jusqu'ici jamais appele automatiquement, seulement via
+    # `python -m extraction.calculated_kpi_extractor` a la main.
+    print("\n===== MODELISATION : KPI CALCULES =====\n")
+    calculated_stats = calculated_kpi_extractor.run(conn)
+    calculated_total_saved = sum(
+        stats.get("kpi_values_saved", 0) for stats in calculated_stats.values()
+    )
+    log_json(_logger, "modelisation_done", **{
+        family: stats.get("kpi_values_saved", 0) for family, stats in calculated_stats.items()
+    })
+
     conn.close()
 
     return {
         "documents_with_kpi": documents_with_kpi,
         "kpi_values_saved": kpi_values_saved,
         "download_errors": download_errors,
+        "balance_mismatches": balance_mismatches,
+        "yoy_anomalies": yoy_anomalies,
         "failures": failures,
         "ftusa": ftusa_stats,
         "bvmt": bvmt_stats,
         "bvmt_bulletin": bvmt_bulletin_stats,
         "cga": cga_stats,
+        "calculated": calculated_stats,
+        "calculated_kpi_values_saved": calculated_total_saved,
     }
 
 

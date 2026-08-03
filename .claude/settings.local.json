@@ -449,7 +449,11 @@
       "Bash(python -c \"import json,sys; data=json.load\\(sys.stdin\\); il=[a for a in data if a['src']=='ILBOURSA']; [print\\(a['date'],'|',a['titre']\\) for a in il]\")",
       "Bash(node_modules\\\\.bin\\\\vite build *)",
       "Bash(curl -s http://localhost:8002/api/veille-reglementaire)",
-      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d\\), 'docs'\\); [print\\(x['titre'][:80], '|', x['type'], '|', x['date']\\) for x in d[:5]]\")"
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d\\), 'docs'\\); [print\\(x['titre'][:80], '|', x['type'], '|', x['date']\\) for x in d[:5]]\")",
+      "Bash(pandoc -t markdown \"C:\\\\Users\\\\HP\\\\Desktop\\\\StagePFEAzza2\\\\DVRB Use cases\\\\Assurance\\\\DVRB - Use Case Analyse Comparative.docx\")",
+      "Bash(pandoc -t markdown \"C:\\\\Users\\\\HP\\\\Desktop\\\\Analyse Comparative.docx\")",
+      "Bash(python \"C:\\\\Users\\\\HP\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\532d8050-df31-425f-8534-bc42a65f2384\\\\2a5b27de-2057-4161-9154-1176f5e7c930\\\\skills\\\\docx\\\\scripts\\\\merge_runs.py\" \"C:\\\\Users\\\\HP\\\\Desktop\\\\Analyse Comparative.docx\" -o \"C:\\\\Users\\\\HP\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-HP-Desktop-SCRAPING\\\\882fabc8-fc6e-418b-9b50-a385f1162d5f\\\\scratchpad\\\\analyse_comp_merged.docx\")",
+      "Bash(python -c \"import os; print\\([f for f in os.listdir\\('extraction'\\) if 'CAS' in f]\\)\")"
     ]
   }
 }

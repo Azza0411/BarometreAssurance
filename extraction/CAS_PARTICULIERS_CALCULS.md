@@ -53,6 +53,13 @@ FTUSA x INS), par année (réseau d'agences CGA).
   d'affichage (probablement une carte) réutilisant "Répartition des
   agences par gouvernorat" déjà stockée.
 
+## Résolu (juillet 2026 — audit phase Modélisation)
+
+- **`calculated_kpi_extractor.run()` jamais appelé automatiquement** : jusqu'ici seulement exécutable à la main (`python -m extraction.calculated_kpi_extractor`), donc jamais rafraîchi par les exécutions planifiées. Branché en fin de `extraction/kpi_extraction_pipeline.py::run()`, après les 5 sous-étapes (CMF, FTUSA, BVMT, BVMT bulletin, CGA) dont dépendent les 4 familles de calcul.
+- **Garde-fou de cohérence Vie/Non-Vie généralisé** : `ratio_combine_valid` ne protégeait que "Ratio combiné (%)" — le cas BIAT ci-dessous (RSP gonflé à 119,8 % par le même motif : charges Vie incluses au numérateur, primes Vie absentes du dénominateur) montre que le même risque touche RSP et RF. Le garde-fou (renommé `segment_mismatch`) invalide désormais les 3 ratios ensemble.
+- **Plancher/plafond de plausibilité (2 %–1 000 %) ajouté à l'écriture** (`_valid_ratio`, `RATIO_MIN_PLAUSIBLE`/`RATIO_MAX_PLAUSIBLE`) sur RC/RSP/RF dans `calculated_kpi_extractor.py` — même borne que `api/services/kpi_builder._raw_ratio`, mais appliquée en amont (à l'écriture en base) plutôt qu'uniquement à la lecture. **Les deux couches restent intentionnellement distinctes** : `calculated_kpi_extractor.py` garantit qu'une valeur stockée est toujours plausible pour tout consommateur (chatbot, futurs exports Excel/PDF...) ; `api/services/kpi_builder.py` va plus loin et tente un recalcul de repli (voir les 3 niveaux de fallback ci-dessous) quand la valeur en base est absente/invalide — une décision d'affichage, pas de calcul source, qui reste à sa place dans la couche API.
+- **Invalidation `__delete__` généralisée** : ne couvrait que "Ratio combiné (%)". Toute valeur calculée par une exécution précédente mais devenue incalculable ou implausible aujourd'hui (dans les 4 familles CMF/secteur/CGA/BVMT) est maintenant explicitement supprimée de la base plutôt que laissée périmée indéfiniment (voir `_finalize`).
+
 ## Non résolu / limitations connues
 
 - **"Capitalisation boursière"** : bloqué, "Cours de l'action" n'est
@@ -69,7 +76,7 @@ FTUSA x INS), par année (réseau d'agences CGA).
 
 - **ATTIJARI** : aucun ratio (combiné, sinistralité, frais) dans le document CMF 2024 — PDM = 0.1 %, primes = 3.5 MDT. Calcul impossible sans données sources ; affiché N/D.
 
-- **BIAT** : `Primes émises par assurance` = 110.7 MDT correspond uniquement aux primes Non-Vie. `Charge de sinistres` = 132.6 MDT inclut Vie + Non-Vie (Vie ≈ 132.6 MDT, Non-Vie ≈ 0 MDT). RSP calculé = 119.8 % est donc gonflé artificiellement (dénominateur Non-Vie seulement, numérateur total). Les primes Vie BIAT ne sont pas extraites du PDF ; à corriger si elles deviennent disponibles.
+- **BIAT** — ~~RSP calculé = 119.8 % gonflé artificiellement~~ **Fixé (juillet 2026)** : `Primes émises par assurance` = 110.7 MDT (Non-Vie seule), `Charge de sinistres` = 132.6 MDT (Vie + Non-Vie) — exactement le motif que `segment_mismatch` détecte désormais, RC/RSP/RF sont maintenant tous les 3 invalidés (`None`/`__delete__`) plutôt que RSP seul gonflé silencieusement. Les primes Vie BIAT restent non extraites du PDF (cause racine non corrigée, seul le symptôme l'est) ; à réévaluer si elles deviennent disponibles.
 
 - **COTUNACE** : `Primes émises par assurance` = 19 TND (numéro de ligne capturé). Corrigé côté API par fallback sur `Primes acquises` = 13.3 MDT. Ratios absents ou aberrants (> 1 000 % → filtrés par `_ratio`).
 
