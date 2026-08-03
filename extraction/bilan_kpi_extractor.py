@@ -124,11 +124,39 @@ _MINUS_NORMALIZE_RE = re.compile(f"[{MINUS_CHARS}]")
 # valide (le signe n'est pas en tête) -> _extract_numeric_clusters l'exclut
 # et les deux nombres sont perdus si on ne le sépare pas explicitement.
 _GLUED_NEGATIVE_RE = re.compile(rf"^(\d+)([-{MINUS_CHARS}]\d+(?:,\d+)?)$")
+# Fin d'un montant entre parenthèses (colonne Amortissements/Provisions)
+# collée sans espace au début du nombre suivant (ex: "769,278)426" = fin de
+# "(66 442 769,278)" + début de "426 512 304,411" — rencontré chez GAT 2018).
+# Un seul mot PDF porte alors la fin d'un nombre, la parenthèse fermante, et
+# le début du nombre suivant : ni NUMERIC_TOKEN_RE (la ")" au milieu ne
+# correspond à aucun format valide) ni _words_with_bracket_negatives_resolved
+# (qui ne traite que les mots commençant par "(" ou finissant par ")", pas
+# les deux à la fois avec du texte après) ne le gèrent -> le mot est perdu
+# tel quel, ce qui décale aussi le regroupement des colonnes suivantes.
+_GLUED_CLOSE_PAREN_RE = re.compile(r"^(\d+(?:,\d+)?)\)(\d+)$")
 # Aucune société d'assurance tunisienne n'approche cet ordre de grandeur (en
 # dinars) : une valeur qui le dépasse trahit une erreur d'extraction (nombres
 # fusionnés) plutôt qu'un vrai montant — on la rejette plutôt que de renvoyer
 # un chiffre faux.
 MAX_PLAUSIBLE_VALUE = 50_000_000_000
+# Symétriquement : aucune ligne du Bilan/Annexe/État de résultat (totaux
+# généraux, totaux de section, lignes de détail) ne descend légitimement en
+# dessous de ce seuil (en dinars) — un chiffre non-nul plus petit trahit
+# presque toujours un renvoi de note ou un numéro de page/ligne capturé par
+# erreur à la place du vrai montant (cas documentés dans CAS_PARTICULIERS*.md :
+# COTUNACE "Charges de prestations" = 20.0, TUNIS_RE 2024 = 2.0 partout à
+# cause du format "." comme séparateur de milliers). Un vrai zéro (section
+# légitimement vide, ex: pas de contrats en unités de compte) reste accepté.
+MIN_PLAUSIBLE_VALUE = 1000
+
+
+def _is_plausible(value):
+    """Filtre symétrique à MAX_PLAUSIBLE_VALUE : rejette les valeurs non
+    nulles trop petites pour être un vrai montant (voir MIN_PLAUSIBLE_VALUE),
+    sans jamais rejeter un vrai zéro."""
+    if value is None:
+        return True
+    return value == 0 or MIN_PLAUSIBLE_VALUE <= abs(value) <= MAX_PLAUSIBLE_VALUE
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -202,17 +230,39 @@ def _split_glued_negative(word, gap_threshold=NUMBER_GAP_THRESHOLD):
     return [first, second]
 
 
+def _split_glued_close_paren(word, gap_threshold=NUMBER_GAP_THRESHOLD):
+    """Sépare un mot comme "769,278)426" en deux tokens numériques distincts
+    (voir _GLUED_CLOSE_PAREN_RE). Même logique de découpe que
+    _split_glued_negative ; la parenthèse fermante est simplement retirée
+    (le signe négatif du montant entre parenthèses a déjà été posé sur le
+    mot ouvrant "(..." par _words_with_bracket_negatives_resolved, qui
+    s'exécute avant cette fonction)."""
+    m = _GLUED_CLOSE_PAREN_RE.match(word["text"])
+    if not m:
+        return [word]
+    mid = (word["x0"] + word["x1"]) / 2
+    first = {**word, "text": m.group(1), "x1": mid}
+    second = {**word, "text": m.group(2), "x0": mid + gap_threshold + 1}
+    return [first, second]
+
+
 def _extract_numeric_clusters(line, gap_threshold=NUMBER_GAP_THRESHOLD):
     """Regroupe les tokens numériques consécutifs d'une ligne (séparateur de
     milliers = espace) en nombres complets, dans l'ordre d'apparition
     (gauche à droite = colonnes du tableau). Renvoie une liste de
     (valeur, x0_premier_token)."""
     line = _words_with_bracket_negatives_resolved(line)
-    expanded = [split_word for w in line for split_word in _split_glued_negative(w, gap_threshold)]
+    once_split = [split_word for w in line for split_word in _split_glued_negative(w, gap_threshold)]
+    expanded = [
+        split_word for w in once_split for split_word in _split_glued_close_paren(w, gap_threshold)
+    ]
     numeric_words = [w for w in expanded if NUMERIC_TOKEN_RE.match(w["text"])]
     clusters, current_tokens, prev_x1 = [], [], None
     for w in numeric_words:
-        if prev_x1 is not None and (w["x0"] - prev_x1) > gap_threshold:
+        # >= et non > : un ecart EXACTEMENT egal au seuil (ex: GAT 2018, 4.0pt
+        # pile) doit encore etre traite comme une frontiere de colonne, pas
+        # comme un chevauchement a l'interieur d'un meme nombre.
+        if prev_x1 is not None and (w["x0"] - prev_x1) >= gap_threshold:
             clusters.append(current_tokens)
             current_tokens = []
         current_tokens.append(w)
@@ -223,23 +273,54 @@ def _extract_numeric_clusters(line, gap_threshold=NUMBER_GAP_THRESHOLD):
     values = []
     for tokens in clusters:
         raw = _MINUS_NORMALIZE_RE.sub("-", "".join(w["text"] for w in tokens))
-        sign = -1 if raw.startswith("-") else 1
         num_str = raw.lstrip("-")
-        try:
-            if "." in num_str and "," in num_str:
-                # Format américain : "13,966,819.225" — virgule = milliers, point = décimale
-                value = sign * float(num_str.replace(",", ""))
-            elif "," in num_str:
-                # Format tunisien/français : "113,026" — virgule = décimale
-                value = sign * float(num_str.replace(",", "."))
-            else:
-                value = sign * float(num_str)
-        except ValueError:
+        if "." not in num_str and num_str.count(",") > 1:
+            # Plusieurs nombres au format tunisien (une seule virgule chacun)
+            # colles dans le meme cluster : l'ecart entre deux colonnes est
+            # plus etroit que gap_threshold pour ce document precis (ex: GAT,
+            # CARTE 2018 — colonnes Net courant/Net precedent tres resserrees)
+            # et n'a donc pas ete detecte comme une frontiere. Chaque token
+            # contenant une virgule termine un nombre distinct : on resegmente
+            # plutot que d'abandonner tout le cluster (perte des 2 valeurs).
+            sub_start = 0
+            for i, w in enumerate(tokens):
+                if "," in w["text"]:
+                    _append_parsed_value(values, tokens[sub_start:i + 1])
+                    sub_start = i + 1
             continue
-        if abs(value) > MAX_PLAUSIBLE_VALUE:
+        value = _parse_number(num_str, negative=raw.startswith("-"))
+        if value is None:
             continue
         values.append((value, tokens[0]["x0"]))
     return values
+
+
+def _parse_number(num_str, negative):
+    """Convertit `num_str` (deja debarrasse d'un eventuel signe en tete) en
+    float selon la convention detectee (americain point-decimal, tunisien
+    virgule-decimale, ou entier simple). Renvoie None si invalide ou hors
+    plage plausible (voir MAX_PLAUSIBLE_VALUE)."""
+    try:
+        if "." in num_str and "," in num_str:
+            # Format américain : "13,966,819.225" — virgule = milliers, point = décimale
+            value = float(num_str.replace(",", ""))
+        elif "," in num_str:
+            # Format tunisien/français : "113,026" — virgule = décimale
+            value = float(num_str.replace(",", "."))
+        else:
+            value = float(num_str)
+    except ValueError:
+        return None
+    if negative:
+        value = -value
+    return value if abs(value) <= MAX_PLAUSIBLE_VALUE else None
+
+
+def _append_parsed_value(values, tokens):
+    raw = _MINUS_NORMALIZE_RE.sub("-", "".join(w["text"] for w in tokens))
+    value = _parse_number(raw.lstrip("-"), negative=raw.startswith("-"))
+    if value is not None:
+        values.append((value, tokens[0]["x0"]))
 
 
 def _label_text(line):
@@ -300,17 +381,31 @@ def _select_column_value(clusters, lines, target_top, header_token):
         poignée de documents ventilent aussi brut/amortissements pour
         l'année précédente, soit 6 colonnes), la position ordinale devient
         ambiguë : on résout alors via la position du premier en-tête "net"
-        rencontré, plus fiable dans ce cas précis."""
+        rencontré, plus fiable dans ce cas précis.
+
+    Le résultat passe par le filtre _is_plausible avant d'être renvoyé : un
+    renvoi de note ou un numéro de page/ligne capturé par erreur (trop petit
+    pour être un vrai montant) est rejeté (None) plutôt que renvoyé tel quel
+    (voir MIN_PLAUSIBLE_VALUE)."""
     if not clusters:
         return None
     if not header_token:
-        return clusters[0][0]
-    if len(clusters) <= 4:
-        return clusters[-2][0] if len(clusters) >= 2 else clusters[-1][0]
-    ref_x = _leftmost_header_x(lines, target_top, header_token)
-    if ref_x is None:
-        return clusters[-2][0]
-    return min(clusters, key=lambda c: abs(c[1] - ref_x))[0]
+        # Certains bilans (ex: COTUNACE) insèrent un numéro de note de bas de
+        # page (petit entier ≤ 50) en première colonne avant les montants.
+        # Si le premier cluster est un entier ≤ 50 et qu'il en existe un
+        # second, on l'ignore pour prendre la vraie valeur de l'année en cours.
+        start = 0
+        if (len(clusters) >= 2
+                and clusters[0][0] <= 50
+                and clusters[0][0] == int(clusters[0][0])):
+            start = 1
+        value = clusters[start][0]
+    elif len(clusters) <= 4:
+        value = clusters[-2][0] if len(clusters) >= 2 else clusters[-1][0]
+    else:
+        ref_x = _leftmost_header_x(lines, target_top, header_token)
+        value = clusters[-2][0] if ref_x is None else min(clusters, key=lambda c: abs(c[1] - ref_x))[0]
+    return value if _is_plausible(value) else None
 
 
 def _page_lines(page):

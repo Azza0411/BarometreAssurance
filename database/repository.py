@@ -8,6 +8,7 @@ Aucun contenu binaire n'est stocké : seuls le nom du PDF, l'année et le lien
 d'origine sont conservés.
 """
 
+import json
 import os
 import re
 
@@ -155,6 +156,47 @@ def _migrate_documents_schema(conn):
             )
 
 
+def _migrate_kpi_values_unique_key(conn):
+    """Élargit la clé unique de `kpi_values` de (document_id, kpi) à
+    (document_id, tableau, kpi). L'ancienne clé permettait à deux tableaux
+    différents produisant par erreur le même nom de KPI de s'écraser
+    silencieusement l'un l'autre (aucune erreur, aucun log) — seule la
+    convention KPI_TABLE_LABEL (chaque nom de KPI mappé à un seul tableau)
+    l'empêchait en pratique. La nouvelle clé le rend impossible au niveau du
+    schéma plutôt que par convention seule.
+
+    `uq_document_kpi` sert aussi de support à la FK fk_kpi_document
+    (document_id -> documents.id) : comme pour l'ancien index
+    (cmf_id, annee) de `documents` (voir _migrate_documents_schema), il faut
+    retirer la FK avant de pouvoir le supprimer, puis la recréer une fois le
+    nouvel index en place. Bug trouvé en production (juillet 2026) : la
+    première version de cette migration ne le faisait pas et échouait avec
+    "Cannot drop index ... needed in a foreign key constraint"."""
+    with conn.cursor() as cur:
+        cur.execute("SHOW INDEX FROM kpi_values")
+        indexes = {row[2] for row in cur.fetchall()}
+        if "uq_document_kpi" in indexes and "uq_document_tableau_kpi" not in indexes:
+            cur.execute(
+                """
+                SELECT CONSTRAINT_NAME FROM information_schema.table_constraints
+                WHERE table_schema = DATABASE() AND table_name = 'kpi_values'
+                  AND constraint_type = 'FOREIGN KEY' AND constraint_name = 'fk_kpi_document'
+                """
+            )
+            has_fk = cur.fetchone() is not None
+            if has_fk:
+                cur.execute("ALTER TABLE kpi_values DROP FOREIGN KEY fk_kpi_document")
+            cur.execute("ALTER TABLE kpi_values DROP INDEX uq_document_kpi")
+            cur.execute(
+                "ALTER TABLE kpi_values ADD UNIQUE KEY uq_document_tableau_kpi (document_id, tableau, kpi)"
+            )
+            if has_fk:
+                cur.execute(
+                    "ALTER TABLE kpi_values ADD CONSTRAINT fk_kpi_document "
+                    "FOREIGN KEY (document_id) REFERENCES documents(id)"
+                )
+
+
 def init_schema(conn):
     """Crée les tables `sources`, `cmf`, `documents` et `kpi_values` si elles
     n'existent pas, et fait évoluer le schéma existant si besoin."""
@@ -170,6 +212,7 @@ def init_schema(conn):
                 cur.execute(statement)
     _migrate_kpi_values_schema(conn)
     _migrate_documents_schema(conn)
+    _migrate_kpi_values_unique_key(conn)
 
 
 def get_or_create_source(conn, nom, lien):
@@ -295,16 +338,141 @@ def count_kpi_values(conn, document_id):
         return cur.fetchone()[0]
 
 
+def save_anomaly(conn, source, gravite, code=None, annee=None, kpi=None, details=None):
+    """Enregistre une anomalie détectée pendant l'extraction/le nettoyage
+    (déséquilibre Bilan, variation YoY implausible...) pour qu'elle soit
+    interrogeable par les pages Qualité/Anomalies (voir anomalies_detectees
+    dans schema.sql). `details`, si fourni, est sérialisé en JSON."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO anomalies_detectees (source, code, annee, kpi, gravite, details)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (source, code, annee, kpi, gravite, json.dumps(details, ensure_ascii=False) if details else None),
+        )
+
+
+def get_anomalies(conn, annee=None, code=None, source=None):
+    """Renvoie les anomalies persistées (les plus récentes d'abord), filtrées
+    par année/société/source si fourni. Chaque ligne : {id, detected_at,
+    source, code, annee, kpi, gravite, details (dict ou None)}."""
+    query = "SELECT id, detected_at, source, code, annee, kpi, gravite, details FROM anomalies_detectees"
+    conds, params = [], []
+    if annee is not None:
+        conds.append("annee = %s")
+        params.append(annee)
+    if code is not None:
+        conds.append("code = %s")
+        params.append(code)
+    if source is not None:
+        conds.append("source = %s")
+        params.append(source)
+    if conds:
+        query += " WHERE " + " AND ".join(conds)
+    query += " ORDER BY detected_at DESC"
+    with conn.cursor() as cur:
+        cur.execute(query, params)
+        rows = cur.fetchall()
+    return [
+        {
+            "id": r[0], "detected_at": r[1].isoformat() if r[1] else None,
+            "source": r[2], "code": r[3], "annee": r[4], "kpi": r[5],
+            "gravite": r[6], "details": _json.loads(r[7]) if r[7] else None,
+        }
+        for r in rows
+    ]
+
+
+def get_quality_score_history(conn, annee=None, limit=90):
+    """Renvoie les instantanés de score qualité persistés par
+    pipelines/run_pipeline.py::_check_quality() à chaque exécution planifiée
+    (source="quality_score_snapshot", un point par exécution — pas par jour :
+    plusieurs exécutions le même jour restent des points distincts), pour
+    alimenter un historique réel de tendance (voir
+    api/services/anomalies_service.py::build_anomalies_systeme). Avant
+    juillet 2026, rien n'était persisté : seul le point du jour courant
+    pouvait être affiché, jamais de tendance. Renvoie [{date, score,
+    n_anomalies}, ...] du plus ancien au plus récent, `limit` points max."""
+    query = "SELECT detected_at, details FROM anomalies_detectees WHERE source = %s"
+    params = ["quality_score_snapshot"]
+    if annee is not None:
+        query += " AND annee = %s"
+        params.append(annee)
+    query += " ORDER BY detected_at DESC LIMIT %s"
+    params.append(limit)
+    with conn.cursor() as cur:
+        cur.execute(query, params)
+        rows = cur.fetchall()
+    history = []
+    for detected_at, details_json in rows:
+        details = json.loads(details_json) if details_json else {}
+        history.append({
+            "date": detected_at.isoformat(),
+            "score": details.get("score"),
+            "n_anomalies": details.get("n_anomalies"),
+        })
+    return list(reversed(history))
+
+
 def get_kpi_values_for_document(conn, document_id):
     """Renvoie {kpi: valeur_nombre|valeur_texte} pour un document (les KPI
     numériques et textuels sont fusionnés dans le même dict, chaque KPI
-    n'ayant jamais les deux à la fois)."""
+    n'ayant jamais les deux à la fois).
+
+    Un KPI absent du dict signifie qu'aucune valeur n'a été extraite pour ce
+    document — c'est une décision délibérée, pas un oubli : nulle part dans
+    le pipeline (extraction, nettoyage, API) une valeur manquante n'est
+    reconstituée par interpolation, report de l'année précédente ou moyenne
+    sectorielle. Un KPI manquant reste NULL/absent jusqu'aux dashboards
+    plutôt que de risquer d'afficher une donnée inventée comme si elle était
+    extraite. Voir extraction/data_cleaning.py pour le même principe côté
+    contrôle de cohérence (une valeur suspecte est signalée, jamais corrigée
+    automatiquement)."""
     with conn.cursor() as cur:
         cur.execute(
             "SELECT kpi, valeur_nombre, valeur_texte FROM kpi_values WHERE document_id = %s",
             (document_id,),
         )
         return {kpi: (nombre if nombre is not None else texte) for kpi, nombre, texte in cur.fetchall()}
+
+
+def get_document_meta(conn, code, annee):
+    """Retourne (nom_pdf, lien) pour un document CMF (code, annee), ou (None, None)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT d.nom_pdf, d.lien
+            FROM documents d
+            JOIN sources s ON s.id = d.source_id
+            JOIN cmf c ON c.id = d.cmf_id
+            WHERE s.nom = 'CMF' AND c.code = %s AND d.annee = %s
+            LIMIT 1
+            """,
+            (code, annee),
+        )
+        row = cur.fetchone()
+        return row if row else (None, None)
+
+
+def get_document_id(conn, code, annee):
+    """Retourne l'id du document CMF (code, annee), ou None s'il n'existe
+    pas encore en base (utilisé pour retrouver le document de l'année
+    précédente d'une société, voir extraction/data_cleaning.py)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT d.id
+            FROM documents d
+            JOIN sources s ON s.id = d.source_id
+            JOIN cmf c ON c.id = d.cmf_id
+            WHERE s.nom = 'CMF' AND c.code = %s AND d.annee = %s
+            LIMIT 1
+            """,
+            (code, annee),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
 
 
 def list_documents_by_source(conn, source_nom):
@@ -323,6 +491,26 @@ def list_documents_by_source(conn, source_nom):
             (source_nom,),
         )
         return cur.fetchall()
+
+
+def get_available_years(conn, source_nom: str) -> list[int]:
+    """Renvoie les années distinctes (ordre décroissant) pour lesquelles au
+    moins un document de la source donnée existe en base — utilisé pour les
+    sélecteurs d'année (Qualité Data, Anomalies Système) afin qu'ils
+    reflètent la vraie plage disponible plutôt qu'une liste d'années codée
+    en dur."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT DISTINCT d.annee
+            FROM documents d
+            JOIN sources s ON s.id = d.source_id
+            WHERE s.nom = %s
+            ORDER BY d.annee DESC
+            """,
+            (source_nom,),
+        )
+        return [row[0] for row in cur.fetchall()]
 
 
 # Préfixes des KPI CGA éclatés par compagnie (voir extraction/cga_kpi_extractor.py

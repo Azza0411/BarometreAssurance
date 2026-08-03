@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>FS Market Intelligence — Vue d'ensemble du projet</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #16161a; color: #e8e8ec; padding: 2rem; }
+  h1 { font-size: 20px; font-weight: 500; margin-bottom: 1.5rem; }
+  .wrap { display: flex; flex-wrap: wrap; gap: 2rem; align-items: flex-start; }
+  .legend div { margin-bottom: 6px; font-size: 13px; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+  #detail { font-size: 13px; color: #c7c7ce; min-width: 300px; }
+  #detail .title { font-weight: 700; font-size: 15px; color: #fff; margin-bottom: 8px; }
+  #detail .sub { color: #9a9aa5; font-size: 12px; margin: 10px 0 4px; }
+  #detail .done i { color: #5DCAA5; }
+  #detail .todo i { color: #7a7a82; }
+  #detail .row { margin-bottom: 4px; }
+  path { transition: opacity 0.15s; }
+  path:hover { opacity: 0.85; }
+</style>
+</head>
+<body>
+<h1>FS Market Intelligence — vue d'ensemble du projet (Tunisie)</h1>
+<div class="wrap">
+<svg width="260" height="260" viewBox="0 0 240 240" role="img" aria-label="Camembert des 6 phases du projet">
+<path d="M120,120 L120,20 A100,100 0 0,1 206.6,70 Z" fill="#7F77DD" stroke="#16161a" stroke-width="2" style="cursor:pointer" onclick="showP('p1')"></path>
+<path d="M120,120 L206.6,70 A100,100 0 0,1 206.6,170 Z" fill="#5DCAA5" stroke="#16161a" stroke-width="2" style="cursor:pointer" onclick="showP('p2')"></path>
+<path d="M120,120 L206.6,170 A100,100 0 0,1 120,220 Z" fill="#639922" stroke="#16161a" stroke-width="2" style="cursor:pointer" onclick="showP('p3')"></path>
+<path d="M120,120 L120,220 A100,100 0 0,1 33.4,170 Z" fill="#F0997B" stroke="#16161a" stroke-width="2" style="cursor:pointer" onclick="showP('p4')"></path>
+<path d="M120,120 L33.4,170 A100,100 0 0,1 33.4,70 Z" fill="#378ADD" stroke="#16161a" stroke-width="2" style="cursor:pointer" onclick="showP('p5')"></path>
+<path d="M120,120 L33.4,70 A100,100 0 0,1 120,20 Z" fill="#B4B2A9" stroke="#16161a" stroke-width="2" style="cursor:pointer" onclick="showP('p6')"></path>
+</svg>
+<div>
+<div class="legend">
+<div><span class="swatch" style="background:#7F77DD"></span>Collecte &amp; extraction</div>
+<div><span class="swatch" style="background:#5DCAA5"></span>Structuration &amp; qualité</div>
+<div><span class="swatch" style="background:#639922"></span>Restitution (dashboard)</div>
+<div><span class="swatch" style="background:#F0997B"></span>Intelligence artificielle</div>
+<div><span class="swatch" style="background:#378ADD"></span>Infrastructure &amp; robustesse</div>
+<div><span class="swatch" style="background:#B4B2A9"></span>Nouvelles capacités</div>
+</div>
+<div id="detail">Clique une part du camembert.</div>
+</div>
+</div>
+<script>
+const data = {
+p1: {t:"Collecte & extraction", done:["Scraping 5 sources","Scraping veille (IlBoursa, Atlas Magazine)","Extraction PDF (~150 KPIs)"], todo:["Assurances islamiques (Takaful)","PDFs scannés (OCR)","PDFs arabes"]},
+p2: {t:"Structuration & qualité", done:["Base structurée + traçabilité","Détection d'anomalies","Score de qualité","Surlignage PDF exact"], todo:["KPI Spécialité","KPI Écart de performance","KPI Directeur général / Président CA","Fiche entreprise réelle","Optimisation qualité data","Optimisation anomalies"]},
+p3: {t:"Restitution (dashboard)", done:["Aperçu marché","Analyse comparative","Distribution agences","Enquête de marché","Veille (actualités + réglementaire)"], todo:[]},
+p4: {t:"Intelligence artificielle", done:["Chatbot (RAG + text-to-SQL)","Prévisions (Prophet/XGBoost)"], todo:["Synchronisation chatbot ↔ MySQL","RAG par embeddings","Prévisions variables exogènes","Simulateur what-if","Synthèse automatique LLM","Score de santé composite"]},
+p5: {t:"Infrastructure & robustesse", done:["Déploiement Docker","Pipeline automatisé/planifié"], todo:["Authentification API (clé)","Gestion d'erreurs frontend","Tests API / chatbot / frontend","CI/CD"]},
+p6: {t:"Nouvelles capacités", done:[], todo:["Export PDF","Export Excel","Alertes automatiques"]},
+};
+function showP(id) {
+  const d = data[id];
+  const doneHtml = d.done.length ? d.done.map(x => '<div class="row done"><i>&#10003;</i> '+x+'</div>').join("") : '<div style="color:#7a7a82">Aucune tâche terminée</div>';
+  const todoHtml = d.todo.length ? d.todo.map(x => '<div class="row todo"><i>&#9675;</i> '+x+'</div>').join("") : '<div style="color:#7a7a82">Rien à faire — 100% complet</div>';
+  document.getElementById("detail").innerHTML =
+    '<div class="title">'+d.t+'</div>'+
+    '<div class="sub">Fait</div>'+doneHtml+
+    '<div class="sub">À faire</div>'+todoHtml;
+}
+</script>
+</body>
+</html>

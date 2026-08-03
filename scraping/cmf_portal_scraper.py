@@ -307,11 +307,25 @@ class CMFPortalScraper:
     # Pipeline complet pour une société
     # ------------------------------------------------------------------ #
 
-    def run(self, company_key):
-        self.open_page()
-        self.select_company(company_key)
-        self.click_search()
-        return self.extract_and_store(company_key)
+    def run(self, company_key, retries=3):
+        """Comme _verify_pdf_link : le portail CMF peut occasionnellement ne
+        pas charger a temps (page lente, widget Chosen pas encore pret) ->
+        on relance la sequence complete (page fraiche) plutot qu'une seule
+        etape, car un TimeoutException en cours de route laisse le driver
+        dans un etat intermediaire non reutilisable."""
+        last_exc = None
+        for attempt in range(1, retries + 1):
+            try:
+                self.open_page()
+                self.select_company(company_key)
+                self.click_search()
+                return self.extract_and_store(company_key)
+            except TimeoutException as exc:
+                last_exc = exc
+                print(f"[WARN] Tentative {attempt}/{retries} echouee pour {company_key} (page CMF) : {exc}")
+                if attempt < retries:
+                    time.sleep(2)
+        raise last_exc
 
     def close(self):
         try:

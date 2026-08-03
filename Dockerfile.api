@@ -1,0 +1,22 @@
+# Image de l'API Flask (port 8002) — FS Market Intelligence
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# pdfplumber s'appuie sur des libs systeme pour le rendu PDF
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-api.txt .
+RUN pip install --no-cache-dir -r requirements-api.txt
+
+COPY api/ ./api/
+COPY database/ ./database/
+COPY extraction/ ./extraction/
+COPY config/ ./config/
+COPY scraping/ ./scraping/
+
+EXPOSE 8002
+
+CMD ["gunicorn", "--bind", "0.0.0.0:8002", "--workers", "2", "--timeout", "120", "api.app:app"]

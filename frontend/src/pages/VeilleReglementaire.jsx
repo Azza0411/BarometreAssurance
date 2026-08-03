@@ -4,7 +4,7 @@ import PageHeaderBar from "../components/PageHeaderBar";
 const Y = "#FFE600", D = "#2E2E38", G = "#747480";
 const FONT = "Barlow,system-ui,sans-serif";
 
-const API = "http://localhost:8002";
+const API = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
 
 /* Pas de données statiques : tout vient du backend */
 

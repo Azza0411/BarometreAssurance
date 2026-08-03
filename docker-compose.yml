@@ -1,0 +1,67 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-changeme}
+      MYSQL_DATABASE: ${DB_NAME:-MarketInsurance}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:-changeme}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: always
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      DB_NAME: ${DB_NAME:-MarketInsurance}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8002:8002"
+
+  chatbot:
+    build:
+      context: .
+      dockerfile: chatbot_portable/Dockerfile
+    restart: always
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      PORT: 5001
+      DB_PATH: /data/MarketInsurance.db
+    volumes:
+      - ./chatbot_portable/MarketInsurance.db:/data/MarketInsurance.db
+    ports:
+      - "5001:5001"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ""
+        VITE_CHATBOT_URL: "/chatbot"
+    restart: always
+    depends_on:
+      - api
+      - chatbot
+    ports:
+      - "5173:80"
+
+volumes:
+  mysql_data:

@@ -23,6 +23,7 @@ de fichier : les conventions de nommage varient trop sur 25 ans d'archives
 import io
 import re
 import sys
+import time
 
 import pdfplumber
 import requests
@@ -39,6 +40,7 @@ from database.repository import (
     init_schema,
     save_document,
 )
+from utils.pdf_utils import is_valid_pdf
 
 FTUSA_BASE_URL = "https://www.ftusanet.org"
 FTUSA_REPORTS_PAGE = f"{FTUSA_BASE_URL}/rapports-annuels/"
@@ -53,12 +55,26 @@ YEAR_TITLE_RE = re.compile(r"\ben\s+(20\d{2})\b", re.IGNORECASE)
 BARE_YEAR_RE = re.compile(r"\b(20\d{2})\b")
 
 
+def _get_with_retries(url, timeout=30, retries=3):
+    """Le site peut echouer ponctuellement (timeout, 5xx passager) :
+    quelques nouvelles tentatives suffisent (meme approche que bvmt_scraper)."""
+    for attempt in range(1, retries + 1):
+        try:
+            response = requests.get(url, headers=REQUEST_HEADERS, timeout=timeout)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as exc:
+            if attempt == retries:
+                raise
+            print(f"  [WARN] Tentative {attempt}/{retries} echouee pour {url} : {exc}")
+            time.sleep(1.5)
+
+
 def _collect_main_pdf_links():
     """Renvoie les liens .pdf de la zone principale de la page (avant le
     bloc "à la une"), sans doublon, dans l'ordre d'apparition (du plus
     récent au plus ancien)."""
-    response = requests.get(FTUSA_REPORTS_PAGE, headers=REQUEST_HEADERS, timeout=30)
-    response.raise_for_status()
+    response = _get_with_retries(FTUSA_REPORTS_PAGE, timeout=30)
     html = response.text
     cutoff = html.find(SIDEBAR_MARKER)
     main_html = html[:cutoff] if cutoff != -1 else html
@@ -100,10 +116,12 @@ def sync_documents():
     for link in links:
         url = link if link.startswith("http") else FTUSA_BASE_URL + link
         try:
-            response = requests.get(url, headers=REQUEST_HEADERS, timeout=60)
-            response.raise_for_status()
+            response = _get_with_retries(url, timeout=60)
         except requests.RequestException as exc:
-            print(f"  [WARN] Telechargement echoue, ignore : {url} ({exc})")
+            print(f"  [WARN] Telechargement echoue apres 3 tentatives, ignore : {url} ({exc})")
+            continue
+        if not is_valid_pdf(response.content):
+            print(f"  [WARN] Contenu recu non-PDF (page d'erreur probable), ignore : {url}")
             continue
         year = _detect_report_year(response.content)
         if year is None:

@@ -46,9 +46,67 @@ def _safe_sum(*values):
     return sum(present) if present else None
 
 
+# En dehors de cet intervalle, un ratio technique (combiné, sinistralité,
+# frais) trahit presque toujours une erreur d'extraction plutôt qu'un vrai
+# ratio (ex: numéro de page capturé -> ratio à 5 400 000 %, ou ligne de
+# sous-total captée à la place du total -> ratio à 0,7 %). Même borne que
+# api/services/kpi_builder._raw_ratio (couche API, appliquée à la LECTURE) :
+# ici on l'applique à l'ÉCRITURE, pour que la valeur en base soit déjà
+# propre pour tout consommateur (chatbot, futurs exports...), pas seulement
+# pour les pages qui passent par kpi_builder. Les deux couches restent
+# volontairement distinctes : kpi_builder tente en plus un recalcul de repli
+# quand la valeur brute est absente/invalide (voir CAS_PARTICULIERS_CALCULS.md).
+RATIO_MIN_PLAUSIBLE = 2
+RATIO_MAX_PLAUSIBLE = 1_000
+
+
+def _valid_ratio(value):
+    if value is None or not (RATIO_MIN_PLAUSIBLE <= value <= RATIO_MAX_PLAUSIBLE):
+        return None
+    return value
+
+
+def _finalize(computed, known_names):
+    """Garantit qu'un nom de `known_names` absent ou invalide (None) de
+    `computed` devienne un marqueur "__delete__" plutôt que d'être simplement
+    omis : sans ça, une valeur calculée lors d'une exécution précédente mais
+    devenue incalculable (ou invalide) aujourd'hui resterait indéfiniment
+    périmée en base (aucune étape ne la retire jamais). Les clés hors
+    `known_names` (KPI dynamiques nommés par société/branche/gouvernorat,
+    ex: familles CGA) passent inchangées."""
+    result = {k: v for k, v in computed.items() if k not in known_names}
+    for name in known_names:
+        value = computed.get(name)
+        if value is not None:
+            result[name] = value
+        else:
+            result[f"__delete__{name}"] = True
+    return result
+
+
 # ------------------------------------------------------------------ #
 # Par document CMF (société x année)
 # ------------------------------------------------------------------ #
+
+# KPI toujours tentés a partir des seuls KPI de ce document (independants de
+# la disponibilite des totaux sectoriels FTUSA) : voir _finalize. "Part de
+# marché (%)" en est volontairement exclue - sa portee depend de
+# sector_totals_for_year (voir plus bas).
+_CMF_COMPUTED_KPI_NAMES = (
+    "Charges de prestations",
+    "Charges d'acquisition et de gestion nettes",
+    "Charge de sinistres",
+    "Primes émises par assurance",
+    "Résultat technique (TND)",
+    "Primes acquises",
+    "Provisions d'assurance",
+    "ROA (%)",
+    "ROE (%)",
+    "Ratio de sinistralité (%)",
+    "Ratio de frais de gestion (%)",
+    "Ratio combiné (%)",
+)
+
 
 def _compute_cmf_kpis_for_document(kpis, sector_totals_for_year):
     """`kpis` : dict des KPI déjà stockés pour ce document (Bilan, Annexes
@@ -100,6 +158,24 @@ def _compute_cmf_kpis_for_document(kpis, sector_totals_for_year):
 
     computed["ROA (%)"] = _safe_ratio(kpis.get("Résultat Net"), kpis.get("Total actif"), 100)
     computed["ROE (%)"] = _safe_ratio(kpis.get("Résultat Net"), kpis.get("Capitaux propres"), 100)
+
+    # Segment Vie/Non-Vie coherent entre numerateur et denominateur : si les
+    # charges Vie representent plus de 10 % du total des charges connues mais
+    # que les primes Vie sont absentes, tout ratio dont le numerateur inclut
+    # ces charges (RC, RSP, RF) serait faussé (numérateur Vie+Non-Vie vs
+    # dénominateur Non-Vie seulement). Generalise a RSP et RF le garde-fou
+    # initialement pose pour RC seul : le meme motif est documente pour BIAT
+    # sur RSP (CAS_PARTICULIERS_CALCULS.md - "Charge de sinistres inclut Vie,
+    # Primes émises Vie non extraites -> RSP gonflé à 119,8 %").
+    # Ex RC : ASTREE — charges Vie 163 M vs primes Non-Vie 176 M → 116 % erroné.
+    vie_charges_abs = abs(kpis.get("Charges de prestations Vie") or 0) + abs(
+        kpis.get("Charges d'acquisition et de gestion nettes Vie") or 0
+    )
+    total_charges_abs = (abs_charges_prestations or 0) + (abs_charges_acquisition or 0)
+    vie_primes_missing = kpis.get("Primes émises Vie par assurance") is None
+    vie_weight = vie_charges_abs / total_charges_abs if total_charges_abs else 0
+    segment_mismatch = vie_primes_missing and vie_weight > 0.10
+
     # RSP : dénominateur = primes_acquises si complet (Vie+NV).
     # Si primes_acquises_vie manque mais que les charges sinistres incluent la Vie
     # (ex. STAR : Annexe 12 publie "Primes émises" seulement, pas "Primes acquises"),
@@ -108,41 +184,37 @@ def _compute_cmf_kpis_for_document(kpis, sector_totals_for_year):
     if (primes_acquises_vie is None and primes_emises_vie is not None
             and charge_sin_vie is not None):
         primes_for_rsp = primes_emises  # Vie+NV déjà correctement sommés
-    computed["Ratio de sinistralité (%)"] = _safe_ratio(abs_charge_sinistres, primes_for_rsp, 100)
-    computed["Ratio de frais de gestion (%)"] = _safe_ratio(abs_charges_acquisition, primes_emises, 100)
 
-    # Ratio combiné : valide uniquement si numérateur et dénominateur couvrent
-    # les mêmes segments Vie / Non-Vie.  Si les charges Vie représentent plus
-    # de 10 % du total des charges connues mais que les primes Vie sont
-    # absentes, le ratio serait faussé (numérateur Vie + Non-Vie vs
-    # dénominateur Non-Vie seulement).
-    # Ex: ASTREE — charges Vie 163 M vs primes Non-Vie 176 M → 116 % erroné.
-    vie_charges_abs = abs(kpis.get("Charges de prestations Vie") or 0) + abs(
-        kpis.get("Charges d'acquisition et de gestion nettes Vie") or 0
-    )
-    total_charges_abs = (abs_charges_prestations or 0) + (abs_charges_acquisition or 0)
-    vie_primes_missing = kpis.get("Primes émises Vie par assurance") is None
-    vie_weight = vie_charges_abs / total_charges_abs if total_charges_abs else 0
-    ratio_combine_valid = not (vie_primes_missing and vie_weight > 0.10)
-    if ratio_combine_valid:
-        computed["Ratio combiné (%)"] = _safe_ratio(
-            _safe_sum(abs_charges_prestations, abs_charges_acquisition), primes_emises, 100
-        )
+    if segment_mismatch:
+        # Numerateur et denominateur ne couvrent pas les memes segments :
+        # aucun des 3 ratios techniques n'est fiable, marques invalides pour
+        # etre effaces de la base (une ancienne valeur erronee ne doit pas rester).
+        computed["Ratio de sinistralité (%)"] = None
+        computed["Ratio de frais de gestion (%)"] = None
+        computed["Ratio combiné (%)"] = None
     else:
-        # Marque explicitement ce ratio comme invalide pour qu'il soit effacé
-        # de la base (les anciennes valeurs erronées ne doivent pas rester).
-        computed["__delete__Ratio combiné (%)"] = True
+        computed["Ratio de sinistralité (%)"] = _valid_ratio(
+            _safe_ratio(abs_charge_sinistres, primes_for_rsp, 100)
+        )
+        computed["Ratio de frais de gestion (%)"] = _valid_ratio(
+            _safe_ratio(abs_charges_acquisition, primes_emises, 100)
+        )
+        computed["Ratio combiné (%)"] = _valid_ratio(_safe_ratio(
+            _safe_sum(abs_charges_prestations, abs_charges_acquisition), primes_emises, 100
+        ))
 
+    known_names = _CMF_COMPUTED_KPI_NAMES
     if sector_totals_for_year:
+        # N'invalider "Part de marché (%)" que lorsque le total sectoriel
+        # FTUSA de cette année est disponible : son absence signifie
+        # seulement "pas encore comparé" (ex: FTUSA pas encore scrapé pour
+        # cette année), pas "cette société n'a plus de part de marché".
         computed["Part de marché (%)"] = _safe_ratio(
             primes_emises, sector_totals_for_year.get("Total Primes émises"), 100
         )
+        known_names = _CMF_COMPUTED_KPI_NAMES + ("Part de marché (%)",)
 
-    return {
-        name: value
-        for name, value in computed.items()
-        if name.startswith("__delete__") or value is not None
-    }
+    return _finalize(computed, known_names)
 
 
 def compute_cmf_derived_kpis(conn):
@@ -177,6 +249,24 @@ def compute_cmf_derived_kpis(conn):
 # Par annee (secteur, FTUSA x INS)
 # ------------------------------------------------------------------ #
 
+# Toujours tentes a partir des seuls KPI FTUSA de l'annee (independants de la
+# disponibilite d'INS) : voir _finalize. "Taux de pénétration"/"Densité de
+# l'assurance" en sont volontairement exclus - leur portee depend d'ins_kpis.
+_SECTOR_COMPUTED_KPI_NAMES = (
+    "Part des primes émises Vie",
+    "Part des primes émises Non-vie",
+    "Ratio S/P",
+    "Ratio de frais",
+    "Ratio combiné",
+    "Ratio S/P Vie",
+    "Ratio de frais Vie",
+    "Ratio combiné Vie",
+    "Ratio S/P Non-Vie",
+    "Ratio de frais Non-Vie",
+    "Ratio combiné Non-Vie",
+)
+
+
 def _compute_sector_kpis(ftusa_kpis, ins_kpis):
     computed = {}
     total = ftusa_kpis.get("Total Primes émises")
@@ -203,11 +293,11 @@ def _compute_sector_kpis(ftusa_kpis, ins_kpis):
 
     computed["Part des primes émises Vie"] = _safe_ratio(total_vie, total, 100)
     computed["Part des primes émises Non-vie"] = _safe_ratio(total_non_vie, total, 100)
-    computed["Ratio S/P"] = _safe_ratio(abs_charges_prestations, total, 100)
-    computed["Ratio de frais"] = _safe_ratio(abs_charges_acquisition, total, 100)
-    computed["Ratio combiné"] = _safe_ratio(
+    computed["Ratio S/P"] = _valid_ratio(_safe_ratio(abs_charges_prestations, total, 100))
+    computed["Ratio de frais"] = _valid_ratio(_safe_ratio(abs_charges_acquisition, total, 100))
+    computed["Ratio combiné"] = _valid_ratio(_safe_ratio(
         _safe_sum(abs_charges_prestations, abs_charges_acquisition), total, 100
-    )
+    ))
 
     # Meme decomposition Vie / Non-Vie que ci-dessus, mais par segment (les 3
     # ratios ci-dessus melangent Vie+Non-Vie) : necessaire pour le tableau de
@@ -217,18 +307,21 @@ def _compute_sector_kpis(ftusa_kpis, ins_kpis):
     abs_charges_prestations_non_vie = abs(ftusa_kpis["Charges de prestations Non-Vie"]) if ftusa_kpis.get("Charges de prestations Non-Vie") is not None else None
     abs_charges_acquisition_non_vie = abs(ftusa_kpis["Charges d'acquisition et de gestion nettes Non-Vie"]) if ftusa_kpis.get("Charges d'acquisition et de gestion nettes Non-Vie") is not None else None
 
-    computed["Ratio S/P Vie"] = _safe_ratio(abs_charges_prestations_vie, total_vie, 100)
-    computed["Ratio de frais Vie"] = _safe_ratio(abs_charges_acquisition_vie, total_vie, 100)
-    computed["Ratio combiné Vie"] = _safe_ratio(
+    computed["Ratio S/P Vie"] = _valid_ratio(_safe_ratio(abs_charges_prestations_vie, total_vie, 100))
+    computed["Ratio de frais Vie"] = _valid_ratio(_safe_ratio(abs_charges_acquisition_vie, total_vie, 100))
+    computed["Ratio combiné Vie"] = _valid_ratio(_safe_ratio(
         _safe_sum(abs_charges_prestations_vie, abs_charges_acquisition_vie), total_vie, 100
-    )
-    computed["Ratio S/P Non-Vie"] = _safe_ratio(abs_charges_prestations_non_vie, total_non_vie, 100)
-    computed["Ratio de frais Non-Vie"] = _safe_ratio(abs_charges_acquisition_non_vie, total_non_vie, 100)
-    computed["Ratio combiné Non-Vie"] = _safe_ratio(
+    ))
+    computed["Ratio S/P Non-Vie"] = _valid_ratio(_safe_ratio(abs_charges_prestations_non_vie, total_non_vie, 100))
+    computed["Ratio de frais Non-Vie"] = _valid_ratio(_safe_ratio(abs_charges_acquisition_non_vie, total_non_vie, 100))
+    computed["Ratio combiné Non-Vie"] = _valid_ratio(_safe_ratio(
         _safe_sum(abs_charges_prestations_non_vie, abs_charges_acquisition_non_vie), total_non_vie, 100
-    )
+    ))
 
-    return {name: value for name, value in computed.items() if value is not None}
+    known_names = _SECTOR_COMPUTED_KPI_NAMES
+    if ins_kpis:
+        known_names = _SECTOR_COMPUTED_KPI_NAMES + ("Taux de pénétration", "Densité de l'assurance")
+    return _finalize(computed, known_names)
 
 
 def compute_sector_derived_kpis(conn):
@@ -244,10 +337,15 @@ def compute_sector_derived_kpis(conn):
     for document_id, _cmf_id, _code, annee in ftusa_docs:
         ftusa_kpis = get_kpi_values_for_document(conn, document_id)
         computed = _compute_sector_kpis(ftusa_kpis, ins_kpis_by_year.get(annee))
+        touched = False
         for name, value in computed.items():
-            save_kpi_value(conn, document_id, TABLEAU_LABEL, name, valeur_nombre=value)
-            saved += 1
-        if computed:
+            if name.startswith("__delete__"):
+                delete_kpi_value(conn, document_id, TABLEAU_LABEL, name[len("__delete__"):])
+            else:
+                save_kpi_value(conn, document_id, TABLEAU_LABEL, name, valeur_nombre=value)
+                saved += 1
+            touched = True
+        if touched:
             years_updated += 1
 
     print(f"[Secteur] {years_updated} annee(s) mise(s) a jour, {saved} valeur(s) de KPI calculees")
@@ -304,8 +402,9 @@ def _compute_cga_kpis(kpis):
         total_marche = sum(region_totals.values())
         for region, value in region_totals.items():
             computed[f"Nombre d'agences par région - {region}"] = value
-            if total_marche:
-                computed[f"Répartition des agences par grande région - {region}"] = value / total_marche * 100
+            part = _safe_ratio(value, total_marche, 100)
+            if part is not None:
+                computed[f"Répartition des agences par grande région - {region}"] = part
         if region_totals:
             computed["Région la plus concentrée"] = max(region_totals, key=region_totals.get)
 
@@ -333,11 +432,13 @@ def _compute_cga_kpis(kpis):
     }
     if branch_premiums:
         total_premiums = sum(branch_premiums.values())
-        if total_premiums:
-            for branch, value in branch_premiums.items():
-                computed[f"Part des primes émises par branche - {branch}"] = value / total_premiums * 100
+        for branch, value in branch_premiums.items():
+            part = _safe_ratio(value, total_premiums, 100)
+            if part is not None:
+                computed[f"Part des primes émises par branche - {branch}"] = part
 
-    return computed
+    known_names = ("Total agences", "Nombre moyen d'agences par assureur", "Assurance avec le plus d'agences")
+    return _finalize(computed, known_names) if per_company_total else computed
 
 
 def compute_cga_derived_kpis(conn):
@@ -347,13 +448,18 @@ def compute_cga_derived_kpis(conn):
     for document_id, _cmf_id, _code, annee in cga_docs:
         kpis = get_kpi_values_for_document(conn, document_id)
         computed = _compute_cga_kpis(kpis)
+        touched = False
         for name, value in computed.items():
-            if isinstance(value, str):
+            if name.startswith("__delete__"):
+                delete_kpi_value(conn, document_id, TABLEAU_LABEL, name[len("__delete__"):])
+            elif isinstance(value, str):
                 save_kpi_value(conn, document_id, TABLEAU_LABEL, name, valeur_texte=value)
+                saved += 1
             else:
                 save_kpi_value(conn, document_id, TABLEAU_LABEL, name, valeur_nombre=value)
-            saved += 1
-        if computed:
+                saved += 1
+            touched = True
+        if touched:
             years_updated += 1
 
     print(f"[CGA] {years_updated} annee(s) mise(s) a jour, {saved} valeur(s) de KPI calculees")
@@ -382,7 +488,12 @@ def _compute_bvmt_kpis_for_document(kpis, code, annee, bvmt_bulletin_by_year, bv
     if nombre_actions is not None:
         computed["Capitalisation Boursière"] = cours * nombre_actions / 1_000_000
 
-    return computed
+    # "Cours de l'action" trouve (le bulletin de l'annee existe) : on peut
+    # donc invalider explicitement "Capitalisation Boursière" si elle
+    # redevient incalculable (Nombre d'actions introuvable), plutot que de
+    # laisser une ancienne valeur perimee. Si "cours" est absent (bulletin
+    # pas encore scrape), on est deja sorti plus haut sans rien invalider.
+    return _finalize(computed, ("Capitalisation Boursière",))
 
 
 def compute_bvmt_market_kpis(conn):
@@ -407,10 +518,15 @@ def compute_bvmt_market_kpis(conn):
     for document_id, _cmf_id, code, annee in cmf_docs:
         kpis = get_kpi_values_for_document(conn, document_id)
         computed = _compute_bvmt_kpis_for_document(kpis, code, annee, bvmt_bulletin_by_year, bvmt_fallback_actions)
+        touched = False
         for name, value in computed.items():
-            save_kpi_value(conn, document_id, TABLEAU_LABEL, name, valeur_nombre=value)
-            saved += 1
-        if computed:
+            if name.startswith("__delete__"):
+                delete_kpi_value(conn, document_id, TABLEAU_LABEL, name[len("__delete__"):])
+            else:
+                save_kpi_value(conn, document_id, TABLEAU_LABEL, name, valeur_nombre=value)
+                saved += 1
+            touched = True
+        if touched:
             documents_updated += 1
 
     print(f"[BVMT] {documents_updated} document(s) mis a jour, {saved} valeur(s) de KPI calculees")

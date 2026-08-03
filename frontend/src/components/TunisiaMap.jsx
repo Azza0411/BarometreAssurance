@@ -79,7 +79,7 @@ const DEFAULT_LEVELS = {
 const MAP_W = 155;
 const MAP_H = Math.round(MAP_W * 926 / 438); // ~328px
 
-export default function TunisiaMap({ data = {}, compact = false }) {
+export default function TunisiaMap({ data = {}, compact = false, noPanel = false, zones = null }) {
   const containerRef = useRef(null);
   const [hovered, setHovered]     = useState(null); // region id
   const [tooltip, setTooltip]     = useState({ x: 0, y: 0, visible: false });
@@ -173,7 +173,7 @@ export default function TunisiaMap({ data = {}, compact = false }) {
   }, [JSON.stringify(data)]);
 
   return (
-    <div ref={containerRef} style={{ display: "flex", gap: 16, alignItems: "stretch" }}>
+    <div ref={containerRef} style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
 
       {/* ── Carte — dimensions fixes calculées depuis le vrai viewBox 438×926 ── */}
       <div style={{ position: "relative", flexShrink: 0, width: MAP_W, height: MAP_H }}>
@@ -218,21 +218,21 @@ export default function TunisiaMap({ data = {}, compact = false }) {
       </div>
 
       {/* ── Panneau droit ── */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 16 }}>
+      {!noPanel && <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 10 }}>
 
         {/* Niveaux */}
         <div>
-          <div style={{ fontSize: 8, fontWeight: 800, textTransform: "uppercase",
-            letterSpacing: "2px", color: "#B0B0B8", marginBottom: 8 }}>Densité</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{ fontSize: 7.5, fontWeight: 800, textTransform: "uppercase",
+            letterSpacing: "1.5px", color: "#B0B0B8", marginBottom: 6 }}>Densité</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {Object.entries(LEVEL_LABELS).map(([k, label]) => (
-              <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div key={k} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{
-                  width: 28, height: 7, borderRadius: 4, flexShrink: 0,
+                  width: 20, height: 6, borderRadius: 3, flexShrink: 0,
                   background: LEVEL_COLORS[k],
                   boxShadow: "0 1px 4px rgba(0,0,0,0.10)",
                 }} />
-                <span style={{ fontSize: 10.5, color: "#2E2E38", fontWeight: 500 }}>{label}</span>
+                <span style={{ fontSize: 9.5, color: "#2E2E38", fontWeight: 500 }}>{label}</span>
               </div>
             ))}
           </div>
@@ -240,39 +240,62 @@ export default function TunisiaMap({ data = {}, compact = false }) {
 
         {!compact && <div style={{ height: 1, background: "#F0F0F0" }} />}
 
-        {/* Régions */}
+        {/* Régions ou zones personnalisées */}
         {!compact && <div>
-          <div style={{ fontSize: 8, fontWeight: 800, textTransform: "uppercase",
-            letterSpacing: "2px", color: "#B0B0B8", marginBottom: 8 }}>Régions</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {REGION_ORDER.map((id, i) => {
+          <div style={{ fontSize: 7.5, fontWeight: 800, textTransform: "uppercase",
+            letterSpacing: "1.5px", color: "#B0B0B8", marginBottom: 6 }}>
+            {zones ? "Répartition" : "Régions"}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {zones ? zones.map((z, i) => {
+              const txtCol = z.color === "#FFE600" ? "#2E2E38" : "white";
+              return (
+                <div key={z.label} style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <div style={{
+                    width: 16, height: 16, borderRadius: 4, flexShrink: 0, marginTop: 1,
+                    background: z.color,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 8, fontWeight: 900, color: txtCol,
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.10)",
+                    border: z.color === "#FFE600" ? "1px solid #c8a000" : "none",
+                  }}>{i + 1}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 9.5, fontWeight: 700, color: "#2E2E38",
+                      lineHeight: 1.2 }}>
+                      {z.label}
+                    </div>
+                    <div style={{ fontSize: 8.5, color: "#9B9BA8", marginTop: 1 }}>
+                      {z.pct}%
+                    </div>
+                  </div>
+                </div>
+              );
+            }) : REGION_ORDER.map((id, i) => {
               const color  = getColor(id);
               const txtCol = color === "#FFE600" ? "#2E2E38" : "white";
               const meta   = REGIONS_META[id];
               const isHov  = hovered === id;
               return (
                 <div key={id}
-                  style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default",
+                  style={{ display: "flex", alignItems: "center", gap: 6, cursor: "default",
                     transition: "opacity .15s", opacity: hovered && !isHov ? 0.45 : 1 }}
                   onMouseEnter={() => setHovered(id)}
                   onMouseLeave={() => setHovered(null)}>
-                  {/* Badge numéro coloré */}
                   <div style={{
-                    width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                    width: 16, height: 16, borderRadius: 4, flexShrink: 0,
                     background: color,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 8.5, fontWeight: 900, color: txtCol,
+                    fontSize: 8, fontWeight: 900, color: txtCol,
                     boxShadow: isHov ? "0 2px 8px rgba(0,0,0,0.18)" : "0 1px 3px rgba(0,0,0,0.10)",
                     transition: "box-shadow .15s",
                   }}>{i + 1}</div>
-                  {/* Texte */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "#2E2E38",
-                      lineHeight: 1.2, whiteSpace: "nowrap" }}>
+                    <div style={{ fontSize: 9.5, fontWeight: 700, color: "#2E2E38",
+                      lineHeight: 1.2 }}>
                       {meta.label}
                     </div>
                     {getValue(id) && (
-                      <div style={{ fontSize: 9, color: "#9B9BA8", marginTop: 1 }}>
+                      <div style={{ fontSize: 8.5, color: "#9B9BA8", marginTop: 1 }}>
                         {getValue(id)}
                       </div>
                     )}
@@ -283,7 +306,7 @@ export default function TunisiaMap({ data = {}, compact = false }) {
           </div>
         </div>}
 
-      </div>
+      </div>}
     </div>
   );
 }
