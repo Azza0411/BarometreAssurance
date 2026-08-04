@@ -5,8 +5,6 @@ Ces sociétés sont retirées de tous les sélecteurs de compagnies en raison de
 | Société | Raison |
 |---|---|
 | **AL_AMANAH_TAKAFUL** | PDFs rédigés en arabe — extraction texte non fiable |
-| **AT_TAKAFULIA** | Logique Takaful incompatible avec la structure des KPIs standard |
-| **ZITOUNA_TAKAFUL** | Logique Takaful incompatible avec la structure des KPIs standard |
 | **AMI** | PDFs quasi entièrement scannés (la quasi-totalité des années) |
 | **CARTE_VIE** | PDFs scannés — OCR insuffisant pour extraire les KPIs |
 | **UIB** | PDFs scannés — OCR insuffisant pour extraire les KPIs |
@@ -20,6 +18,8 @@ Ces sociétés ont des problèmes sur certaines années seulement et restent dis
 | Société | Années concernées | Nature du problème |
 |---|---|---|
 | **TUNIS_RE** | 2023, 2024 | Problèmes d'extraction sur ces années spécifiques |
+| **ZITOUNA_TAKAFUL** | 2018 | PDF scanné, aucun texte extractible (besoin d'OCR) |
+| **ZITOUNA_TAKAFUL** | 2020 | Encodage de police corrompu à la source (besoin d'OCR) |
 
 ## Modifier la liste
 

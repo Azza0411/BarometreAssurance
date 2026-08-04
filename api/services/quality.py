@@ -49,8 +49,6 @@ _ZERO_SUSPECT_KPIS = ZERO_SUSPECT_KPIS
 # affichée pour les 8, sans dire laquelle s'appliquait à quelle société.
 PROBLEMATIC_CODES: dict[str, str] = {
     "AL_AMANAH_TAKAFUL": "Document entièrement rédigé en arabe — motifs de recherche actuels non compatibles",
-    "AT_TAKAFULIA":      "Bilan combiné Takaful (colonnes « Fonds des Adhérents » / « Entreprise » séparées) — structure comptable différente du modèle standard",
-    "ZITOUNA_TAKAFUL":   "Bilan combiné Takaful (colonnes « Fonds des Adhérents » / « Entreprise » séparées) — structure comptable différente du modèle standard",
     "AMI":                "Pages scannées en image, aucun texte extractible (nécessite OCR)",
     "CARTE_VIE":          "Pages scannées en image, aucun texte extractible (nécessite OCR)",
     "UIB":                "Pages scannées en image, aucun texte extractible (nécessite OCR)",

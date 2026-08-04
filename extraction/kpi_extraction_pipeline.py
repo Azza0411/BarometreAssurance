@@ -99,20 +99,35 @@ def _save_sectoral_pdf(source: str, annee, content: bytes) -> None:
 FAILURE_REPORT_PATH = os.path.join(OUTPUT_DIR, "echecs_extraction.xlsx")
 
 # Sociétés Takaful : le Bilan y est structuré différemment (colonnes "Fonds
-# des Adhérents" / "Entreprise" séparées) et les motifs de recherche actuels
-# ne s'y appliquent pas.
+# des Adhérents" / "Entreprise" séparées) et les motifs de recherche
+# conventionnels ne s'y appliquent pas. AT_TAKAFULIA/ZITOUNA_TAKAFUL ont un
+# extracteur dédié (extraction/takaful_kpi_extractor.py) qui récupère 4 KPI
+# (Total actif, Capitaux propres, Résultat Net, Primes émises). AL_AMANAH_TAKAFUL
+# reste exclue : ses états financiers sont publiés en arabe (RTL), voir
+# docs/travaux_futurs.md.
 TAKAFUL_COMPANIES = {"AL_AMANAH_TAKAFUL", "AT_TAKAFULIA", "ZITOUNA_TAKAFUL"}
+TAKAFUL_EXTRACTABLE_COMPANIES = {"AT_TAKAFULIA", "ZITOUNA_TAKAFUL"}
 ARABIC_RE = re.compile(r"[؀-ۿ]")
 
 BILAN_KPI_NAMES = [definition[0] for definition in BILAN_KPI_DEFINITIONS]
 ANNEXE13_KPI_NAMES = list(ANNEXE13_KPI_PATTERNS.keys())
 ANNEXE12_KPI_NAMES = list(ANNEXE12_KPI_PATTERNS.keys())
+# "Primes émises par assurance" est normalement une valeur CALCULÉE (voir
+# calculated_kpi_extractor.py) pour un assureur conventionnel, jamais
+# extraite directement à ce stade — mais takaful_kpi_extractor.py la calcule
+# lui-même par sommation directe (Primes émises et acceptées, Fonds Familial
+# + Fonds Général) et la renvoie comme n'importe quel autre KPI direct.
+# Doit figurer dans KPI_NAMES pour que la boucle de persistance de run() (qui
+# n'itère que sur cette liste) la sauvegarde en base pour les compagnies
+# Takaful ; sans effet pour les assureurs conventionnels (jamais présente
+# dans leur dict `kpis` à ce stade, donc simplement ignorée comme avant).
 KPI_NAMES = (
     BILAN_KPI_NAMES
     + ANNEXE13_KPI_NAMES
     + ANNEXE12_KPI_NAMES
     + RESULTAT_KPI_NAMES
     + PRESENTATION_KPI_NAMES
+    + ["Primes émises par assurance"]
 )
 
 # Nom du tableau source enregistré avec chaque KPI.
@@ -129,6 +144,7 @@ KPI_TABLE_LABEL.update(
 KPI_TABLE_LABEL.update(
     {name: "Presentation de la societe" for name in PRESENTATION_KPI_NAMES}
 )
+KPI_TABLE_LABEL["Primes émises par assurance"] = "Etat de resultat (technique / global)"
 
 
 def _get_with_retries(url, timeout, retries=3):
@@ -190,7 +206,12 @@ def _check_balance(pdf, kpis):
     return ecart if ecart > BALANCE_CHECK_TOLERANCE else 0.0
 
 
-def _extract_all_kpis(pdf):
+def _extract_all_kpis(pdf, company_code=None):
+    if company_code in TAKAFUL_EXTRACTABLE_COMPANIES:
+        from extraction.takaful_kpi_extractor import extract_all_takaful_kpis
+        kpis = extract_all_takaful_kpis(pdf)
+        kpis.pop("_takaful_format", None)
+        return kpis
     kpis = extract_all_bilan_kpis(pdf)
     kpis.update(extract_annexe13_kpis(pdf))
     kpis.update(extract_annexe12_kpis(pdf))
@@ -202,8 +223,10 @@ def _extract_all_kpis(pdf):
 def _classify_cause(pdf, company_code):
     """Diagnostic best-effort de la cause d'échec, pour orienter un
     traitement manuel ultérieur."""
+    if company_code in TAKAFUL_EXTRACTABLE_COMPANIES:
+        return "Compagnie Takaful : seuls Total actif/Capitaux propres/Resultat Net/Primes emises sont extraits (structure comptable Fonds des Adherents/Entreprise, pas de detail par poste)"
     if company_code in TAKAFUL_COMPANIES:
-        return "Structure Takaful (Bilan combine Fonds des Adherents / Entreprise)"
+        return "Document en arabe (RTL), structure Takaful non extractible avec l'approche actuelle"
     sample_text = ""
     for page in pdf.pages[:3]:
         sample_text += page.extract_text() or ""
@@ -467,7 +490,7 @@ def run():
         try:
             response = _get_with_retries(lien, timeout=30)
             with pdfplumber.open(io.BytesIO(response.content)) as pdf:
-                kpis = _extract_all_kpis(pdf)
+                kpis = _extract_all_kpis(pdf, company_code=code)
                 missing = [name for name in KPI_NAMES if kpis.get(name) is None]
                 cause = _classify_cause(pdf, code) if missing else None
 
