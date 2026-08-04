@@ -38,14 +38,21 @@ function tierLabel(rank) {
   return "Follower";
 }
 
+// COTUNACE retirée (api/services/quality.py::PROBLEMATIC_CODES — corruption
+// OCR chronique, exclue de /api/analyse-comparative, sa sélection ici serait
+// une case à cocher sans aucune donnée derrière). ATTIJARI, AT_TAKAFULIA et
+// ZITOUNA_TAKAFUL ajoutées : la première avait toujours eu des données,
+// simplement jamais incluse dans ce comparatif ; les deux Takaful ont un
+// extracteur dédié depuis août 2026 (extraction/takaful_kpi_extractor.py).
 const ASSUREURS = [
   "STAR","COMAR","GAT","ASTREE","CARTE","LLOYD_TUNISIEN",
-  "MAGHREBIA","BH","BIAT","TUNIS_RE","COTUNACE",
+  "MAGHREBIA","BH","BIAT","TUNIS_RE","ATTIJARI","AT_TAKAFULIA","ZITOUNA_TAKAFUL",
 ];
 const ASSUREUR_LABELS = {
   STAR:"STAR", COMAR:"COMAR", GAT:"GAT", ASTREE:"ASTREE", CARTE:"CARTE",
   LLOYD_TUNISIEN:"LLOYD", MAGHREBIA:"MAGHREBIA", BH:"BH",
-  BIAT:"BIAT", TUNIS_RE:"TUNIS RE", COTUNACE:"COTUNACE",
+  BIAT:"BIAT", TUNIS_RE:"TUNIS RE", ATTIJARI:"ATTIJARI",
+  AT_TAKAFULIA:"AT-TAKAFULIA", ZITOUNA_TAKAFUL:"ZITOUNA TAKAFUL",
 };
 // Libellés repris de frontend/src/utils/kpiCatalog.js (source unique du nom
 // affiché) — seuls le champ backend, l'unité de formatage et le sens
@@ -60,9 +67,9 @@ const INDICATEURS = {
   [kpiLabel("ROA (%)")]:                       { field:"roa",                unit:"%",    lowerBetter:false },
 };
 const SANS_DONNEES = [
-  "AMI","BNA","UIB","HAYETT","CTAMA",
+  "AMI","BNA","UIB","HAYETT","CTAMA","COTUNACE",
   "GAT VIE","CARTE VIE","LLOYD VIE","MAGHREBIA VIE",
-  "ZITOUNA TAKAFUL","AL AMANAH TAKAFUL","AT-TAKAFULIA",
+  "AL AMANAH TAKAFUL",
 ];
 
 function useWindowSize() {
