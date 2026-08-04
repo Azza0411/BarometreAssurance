@@ -20,6 +20,7 @@ Ces sociétés ont des problèmes sur certaines années seulement et restent dis
 | **TUNIS_RE** | 2023, 2024 | Problèmes d'extraction sur ces années spécifiques |
 | **ZITOUNA_TAKAFUL** | 2018 | PDF scanné, aucun texte extractible (besoin d'OCR) |
 | **ZITOUNA_TAKAFUL** | 2020 | Encodage de police corrompu à la source (besoin d'OCR) |
+| **CTAMA** | 2021-2025 | Aucun rapport publié sur le portail CMF au-delà de 2020 (confirmé en relançant le scraper en direct le 04/08/2026 — ce n'est pas un échec de notre pipeline, le portail CMF lui-même ne propose que 2018 et 2020) |
 
 ## Modifier la liste
 
