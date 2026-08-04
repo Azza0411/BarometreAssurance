@@ -7,7 +7,8 @@ Structure :
   api/routes/enquete.py        → /api/enquete-marche/*
   api/routes/veille.py         → /api/actualites, /api/veille-reglementaire*, /api/pdf-proxy
   api/routes/qualite.py        → /api/rapport-qualite (NEW)
-  api/routes/export.py         → /api/export/* (PDF)
+  api/routes/export.py         → /api/export/* (PDF, Excel)
+  api/routes/notifications.py  → /api/notifications/* (cloche in-app)
   api/services/kpi_builder.py  → calcul RC/RSP/RF par compagnie
   api/services/quality.py      → detection d'anomalies
   api/utils/formatters.py      → round1, growth_pct, required_year_arg, kpis_by_year
@@ -21,7 +22,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from flask import Flask, jsonify
 from flask_cors import CORS
 
-from api.routes import apercu_marche, comparative, vue_assurance, enquete, veille, qualite, export
+from api.routes import apercu_marche, comparative, vue_assurance, enquete, veille, qualite, export, notifications
 from database.repository import ensure_database, get_connection, init_schema
 
 # Applique tout schema.sql/migration en attente au démarrage — sans ça, une
@@ -45,6 +46,7 @@ app.register_blueprint(enquete.bp)
 app.register_blueprint(veille.bp)
 app.register_blueprint(qualite.bp)
 app.register_blueprint(export.bp)
+app.register_blueprint(notifications.bp)
 
 
 @app.errorhandler(ValueError)

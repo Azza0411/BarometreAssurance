@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import Chatbot from "./components/Chatbot";
 import Sidebar            from "./components/Sidebar";
+import NotificationBell   from "./components/NotificationBell";
 import ApercuMarche       from "./pages/ApercuMarche";
 import Positionnement     from "./pages/Positionnement";
 import Geographie         from "./pages/Geographie";
@@ -859,6 +860,11 @@ function AppNavbar() {
             </button>
           );
         })()}
+
+        {/* Notifications */}
+        <div style={{ borderLeft:"1px solid rgba(255,255,255,.1)", height:"100%" }}>
+          <NotificationBell/>
+        </div>
 
         {/* Globe Tunisie */}
         <div style={{ display:"flex", alignItems:"center", height:"100%",

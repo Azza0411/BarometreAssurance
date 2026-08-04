@@ -72,3 +72,20 @@ CREATE TABLE IF NOT EXISTS anomalies_detectees (
     INDEX idx_anomalies_annee (annee),
     INDEX idx_anomalies_code (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Notifications in-app (cloche dans la barre de navigation) : evenements
+-- generes par pipelines/run_pipeline.py (nouveau document CMF, anomalie
+-- qualite critique, echec d'une source) et affiches a l'utilisateur sans
+-- necessiter de config email/webhook.
+CREATE TABLE IF NOT EXISTS notifications (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    type        VARCHAR(50)  NOT NULL,   -- 'nouveau_document' | 'anomalie_critique' | 'echec_pipeline'
+    titre       VARCHAR(255) NOT NULL,
+    message     TEXT         NULL,
+    gravite     VARCHAR(20)  NOT NULL DEFAULT 'info',  -- 'critique' | 'avertissement' | 'info'
+    lien        VARCHAR(255) NULL,       -- route frontend a ouvrir au clic (ex: /qualite-donnees)
+    lu          TINYINT(1)   NOT NULL DEFAULT 0,
+    INDEX idx_notifications_lu (lu),
+    INDEX idx_notifications_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
