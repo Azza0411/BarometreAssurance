@@ -55,14 +55,50 @@ YOY_CHECKED_KPIS = {
     "Autres passifs",
     "Part des réassureurs dans les provisions techniques",
     "Provisions techniques brutes",
-    # Ajoutés pour couvrir les KPI "en valeur absolue" affichés sur la page
+    # Ajouté pour couvrir un KPI "en valeur absolue" affiché sur la page
     # Qualité Data — sans plage de plausibilité fixe possible (l'échelle
     # varie trop d'une société à l'autre), la comparaison à soi-même d'une
-    # année sur l'autre est le contrôle "aberrant" pertinent pour ces 3-là.
-    "Résultat Net",
+    # année sur l'autre est le contrôle "aberrant" pertinent ici. Toujours
+    # positif par nature (des primes émises négatives n'existent pas) : le
+    # test sign_flip ne peut jamais s'y déclencher à tort.
     "Primes émises par assurance",
-    "Résultat technique (TND)",
+    # Volontairement absents : "Résultat Net" et "Résultat technique (TND)"
+    # sont des résultats de P&L, signés par nature — passer du bénéfice à la
+    # perte (ou l'inverse) d'une année sur l'autre est un événement business
+    # tout à fait normal, pas un signe d'erreur d'extraction. Les inclure ici
+    # générait de faux positifs confirmés en base (ex: TUNIS_RE 2018 12,3M
+    # -> -17,1M signalé "signe inverse suspect" ; AT_TAKAFULIA 2019 -650k ->
+    # +334k, une vraie sortie de perte, pas un bug — voir commit associé).
 }
+
+
+def _flag_variation(name, cur, prev):
+    """Logique pure (sans dépendance DB) : décide si la variation de `cur`
+    par rapport à `prev` pour le KPI `name` est implausible. Renvoie un dict
+    de signalement (sans "annee_precedente", ajouté par l'appelant) ou None.
+    Isolée de check_yoy_consistency() pour rester testable sans connexion
+    MySQL — même convention que api/services/quality.py (voir
+    api/tests/test_quality.py : les fonctions couplées à `conn` n'y sont pas
+    testées directement, seule leur logique pure l'est)."""
+    if not isinstance(cur, (int, float)) or not isinstance(prev, (int, float)):
+        return None
+    if max(abs(cur), abs(prev)) < YOY_MIN_ABS or prev == 0:
+        return None
+
+    sign_flip = (cur * prev) < 0
+    pct = (cur - prev) / abs(prev) * 100
+    big_drop = pct <= -YOY_MAX_DROP_PCT
+    big_jump = abs(cur / prev) >= YOY_MAX_GROWTH_X
+    if not (sign_flip or big_drop or big_jump):
+        return None
+
+    return {
+        "kpi": name,
+        "valeur_precedente": prev,
+        "valeur_actuelle": cur,
+        "variation_pct": round(pct, 1),
+        "signe_inverse": sign_flip,
+    }
 
 
 def check_yoy_consistency(conn, code, annee, kpis):
@@ -79,26 +115,8 @@ def check_yoy_consistency(conn, code, annee, kpis):
 
     flags = []
     for name in YOY_CHECKED_KPIS:
-        cur = kpis.get(name)
-        prev = prev_kpis.get(name)
-        if not isinstance(cur, (int, float)) or not isinstance(prev, (int, float)):
-            continue
-        if max(abs(cur), abs(prev)) < YOY_MIN_ABS or prev == 0:
-            continue
-
-        sign_flip = (cur * prev) < 0
-        pct = (cur - prev) / abs(prev) * 100
-        big_drop = pct <= -YOY_MAX_DROP_PCT
-        big_jump = abs(cur / prev) >= YOY_MAX_GROWTH_X
-        if not (sign_flip or big_drop or big_jump):
-            continue
-
-        flags.append({
-            "kpi": name,
-            "annee_precedente": annee - 1,
-            "valeur_precedente": prev,
-            "valeur_actuelle": cur,
-            "variation_pct": round(pct, 1),
-            "signe_inverse": sign_flip,
-        })
+        flag = _flag_variation(name, kpis.get(name), prev_kpis.get(name))
+        if flag is not None:
+            flag["annee_precedente"] = annee - 1
+            flags.append(flag)
     return flags

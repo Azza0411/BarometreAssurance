@@ -5,6 +5,7 @@ PDF/DB — pas de fixtures conftest nécessaires ici."""
 from extraction.calculated_kpi_extractor import (
     RATIO_MAX_PLAUSIBLE,
     RATIO_MIN_PLAUSIBLE,
+    _compute_bvmt_kpis_for_document,
     _compute_cga_kpis,
     _compute_cmf_kpis_for_document,
     _compute_sector_kpis,
@@ -184,3 +185,38 @@ def test_cga_total_agences_and_part_de_marche_reseau():
 
 def test_cga_empty_kpis_returns_empty():
     assert _compute_cga_kpis({}) == {}
+
+
+# ─── _compute_bvmt_kpis_for_document ────────────────────────────────────────
+
+def test_bvmt_normal_case_computes_cours_and_capitalisation():
+    bulletin = {2024: {"Cours de l'action - STAR": 12.5}}
+    computed = _compute_bvmt_kpis_for_document(
+        {"Nombre d'actions": 40_000_000}, "STAR", 2024, bulletin, {}
+    )
+    assert computed["Cours de l'action"] == 12.5
+    assert computed["Capitalisation Boursière"] == 12.5 * 40_000_000 / 1_000_000
+
+
+def test_bvmt_falls_back_to_bvmt_share_count_when_cmf_missing():
+    bulletin = {2024: {"Cours de l'action - STAR": 12.5}}
+    computed = _compute_bvmt_kpis_for_document(
+        {}, "STAR", 2024, bulletin, {"STAR": 40_000_000}
+    )
+    assert computed["Capitalisation Boursière"] == 12.5 * 40_000_000 / 1_000_000
+
+
+def test_bvmt_no_bulletin_for_year_returns_empty():
+    # Pas coté / bulletin de cette annee pas encore scrape -> ni Cours ni
+    # Capitalisation ne doivent être marqués __delete__ (voir commentaire de
+    # la fonction : evite un DELETE inutile pour chaque societe non cotee,
+    # sur chaque document, a chaque execution).
+    computed = _compute_bvmt_kpis_for_document({}, "AMI", 2024, {}, {})
+    assert computed == {}
+
+
+def test_bvmt_cours_present_but_no_share_count_invalidates_capitalisation():
+    bulletin = {2024: {"Cours de l'action - STAR": 12.5}}
+    computed = _compute_bvmt_kpis_for_document({}, "STAR", 2024, bulletin, {})
+    assert computed["Cours de l'action"] == 12.5
+    assert computed["__delete__Capitalisation Boursière"] is True
