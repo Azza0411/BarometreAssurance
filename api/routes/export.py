@@ -5,6 +5,7 @@ from api.utils.formatters import required_year_arg
 from api.services.pdf_export import (
     build_fiche_compagnie_pdf, build_analyse_comparative_pdf, build_apercu_marche_pdf,
 )
+from api.services.excel_export import build_analyse_comparative_xlsx
 
 bp = Blueprint("export", __name__)
 
@@ -38,4 +39,14 @@ def export_apercu_marche():
     return send_file(
         buffer, mimetype="application/pdf", as_attachment=True,
         download_name=f"Apercu_Marche_{annee}.pdf",
+    )
+
+
+@bp.route("/api/export/analyse-comparative.xlsx")
+def export_analyse_comparative_xlsx():
+    annee = required_year_arg()
+    buffer = build_analyse_comparative_xlsx(annee)
+    return send_file(
+        buffer, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True, download_name=f"Analyse_Comparative_{annee}.xlsx",
     )
