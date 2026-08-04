@@ -180,6 +180,52 @@ def _check_quality():
         return None
 
 
+def _save_notifications(results, failed_sources, quality):
+    """Persiste des notifications in-app (cloche de la barre de navigation)
+    pour les trois événements jugés dignes d'attention utilisateur : nouveau
+    document CMF, anomalie qualité critique (extraction KPI totalement
+    vide sur une source), échec d'une source après tous les essais.
+    N'interrompt jamais le pipeline : une erreur ici est journalisée et
+    ignorée, comme _check_quality()."""
+    try:
+        from database.repository import get_connection, save_notification
+        conn = get_connection()
+        try:
+            for name, ok, _duration, doc_count, kpi_count in results:
+                if name == "CMF" and ok and doc_count:
+                    save_notification(
+                        conn, "nouveau_document",
+                        f"{doc_count} nouveau(x) document(s) CMF",
+                        f"Le pipeline a détecté {doc_count} nouveau(x) rapport(s) CMF non encore en base.",
+                        gravite="info", lien="/rapport-pipeline",
+                    )
+                if name == "CMF" and ok and kpi_count == 0:
+                    save_notification(
+                        conn, "anomalie_critique",
+                        "Extraction KPI CMF totalement vide",
+                        "Aucune valeur de KPI extraite sur l'ensemble de l'historique CMF — "
+                        "signe presque certain d'une régression (extracteur cassé, structure PDF changée).",
+                        gravite="critique", lien="/rapport-pipeline",
+                    )
+            for name in failed_sources:
+                save_notification(
+                    conn, "echec_pipeline", f"Échec de la source {name}",
+                    f"La source {name} a échoué après plusieurs tentatives. Voir le rapport d'exécution.",
+                    gravite="critique", lien="/rapport-pipeline",
+                )
+            if quality and quality.get("score_qualite") is not None and quality["score_qualite"] < 50:
+                save_notification(
+                    conn, "anomalie_critique",
+                    f"Score qualité faible : {quality['score_qualite']}/100",
+                    f"{quality.get('nb_anomalies')} anomalie(s) détectée(s) pour l'exercice {quality.get('annee')}.",
+                    gravite="avertissement", lien="/qualite-donnees",
+                )
+        finally:
+            conn.close()
+    except Exception as exc:
+        _log_json("notifications_save_failed", error=str(exc))
+
+
 def _notify_failure(failed_sources):
     webhook = os.environ.get("PIPELINE_ALERT_WEBHOOK")
     if not webhook:
@@ -275,6 +321,7 @@ def main():
             _log_json("kpi_extraction_totally_empty", source=name)
 
     quality = _check_quality()
+    _save_notifications(results, failed_sources, quality)
     ended_at = datetime.now()
     report_path = _write_html_report(results, quality, started_at, ended_at)
 

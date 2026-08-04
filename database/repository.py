@@ -592,3 +592,52 @@ def get_kpi_values_by_use_case(conn, use_case, annee=None, code=None):
     if code is not None:
         rows = [row for row in rows if _belongs_to_company_or_global(row[3], code)]
     return rows
+
+
+def save_notification(conn, type, titre, message=None, gravite="info", lien=None):
+    """Enregistre une notification in-app (cloche de la barre de navigation).
+    Appelé par pipelines/run_pipeline.py sur trois événements : nouveau
+    document CMF, anomalie qualité critique, échec d'une source."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO notifications (type, titre, message, gravite, lien)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (type, titre, message, gravite, lien),
+        )
+
+
+def get_notifications(conn, limit=30, unread_only=False):
+    """Renvoie les notifications les plus récentes d'abord."""
+    query = "SELECT id, created_at, type, titre, message, gravite, lien, lu FROM notifications"
+    if unread_only:
+        query += " WHERE lu = 0"
+    query += " ORDER BY created_at DESC LIMIT %s"
+    with conn.cursor() as cur:
+        cur.execute(query, (limit,))
+        rows = cur.fetchall()
+    return [
+        {
+            "id": r[0], "created_at": r[1].isoformat() if r[1] else None,
+            "type": r[2], "titre": r[3], "message": r[4],
+            "gravite": r[5], "lien": r[6], "lu": bool(r[7]),
+        }
+        for r in rows
+    ]
+
+
+def count_unread_notifications(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM notifications WHERE lu = 0")
+        return cur.fetchone()[0]
+
+
+def mark_notification_read(conn, notif_id):
+    with conn.cursor() as cur:
+        cur.execute("UPDATE notifications SET lu = 1 WHERE id = %s", (notif_id,))
+
+
+def mark_all_notifications_read(conn):
+    with conn.cursor() as cur:
+        cur.execute("UPDATE notifications SET lu = 1 WHERE lu = 0")
