@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import ReactApexChart from "react-apexcharts";
 import { getLogoSrc } from "../utils/logos";
 import { YearSelector, DarkKpiBanner } from "../components/PageHeaderBar";
+import ExportPdfButton from "../components/ExportPdfButton";
 import { kpiLabel } from "../utils/kpiCatalog";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
@@ -290,6 +291,7 @@ export default function AnalyseComparative() {
               </div>
 
               <YearSelector year={annee} years={années} onChange={setAnnee}/>
+              <ExportPdfButton href={`${API}/api/export/analyse-comparative?annee=${annee}`} />
             </div>
           </div>
         </div>

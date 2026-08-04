@@ -3,6 +3,7 @@ import ReactApexChart from "react-apexcharts";
 import TunisiaMap from "../components/TunisiaMap";
 import { getLogoSrc } from "../utils/logos";
 import PageHeaderBar, { DarkKpiBanner } from "../components/PageHeaderBar";
+import ExportPdfButton from "../components/ExportPdfButton";
 
 const Y  = "#FFE600";
 const D  = "#2E2E38";
@@ -596,7 +597,15 @@ export default function FichesEntreprises() {
         ]}
         activeTab={tab}
         onTabChange={t => { setTab(t); }}
-        right={<CompanyDropdown companies={companies} selected={code} onSelect={c => { setCode(c); setTab("profil"); }} />}
+        right={
+          <>
+            <ExportPdfButton
+              href={code && annee ? `${API}/api/export/fiche-compagnie?code=${code}&annee=${annee}` : undefined}
+              disabled={!code || !annee}
+            />
+            <CompanyDropdown companies={companies} selected={code} onSelect={c => { setCode(c); setTab("profil"); }} />
+          </>
+        }
       />
 
       {/* ── Corps scrollable ── */}
