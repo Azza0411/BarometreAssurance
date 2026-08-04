@@ -6,6 +6,7 @@ import NewsTicker from "../components/NewsTicker";
 import { C, CAT6, combo, line, donut } from "../utils/chartTheme";
 import { DS, DsBanner, DsSource } from "../components/Ds";
 import { getLogoSrc } from "../utils/logos";
+import ExportPdfButton from "../components/ExportPdfButton";
 
 /* ── Labels compagnies ── */
 const COMPANY_LABELS = {
@@ -788,6 +789,7 @@ export default function ApercuMarche() {
               ))}
             </div>
 
+            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
             <div style={{ position:"relative", display:"flex", alignItems:"center", gap:10 }}>
               <span style={{ fontSize:10, fontWeight:700, color:G, letterSpacing:"1px", textTransform:"uppercase" }}>Année</span>
               <button onClick={()=>setShowYearDD(!showYearDD)} style={{
@@ -822,6 +824,8 @@ export default function ApercuMarche() {
                   })}
                 </div>
               )}
+            </div>
+            <ExportPdfButton href={`${API}/api/export/apercu-marche?annee=${année}`} />
             </div>
           </div>
         </div>
