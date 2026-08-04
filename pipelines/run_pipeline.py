@@ -124,8 +124,8 @@ def _run_ins():
 
 
 def _run_bvmt():
-    from scraping.bvmt_scraper import sync_documents
-    return sync_documents()
+    from scraping.bvmt_scraper import sync_all
+    return sync_all()
 
 
 SOURCES = [

@@ -318,9 +318,10 @@ def sync_market_data():
 
 
 def sync_all():
-    sync_status_cotation()
-    sync_esg_documents()
-    sync_market_data()
+    cotation_saved = sync_status_cotation()
+    esg_saved = sync_esg_documents()
+    market = sync_market_data()
+    return cotation_saved + esg_saved + market["company_kpis_saved"] + market["bulletins_saved"]
 
 
 if __name__ == "__main__":

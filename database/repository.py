@@ -378,7 +378,7 @@ def get_anomalies(conn, annee=None, code=None, source=None):
         {
             "id": r[0], "detected_at": r[1].isoformat() if r[1] else None,
             "source": r[2], "code": r[3], "annee": r[4], "kpi": r[5],
-            "gravite": r[6], "details": _json.loads(r[7]) if r[7] else None,
+            "gravite": r[6], "details": json.loads(r[7]) if r[7] else None,
         }
         for r in rows
     ]
