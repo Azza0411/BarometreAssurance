@@ -55,4 +55,13 @@ def _handle_value_error(exc):
 
 
 if __name__ == "__main__":
-    app.run(port=8002, debug=True)
+    # use_reloader=False : le rechargeur automatique de Werkzeug (watchdog)
+    # respawn un processus enfant qui, sur certaines machines Windows,
+    # echoue la connexion MySQL au redemarrage ("Access denied ... using
+    # password: YES") alors que le processus initial se connecte sans
+    # probleme (le mot de passe local est vide) - cause exacte non
+    # identifiee (probablement liee a l'heritage des handles du processus
+    # parent sous Windows), mais 100% reproductible. debug=True est conserve
+    # (pages d'erreur Flask detaillees), seul le rechargement auto est
+    # desactive : relancer manuellement apres une modification du code.
+    app.run(port=8002, debug=True, use_reloader=False)
