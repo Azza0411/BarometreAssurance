@@ -15,6 +15,7 @@ import QualiteDonnees         from "./pages/QualiteDonnees";
 import KpiDetail              from "./pages/KpiDetail";
 import RapportPipeline        from "./pages/RapportPipeline";
 import AnomaliesSysteme       from "./pages/AnomaliesSysteme";
+import SimulateurWhatIf       from "./pages/SimulateurWhatIf";
 
 /* ─── palette tokens ─── */
 const C = {
@@ -92,6 +93,13 @@ const MODULES = [
       <path d="M4 4h12v12H4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
       <path d="M7 8h6M7 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       <path d="M13 2v3M7 2v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg> },
+  { to:"/simulateur",           label:"Simulateur what-if",   tag:"Scénarios · Projection",
+    desc:"Ajustez les variables clés d'une compagnie ou du marché et visualisez l'impact recalculé en direct.",
+    color:"#9333EA",
+    icon:<svg viewBox="0 0 20 20" fill="none" width="16" height="16">
+      <path d="M4 16V8M10 16V4M16 16v-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      <circle cx="4" cy="8" r="1.4" fill="currentColor"/><circle cx="10" cy="4" r="1.4" fill="currentColor"/><circle cx="16" cy="10" r="1.4" fill="currentColor"/>
     </svg> },
 ];
 
@@ -944,6 +952,7 @@ function AppShell() {
             <Route path="/kpi-detail"            element={<KpiDetail/>}/>
             <Route path="/rapport-pipeline"      element={<RapportPipeline/>}/>
             <Route path="/anomalies-systeme"     element={<AnomaliesSysteme/>}/>
+            <Route path="/simulateur"            element={<SimulateurWhatIf/>}/>
           </Routes>
         </PageTransition>
       </main>
