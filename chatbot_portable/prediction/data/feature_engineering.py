@@ -45,13 +45,17 @@ class FeatureEngineer:
         df["rolling_mean_3"] = df["valeur"].shift(1).rolling(3).mean()
         df["rolling_std_3"] = df["valeur"].shift(1).rolling(3).std().fillna(0)
 
-        # Croissance YoY
-        df["yoy_growth"] = df["valeur"].pct_change() * 100
+        # Croissance YoY (0.0 si valeur précédente nulle, pour éviter les +/-inf
+        # qu'XGBoost rejette — même convention que build_future() ci-dessous)
+        df["yoy_growth"] = (df["valeur"].pct_change() * 100).replace(
+            [np.inf, -np.inf], 0.0
+        )
 
         # CAGR 3 ans : (V_t / V_{t-3})^(1/3) - 1
         df["cagr_3"] = (
             (df["valeur"] / df["valeur"].shift(3)) ** (1 / 3) - 1
         ) * 100
+        df["cagr_3"] = df["cagr_3"].replace([np.inf, -np.inf], 0.0)
 
         # Indice temporel normalisé (0 → 1)
         min_year = df["annee"].min()
