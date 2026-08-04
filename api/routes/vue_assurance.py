@@ -41,7 +41,13 @@ def vue_assurance_annees():
             kpis = get_kpi_values_for_document(conn, doc_id)
             if any(kpis.get(k) is not None for k in _KEY_KPIS_PROFIL):
                 annees.append(annee)
-        return jsonify(sorted(a for a in set(annees) if 2014 <= a <= 2024))
+        # Contrairement à apercu_marche.py/qualite.py, aucun plafond figé ici
+        # (pas de "2014-2024" validé avec l'utilisateur pour cette page) :
+        # exclure silencieusement une année réellement disponible (ex: 2025)
+        # causait un décalage label/donnée confirmé en test manuel — le
+        # frontend affichait "2024" (dernière année de cette liste) alors que
+        # /api/vue-assurance/profil, non plafonné, renvoyait déjà 2025.
+        return jsonify(sorted(set(annees)))
     finally:
         conn.close()
 
@@ -49,19 +55,37 @@ def vue_assurance_annees():
 @bp.route("/api/vue-assurance/profil")
 def vue_assurance_profil():
     code = request.args.get("code", "")
+    annee_requested = request.args.get("annee", type=int)
     conn = get_connection()
     try:
-        kpis     = {}
-        annee_cmf = None
-        for doc_id, _, c, doc_annee in sorted(
-                list_documents_by_source(conn, "CMF"), key=lambda x: x[3], reverse=True):
-            if c != code:
-                continue
-            candidate = get_kpi_values_for_document(conn, doc_id)
-            if any(candidate.get(k) is not None for k in _KEY_KPIS_PROFIL):
-                kpis      = candidate
-                annee_cmf = doc_annee
-                break
+        docs_desc = sorted(
+            (d for d in list_documents_by_source(conn, "CMF") if d[2] == code),
+            key=lambda x: x[3], reverse=True,
+        )
+
+        def _first_with_key_kpis(docs):
+            for doc_id, _, _, doc_annee in docs:
+                candidate = get_kpi_values_for_document(conn, doc_id)
+                if any(candidate.get(k) is not None for k in _KEY_KPIS_PROFIL):
+                    return candidate, doc_annee
+            return {}, None
+
+        # Priorité au document de l'année demandée par le frontend (s'il a au
+        # moins un KPI clé) ; à défaut (paramètre absent, ou ce document
+        # précis n'a rien d'exploitable), repli sur le plus récent
+        # disponible. Avant ce correctif, `annee_requested` était totalement
+        # ignoré : la fiche affichait toujours la dernière année en base,
+        # quelle que soit l'année réellement sélectionnée côté frontend — un
+        # décalage confirmé en test manuel (bandeau "2024" affichant en
+        # réalité les chiffres 2025, `/api/vue-assurance/annees` plafonnant
+        # artificiellement à 2024 — voir correctif associé).
+        kpis, annee_cmf = ({}, None)
+        if annee_requested is not None:
+            kpis, annee_cmf = _first_with_key_kpis(
+                d for d in docs_desc if d[3] == annee_requested
+            )
+        if annee_cmf is None:
+            kpis, annee_cmf = _first_with_key_kpis(docs_desc)
 
         agences_region = {}
         total_agences  = None
