@@ -7,13 +7,13 @@ const API = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
 
 // Assurances islamiques (Takaful) — structure comptable fondamentalement
 // différente (comptes "Fonds des Adhérents" / "Entreprise" séparés au lieu
-// d'un bilan unique) : le pipeline d'extraction actuel n'est pas conçu pour
-// ce modèle, donc quasi tout y apparaît comme non extrait/non calculé. Ce
-// n'est pas une anomalie de CES sociétés, c'est un pipeline qui reste à
-// construire — les afficher ici mélangerait les deux et serait trompeur.
-// Retiré de cette page ; à traiter dans un pipeline Takaful dédié (voir
+// d'un bilan unique). AT_TAKAFULIA et ZITOUNA_TAKAFUL ont depuis un
+// extracteur dédié (extraction/takaful_kpi_extractor.py, 4 KPI : Total
+// actif, Capitaux propres, Résultat Net, Primes émises) et sont réintégrées
+// ici. AL_AMANAH_TAKAFUL reste exclue : ses états financiers sont publiés
+// en arabe (RTL), non extractible avec l'approche actuelle (voir
 // docs/travaux_futurs.md).
-const TAKAFUL_CODES = new Set(["AL_AMANAH_TAKAFUL", "AT_TAKAFULIA", "ZITOUNA_TAKAFUL"]);
+const TAKAFUL_CODES = new Set(["AL_AMANAH_TAKAFUL"]);
 
 function fmtVal(v, storageKey) {
   if (v === null || v === undefined) return null;
