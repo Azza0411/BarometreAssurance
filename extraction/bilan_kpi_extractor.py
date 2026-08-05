@@ -43,6 +43,16 @@ _normalizer = TextNormalizer()
 # ponctuation), sous forme de regex pour tolérer les variantes constatées
 # d'une société à l'autre (article "des"/"de l'" optionnel, singulier/pluriel).
 TOTAL_ACTIF_RE = re.compile(r"^total (de l |des )?actifs?\b")
+# "Total capitaux propres avant résultat de l'exercice" est une ligne
+# INTERMÉDIAIRE (avant d'ajouter le résultat de l'exercice en cours) —
+# presque tous les documents ont ensuite une ligne "avant affectation", le
+# vrai total final. Chercher "av(ant)? resultat" sans distinction faisait
+# remonter la valeur intermédiaire chez des sociétés qui ont les deux lignes
+# (ex: BIAT 2025 : 103,1M extraits au lieu de 128,8M, sous-estimant les
+# capitaux propres — donc surestimant le ROE affiché — exactement du montant
+# du résultat de l'exercice). Voir _find_capitaux_propres : la ligne "avant
+# affectation" est maintenant cherchée en priorité.
+TOTAL_CAPITAUX_PROPRES_AFFECTATION_RE = re.compile(r"^total (des )?(capitaux propres|cp) av(ant)? affectation\b")
 TOTAL_CAPITAUX_PROPRES_RE = re.compile(r"^total (des )?(capitaux propres|cp) av(ant)? resultat\b")
 TOTAL_PASSIF_RE = re.compile(r"^total (du |des )?passifs?\b")
 # Pas de \b/^ en tête : comme pour les sections, le code de ligne (ex:
@@ -98,6 +108,22 @@ PASSIF_SECTION_TEXT_PATTERNS = [
 ]
 
 MAX_PAGES_SCANNED = 12   # le Bilan se trouve systématiquement en tête de document
+# Fenêtre restreinte pour les recherches spécifiquement filtrées par
+# _is_actif_page/_is_passif_page (Total actif, Total Passif, et leurs replis).
+# Sur l'ensemble des 186 PDF CMF locaux, la page "Actif" du Bilan est TOUJOURS
+# en position 0-2 (indexée à partir de 0) et la page "Passif" toujours en
+# position 0-3 ; tout ce qui se présente comme "page actif/passif" au-delà
+# (constaté en positions 5 à 9) est un faux positif : une page d'annexe/notes
+# mentionnant "actif"/"passif" en passant dans une phrase (ex: "Tableau des
+# engagements reçus et donnés" contient "...actifs acquis avec engagement de
+# revente"). Avec la fenêtre large MAX_PAGES_SCANNED=12, un tel faux positif
+# pouvait faire remonter une valeur erronée (ex: MAGHREBIA_VIE 2018/2020,
+# Total actif=0 capté sur une ligne "TOTAL 0 0" sans rapport, au lieu de
+# rester introuvable/None) via _find_actif_bare_total_fallback. Découvert en
+# comparant l'extraction avant/après sur l'ensemble du corpus après
+# l'élargissement de lines_checked (5->10, voir _is_actif_page) fait pour
+# BIAT 2025.
+BILAN_TOTAL_MAX_PAGES = 4
 Y_TOLERANCE = 5          # tolérance (pt) pour regrouper les mots d'une même ligne visuelle
 # Écart horizontal entre deux tokens numériques consécutifs : ~1-2.3pt à
 # l'intérieur d'un même nombre (séparateur de milliers), ~8-45pt entre deux
@@ -452,12 +478,17 @@ def _find_row_value(pdf, pattern_re, header_token=None, max_pages=MAX_PAGES_SCAN
     return None
 
 
-def _is_actif_page(page, lines_checked=5):
+def _is_actif_page(page, lines_checked=10):
     """Une page est considérée comme la page "Actif" du Bilan si le mot
     "actif(s)" apparaît dans l'un de ses premiers titres (ex: "ACTIF",
     "Actifs du Bilan", "Annexe 1 : ACTIF"), sans que "passif" y apparaisse
     aussi (pour ne pas confondre avec la page combinée Capitaux propres et
-    Passif qui peut mentionner "actif" en passant)."""
+    Passif qui peut mentionner "actif" en passant). lines_checked=10 (au
+    lieu de 5) : certains documents (ex: BIAT 2025) ont un bandeau d'en-tête
+    de 5 lignes ("Assurances X / Bilan / Arrêté au... / Unité... / dates")
+    avant la ligne "ACTIFS Brut Amort. Net Net" elle-même — avec
+    lines_checked=5 elle tombait juste hors fenêtre, la page entière était
+    ignorée et "Total actif" ressortait introuvable."""
     text = (page.extract_text() or "").strip()
     if not text:
         return False
@@ -468,10 +499,11 @@ def _is_actif_page(page, lines_checked=5):
     return False
 
 
-def _is_passif_page(page, lines_checked=5):
+def _is_passif_page(page, lines_checked=10):
     """Une page est considérée comme la page "Passif" (ou "Capitaux propres
     et Passif") du Bilan si le mot "passif(s)" apparaît dans l'un de ses
-    premiers titres."""
+    premiers titres. Même marge élargie que _is_actif_page, pour la même
+    raison (bandeau d'en-tête variable selon les documents)."""
     text = (page.extract_text() or "").strip()
     if not text:
         return False
@@ -579,12 +611,17 @@ def _find_section_total(pdf, side_prefix, code, header_token, max_pages=MAX_PAGE
     return None
 
 
-def _find_actif_bare_total_fallback(pdf, max_pages=MAX_PAGES_SCANNED):
+def _find_actif_bare_total_fallback(pdf, max_pages=BILAN_TOTAL_MAX_PAGES):
     """Repli pour les documents où la ligne totale de l'Actif n'a pas de
     libellé explicite ("Total" seul, ex: ATTIJARI) : on se restreint aux
     pages dont le texte commence par "actif"/"actifs", et on prend la
     DERNIÈRE ligne libellée exactement "Total" (le total général est
-    toujours en bas de tableau, après d'éventuels sous-totaux non libellés)."""
+    toujours en bas de tableau, après d'éventuels sous-totaux non libellés).
+    max_pages=BILAN_TOTAL_MAX_PAGES (pas MAX_PAGES_SCANNED) : ce repli
+    cherche n'importe quelle ligne "Total" nue sur une page "actif", un motif
+    trop générique pour être scanné au-delà des toutes premières pages sans
+    risquer de capter un faux total sur une page d'annexe (voir
+    BILAN_TOTAL_MAX_PAGES)."""
     for page in pdf.pages[:max_pages]:
         if not _is_actif_page(page):
             continue
@@ -604,14 +641,17 @@ def _find_actif_bare_total_fallback(pdf, max_pages=MAX_PAGES_SCANNED):
     return None
 
 
-def _find_actif_unlabeled_total_fallback(pdf, max_pages=MAX_PAGES_SCANNED):
+def _find_actif_unlabeled_total_fallback(pdf, max_pages=BILAN_TOTAL_MAX_PAGES):
     """Second repli pour les documents où même le mot "Total" est absent
     (ex: BH, la dernière ligne du tableau Actif n'est composée que de
     nombres) : on prend la dernière ligne entièrement numérique de la page
     Actif comme total général.
 
     On ignore les lignes n'ayant qu'un seul cluster de valeur absolue ≤ 9
-    (numéros de notes de bas de page comme "1", "2", "(*)")."""
+    (numéros de notes de bas de page comme "1", "2", "(*)"). max_pages
+    restreint (voir _find_actif_bare_total_fallback/BILAN_TOTAL_MAX_PAGES) :
+    motif encore plus générique (n'importe quelle ligne 100% numérique), donc
+    encore plus sensible au même risque de faux positif sur une page d'annexe."""
     for page in pdf.pages[:max_pages]:
         if not _is_actif_page(page):
             continue
@@ -640,11 +680,32 @@ def _find_actif_unlabeled_total_fallback(pdf, max_pages=MAX_PAGES_SCANNED):
 
 
 def _find_total_actif(pdf):
-    value = _find_row_value(pdf, TOTAL_ACTIF_RE, header_token="net", page_filter=_is_actif_page)
+    value = _find_row_value(pdf, TOTAL_ACTIF_RE, header_token="net", page_filter=_is_actif_page,
+                             max_pages=BILAN_TOTAL_MAX_PAGES)
     if value is None:
         value = _find_actif_bare_total_fallback(pdf)
     if value is None:
         value = _find_actif_unlabeled_total_fallback(pdf)
+    return value
+
+
+def _find_total_passif(pdf):
+    """Wrapper dédié (plutôt qu'une entrée "direct" dans KPI_DEFINITIONS) :
+    même raisonnement que _find_total_actif, restreint à
+    BILAN_TOTAL_MAX_PAGES plutôt que MAX_PAGES_SCANNED par précaution
+    symétrique (le motif "^total ... passifs?" reste générique)."""
+    return _find_row_value(pdf, TOTAL_PASSIF_RE, header_token=None, page_filter=_is_passif_page,
+                            max_pages=BILAN_TOTAL_MAX_PAGES)
+
+
+def _find_capitaux_propres(pdf):
+    """Cherche en priorité "Total capitaux propres avant affectation" (le
+    vrai total final, incluant le résultat de l'exercice en cours) ; se
+    rabat sur "...avant résultat" seulement si la ligne "avant affectation"
+    est absente du document (voir TOTAL_CAPITAUX_PROPRES_AFFECTATION_RE)."""
+    value = _find_row_value(pdf, TOTAL_CAPITAUX_PROPRES_AFFECTATION_RE, header_token=None)
+    if value is None:
+        value = _find_row_value(pdf, TOTAL_CAPITAUX_PROPRES_RE, header_token=None)
     return value
 
 
@@ -653,8 +714,8 @@ def _find_total_actif(pdf):
 #   - "section" : (prefixe "ac"/"pa", code "1".."7", header_token)
 KPI_DEFINITIONS = [
     ("Total actif", "special", _find_total_actif),
-    ("Capitaux propres", "direct", TOTAL_CAPITAUX_PROPRES_RE, None, None),
-    ("Total Passif", "direct", TOTAL_PASSIF_RE, None, _is_passif_page),
+    ("Capitaux propres", "special", _find_capitaux_propres),
+    ("Total Passif", "special", _find_total_passif),
     ("Actifs incorporels", "section", "ac", "1", "net"),
     ("Actifs corporels", "section", "ac", "2", "net"),
     ("Placements", "section", "ac", "3", "net"),

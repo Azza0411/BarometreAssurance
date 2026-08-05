@@ -8,7 +8,9 @@ synthétiques, sans dépendre d'un vrai PDF."""
 from extraction.bilan_kpi_extractor import (
     _cluster_lines,
     _extract_numeric_clusters,
+    _find_capitaux_propres,
     _find_section_total,
+    _is_actif_page,
     _label_text,
     _section_code,
     _select_column_value,
@@ -190,3 +192,72 @@ def test_find_section_total_takes_last_numeric_line_before_next_section():
 
     value = _find_section_total(pdf, "ac", "3", "net")
     assert value == 40000.0  # dernière ligne (AC32) avant AC4, avant-dernière colonne
+
+
+# ─── _is_actif_page ─────────────────────────────────────────────────────────
+
+def test_is_actif_page_detects_marker_beyond_default_5_line_window():
+    # Cas BIAT 2025 : bandeau d'en-tête de 5 lignes avant "ACTIFS Brut Amort.
+    # Net Net" (ligne 6) -> une fenêtre lines_checked=5 la manque entièrement
+    # et la page entière (donc "Total actif") devient introuvable.
+    text = (
+        "Assurances BIAT\n"
+        "Bilan\n"
+        "Arrete au 31/12/2025\n"
+        "Unite : en dinars\n"
+        "Exercice clos le 31/12/2025\n"
+        "ACTIFS Brut Amort. Net Net\n"
+    )
+    page = FakePage(text=text, words=[])
+    assert _is_actif_page(page) is True
+
+
+def test_is_actif_page_still_bounded_past_widened_window():
+    # La fenêtre elargie (10) reste une fenetre : un marqueur trop tardif
+    # (ligne 11) ne doit toujours pas etre detecte comme page Actif.
+    text = "\n".join([f"ligne bruit {i}" for i in range(10)] + ["ACTIFS Brut Amort. Net Net"])
+    page = FakePage(text=text, words=[])
+    assert _is_actif_page(page) is False
+
+
+# ─── _find_capitaux_propres ─────────────────────────────────────────────────
+
+def test_find_capitaux_propres_prefers_avant_affectation_over_avant_resultat():
+    # Cas BIAT 2025 : le document a les deux lignes. "avant resultat" est
+    # une valeur INTERMEDIAIRE (avant d'ajouter le resultat de l'exercice en
+    # cours) ; "avant affectation" est le vrai total final. Utiliser la
+    # premiere ligne trouvee textuellement (l'intermediaire) sous-estimait
+    # les capitaux propres de exactement le montant du resultat de
+    # l'exercice (103 137 732 au lieu de 128 786 575), gonflant le ROE affiche.
+    avant_resultat = [
+        W("Total", 0, top=100), W("capitaux", 50, top=100), W("propres", 110, top=100),
+        W("avant", 170, top=100), W("resultat", 220, top=100), W("de", 280, top=100),
+        W("l'exercice", 300, top=100), W("103137732", 400, top=100),
+    ]
+    resultat_exercice = [
+        W("CP6", 0, top=110), W("Resultat", 50, top=110), W("de", 110, top=110),
+        W("l'exercice", 140, top=110), W("25648843", 400, top=110),
+    ]
+    avant_affectation = [
+        W("Total", 0, top=120), W("capitaux", 50, top=120), W("propres", 110, top=120),
+        W("avant", 170, top=120), W("affectation", 220, top=120), W("128786575", 400, top=120),
+    ]
+    words = avant_resultat + resultat_exercice + avant_affectation
+    page = FakePage(text="Passif\n", words=words)
+    pdf = FakePDF(pages=[page])
+
+    assert _find_capitaux_propres(pdf) == 128786575.0
+
+
+def test_find_capitaux_propres_falls_back_to_avant_resultat_when_no_affectation_line():
+    # Documents sans ligne "avant affectation" distincte (le "avant resultat"
+    # est alors deja le total final) : ne doit pas renvoyer None.
+    avant_resultat = [
+        W("Total", 0, top=100), W("capitaux", 50, top=100), W("propres", 110, top=100),
+        W("avant", 170, top=100), W("resultat", 220, top=100), W("de", 280, top=100),
+        W("l'exercice", 300, top=100), W("50000000", 400, top=100),
+    ]
+    page = FakePage(text="Passif\n", words=avant_resultat)
+    pdf = FakePDF(pages=[page])
+
+    assert _find_capitaux_propres(pdf) == 50000000.0
