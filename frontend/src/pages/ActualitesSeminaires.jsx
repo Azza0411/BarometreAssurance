@@ -29,7 +29,21 @@ const LOGO_COMPANIES = [
   { key:"AMI Assurances",     logo:"/logos/AMI.png"        },
   { key:"Attijari Assurance", logo:"/logos/Attijari.png"   },
   { key:"Tunis Re",           logo:"/logos/TunisRe.png"    },
+  /* Compagnies Takaful — absentes jusqu'ici du filtre par compagnie (retour
+     utilisateur 2026-08-21) ; ajoutées ici en cohérence avec la même
+     correspondance de tag "compagnie" ajoutée côté scraping (veille.py::
+     INSURANCE_COMPANIES). Logos déjà présents (utilisés par ailleurs, voir
+     frontend/src/utils/logos.js). */
+  { key:"AT-Takafulia",       logo:"/logos/At-Takafulia.png"     },
+  { key:"Zitouna Takaful",    logo:"/logos/Zitouna-Takaful.png"  },
+  { key:"El Amana Takaful",   logo:"/logos/El Amana Takaful.png" },
 ];
+
+/* Même correspondance exacte que le filtre par logo (LogoFilterBar) — pas de
+   logo pour une compagnie absente de LOGO_COMPANIES, repli sur le texte. */
+function logoForCompanyName(name) {
+  return LOGO_COMPANIES.find(c => c.key === name)?.logo ?? null;
+}
 
 const SOURCES  = ["Toutes les sources", "ILBOURSA", "ATLAS MAGAZINE"];
 const PERIODES = [
@@ -294,22 +308,19 @@ function AlaUne({ items }) {
   );
 }
 
-/* ══ LOGO BAR — bande défilante sans cadres ═════════════════════════════════ */
+/* ══ LOGO BAR — rangée fixe, sans défilement automatique ════════════════════
+   Défilait en boucle continue (animation CSS translateX) jusqu'ici — gênant
+   pour cliquer sur un logo précis et incohérent avec le reste de la
+   plateforme (aucune autre page n'anime son filtre par compagnie).
+   Remplacé par une rangée statique qui se répartit sur plusieurs lignes
+   (flex-wrap) si elle ne tient pas en largeur, comme un filtre normal. */
 const MARQUEE_STYLE = `
-@keyframes marquee-logos {
-  from { transform: translateX(0); }
-  to   { transform: translateX(-50%); }
-}
 .logo-track {
-  animation: marquee-logos 36s linear infinite;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
-  width: max-content;
   padding: 8px 4px;
-}
-.logo-track-wrap:hover .logo-track {
-  animation-play-state: paused;
 }
 .logo-item {
   display: flex;
@@ -337,10 +348,6 @@ const MARQUEE_STYLE = `
 `;
 
 function LogoFilterBar({ selected, onSelect, counts }) {
-
-  /* Logos dupliqués pour boucle seamless */
-  const doubled = [...LOGO_COMPANIES, ...LOGO_COMPANIES];
-
   return (
     <>
       <style>{MARQUEE_STYLE}</style>
@@ -375,17 +382,10 @@ function LogoFilterBar({ selected, onSelect, counts }) {
           }}>Toutes</button>
         </div>
 
-        {/* ── Bande défilante claire ── */}
-        <div className="logo-track-wrap" style={{ overflow:"hidden", position:"relative" }}>
-          {/* Fondu gauche */}
-          <div style={{ position:"absolute", left:0, top:0, bottom:0, width:32,
-            background:"linear-gradient(90deg,white,transparent)", zIndex:2, pointerEvents:"none" }}/>
-          {/* Fondu droit */}
-          <div style={{ position:"absolute", right:0, top:0, bottom:0, width:32,
-            background:"linear-gradient(270deg,white,transparent)", zIndex:2, pointerEvents:"none" }}/>
-
+        {/* ── Rangée de logos, fixe (se répartit sur plusieurs lignes si besoin) ── */}
+        <div className="logo-track-wrap">
           <div className="logo-track">
-            {doubled.map(({ key, logo }, i) => {
+            {LOGO_COMPANIES.map(({ key, logo }, i) => {
               const active = selected === key;
               return (
                 <div
@@ -573,7 +573,13 @@ export default function ActualitesSeminaires() {
         <AlaUne items={uneItems}/>
       </div>
 
-      {/* ── Barre filtres + logos — sticky ── */}
+      {/* ── Barre filtres + logos — sticky. (Tentative de coquille à hauteur
+          fixe façon Veille réglementaire annulée le 2026-08-20 : cette page
+          a un carrousel de 300px en plus, ce que Veille réglementaire n'a
+          pas — la coquille fixe ne laissait presque plus de place au
+          tableau sur un écran réel, jusqu'à le rendre invisible. Repli sur
+          "sticky", qui fonctionnait déjà correctement à part l'animation
+          des logos, déjà supprimée séparément.) ── */}
       <div style={{ position:"sticky", top:0, zIndex:20, background:"#F8F9FA", padding:"12px 32px 0", display:"flex", flexDirection:"column", gap:10 }}>
 
         {/* ── Barre filtres ── */}
@@ -694,8 +700,13 @@ export default function ActualitesSeminaires() {
                       }}>{a.resume}</span>
                     ) : <span style={{ color:"#C0C0C8", fontStyle:"italic" }}>—</span>}
                   </td>
-                  <td style={{ padding:"12px 14px", color:D, whiteSpace:"nowrap", fontSize:11 }}>
-                    {a.compagnie || "—"}
+                  <td style={{ padding:"12px 14px", color:D, whiteSpace:"nowrap", fontSize:11 }} title={a.compagnie || undefined}>
+                    {a.compagnie
+                      ? (logoForCompanyName(a.compagnie)
+                          ? <img src={logoForCompanyName(a.compagnie)} alt={a.compagnie} style={{ height:22, maxWidth:64, objectFit:"contain", display:"block" }}/>
+                          : a.compagnie)
+                      : "—"
+                    }
                   </td>
                   <td style={{ padding:"12px 14px", whiteSpace:"nowrap" }}>
                     <SrcBadge src={a.src}/>

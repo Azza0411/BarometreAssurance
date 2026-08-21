@@ -3,12 +3,16 @@
 import os
 from flask import Blueprint, jsonify, send_file, abort, request
 from database.repository import get_connection, get_available_years
-from api.utils.formatters import required_year_arg
+from api.utils.formatters import required_year_arg, kpis_by_year
 from api.services.quality import build_quality_report
 from api.services.pipeline_audit import build_pipeline_audit
 from api.services.pdf_sections import get_pdf_sections, _cache as _pdf_cache
 from api.services.pdf_cell_coords import get_cell_coords
+from api.services.sector_pdf_cell_coords import get_sector_cell_coords
+from api.services.arabic_pdf_cell_coords import get_arabic_cell_coords, COMPANY_CODE as _ARABIC_COMPANY_CODE
 from api.services.anomalies_service import build_anomalies_systeme, generate_rapport_ia
+from api.routes.apercu_marche import _takaful_sector_snapshot
+from api.utils.formatters import PRIMES_UNIT_DIVISOR
 from extraction.kpi_definitions import get_formule, get_context, CONTEXT_LABELS
 
 bp = Blueprint("qualite", __name__)
@@ -39,22 +43,80 @@ def rapport_qualite():
         conn.close()
 
 
+@bp.route("/api/sector-kpi-value")
+def sector_kpi_value():
+    """Valeurs brutes des KPI sectoriels (FTUSA/CGA/INS, pas de société
+    associée) pour une année — pendant sectoriel de `kpi_detail[code].kpis_raw`
+    (voir /api/rapport-qualite) qui, lui, ne couvre que les sociétés CMF.
+    Ajouté le 2026-08-19 pour que KpiDetail.jsx puisse résoudre la valeur des
+    KPI "secteur" (Population, PIB, Total Primes marché, ratios techniques
+    marché...) avec exactement la même mécanique extrait/calculé que les KPI
+    société, sur demande explicite de l'utilisateur ("on ne peut pas voir la
+    source des KPI sectoriels").
+
+    GET /api/sector-kpi-value?annee=2024
+    → {"Total Primes émises": 4181..., "Population Totale": 11..., ...}
+    Fusion FTUSA+CGA+INS : les trois référentiels de noms de KPI ne se
+    recoupent pas (vérifié dans extraction/*_kpi_extractor.py), donc aucune
+    collision possible en les fusionnant dans un seul dict.
+    """
+    annee = required_year_arg()
+    conn = get_connection()
+    try:
+        merged = {}
+        for source in ("FTUSA", "CGA", "INS"):
+            merged.update(kpis_by_year(conn, source).get(annee, {}))
+
+        # KPI sectoriels TAKAFUL (Total des contributions, Taux de
+        # pénétration, Densité d'assurance) : absents des sources FTUSA/CGA/
+        # INS ci-dessus (agrégat CMF, voir _takaful_sector_snapshot), donc
+        # jusqu'ici invisibles pour KpiDetail — le bouton "Voir le document
+        # source" affichait à tort, sur la bannière Aperçu Marché en vue
+        # Takaful, la formule/source CONVENTIONNELLE (FTUSA) alors que le
+        # chiffre affiché venait réellement de cet agrégat CMF. Calculées ici
+        # avec exactement la même formule que apercu_marche_profil_pays
+        # (dont c'est le seul autre point de calcul) pour ne jamais diverger.
+        snap = _takaful_sector_snapshot(conn, annee)
+        pib = merged.get("Produit Interieur Brut (PIB)")
+        population = merged.get("Population Totale")
+        total = snap["total"]
+        total_mdt = total / PRIMES_UNIT_DIVISOR if total is not None else None
+        merged["Total des contributions Takaful"] = total
+        if total_mdt is not None and pib:
+            merged["Taux de pénétration Takaful"] = total_mdt / pib * 100
+        if total is not None and population:
+            merged["Densité de l'assurance Takaful"] = total / population
+
+        return jsonify(merged)
+    finally:
+        conn.close()
+
+
 @bp.route("/api/annees-disponibles")
 def annees_disponibles():
     """Années présentes en base pour une source donnée (défaut CMF), bornées
-    à la plage validée 2014-2024.
+    à la plage validée 2014-2025.
 
-    GET /api/annees-disponibles?source=CMF → {"annees": [2024, 2023, ..., 2014]}
+    GET /api/annees-disponibles?source=CMF → {"annees": [2025, 2024, ..., 2014]}
     Utilisé par les sélecteurs d'année (Qualité Data, Anomalies Système,
     KpiDetail, Analyse Comparative) pour rester cohérents entre eux — plage
-    fixée à 2014-2024 (décidé avec l'utilisateur), pas la plage brute
-    disponible en base qui peut contenir des années plus récentes non
-    encore validées pour affichage.
+    bornée manuellement plutôt que la plage brute disponible en base, pour ne
+    jamais exposer une année dont les données n'ont pas encore été jugées
+    fiables pour l'affichage.
+
+    Plafond relevé de 2024 à 2025 le 2026-08-16 : les 223 documents CMF 2025
+    sont désormais extraits et leurs KPI dérivés recalculés correctement
+    (voir extraction/CAS_PARTICULIERS_CALCULS.md, bug de lecture
+    auto-référentielle corrigé) — seule "Part de marché (%)" reste
+    systématiquement absente pour 2025 (total sectoriel FTUSA pas encore
+    publié, pas un problème d'extraction CMF), déjà signalé explicitement
+    côté frontend (AnalyseComparative.jsx) plutôt que de bloquer toute
+    l'année.
     """
     source = request.args.get("source", "CMF").strip().upper()
     conn = get_connection()
     try:
-        years = [y for y in get_available_years(conn, source) if 2014 <= y <= 2024]
+        years = [y for y in get_available_years(conn, source) if 2014 <= y <= 2025]
         return jsonify({"annees": years})
     finally:
         conn.close()
@@ -183,6 +245,79 @@ def pdf_cell_coords():
     coords, reason = get_cell_coords(code, annee_int, page_int, ligne, colonne)
     if coords is None:
         return jsonify({"found": False, "reason": reason}), 200
+    return jsonify({"found": True, **coords})
+
+
+@bp.route("/api/sector-pdf-cell")
+def sector_pdf_cell():
+    """
+    Équivalent sectoriel de /api/pdf-cell-coords : pour un KPI FTUSA/CGA
+    (Population, PIB n'ont pas de PDF — voir kpiMeta.js, INS exclu). Pas de
+    paramètre `page` en entrée (contrairement à la version CMF) : la page
+    n'est pas connue à l'avance côté frontend pour ces documents, elle est
+    déterminée ici (voir sector_pdf_cell_coords.py).
+
+    GET /api/sector-pdf-cell?source=FTUSA&annee=2024&ligne=Primes%20émises&colonne=TOTAL%20(AFF.%20DIR%20+%20ACC)
+    → { found: true, page, x0, y0, x1, y1, page_width, page_height }
+    → { found: false, reason, page }  (page peut être non-null même en échec,
+      si la page a été déterminée mais pas la cellule précise)
+    """
+    source  = request.args.get("source",  "").strip()
+    annee   = request.args.get("annee",   "").strip()
+    ligne   = request.args.get("ligne",   "").strip()
+    colonne = request.args.get("colonne", "").strip()
+
+    if not all([source, annee, ligne, colonne]):
+        abort(400, "Paramètres requis : source, annee, ligne, colonne")
+
+    try:
+        annee_int = int(annee)
+    except ValueError:
+        abort(400, "annee doit être un entier")
+
+    coords, reason = get_sector_cell_coords(source, annee_int, ligne, colonne)
+    if coords is None:
+        return jsonify({"found": False, **reason}), 200
+    return jsonify({"found": True, **coords})
+
+
+@bp.route("/api/arabic-pdf-cell")
+def arabic_pdf_cell():
+    """
+    Équivalent AL_AMANAH_TAKAFUL (PDF en arabe) de /api/pdf-cell-coords : le
+    `ligne`/`colonne` de kpiMeta.js (français) ne s'applique pas à ce
+    document, donc pas de paramètre `page`/`ligne`/`colonne` en entrée —
+    juste le KPI par sa clé de stockage (ex: "Total actif"), la recherche
+    RTL et la page étant déterminées ici (voir arabic_pdf_cell_coords.py).
+    Portée limitée aux 4 KPI "primaires" (Total actif, Capitaux propres,
+    Résultat Net, Primes émises par assurance) ; PDF non disponible en
+    surlignage sur les pages scannées (page seule, voir raison).
+
+    GET /api/arabic-pdf-cell?code=AL_AMANAH_TAKAFUL&annee=2024&kpi=Total%20actif
+    → { found: true, page, x0, y0, x1, y1, page_width, page_height }
+    → { found: false, reason, page }  (page peut être non-null même en échec)
+    """
+    code  = request.args.get("code",  "").strip().upper()
+    annee = request.args.get("annee", "").strip()
+    kpi   = request.args.get("kpi",   "").strip()
+
+    if code != _ARABIC_COMPANY_CODE:
+        abort(400, f"Source non prise en charge : {code}")
+    if not all([annee, kpi]):
+        abort(400, "Paramètres requis : annee, kpi")
+
+    try:
+        annee_int = int(annee)
+    except ValueError:
+        abort(400, "annee doit être un entier")
+
+    conn = get_connection()
+    try:
+        coords, reason = get_arabic_cell_coords(conn, annee_int, kpi)
+    finally:
+        conn.close()
+    if coords is None:
+        return jsonify({"found": False, **reason}), 200
     return jsonify({"found": True, **coords})
 
 

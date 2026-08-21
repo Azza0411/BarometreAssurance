@@ -15,7 +15,6 @@ import QualiteDonnees         from "./pages/QualiteDonnees";
 import KpiDetail              from "./pages/KpiDetail";
 import RapportPipeline        from "./pages/RapportPipeline";
 import AnomaliesSysteme       from "./pages/AnomaliesSysteme";
-import SimulateurWhatIf       from "./pages/SimulateurWhatIf";
 
 /* ─── palette tokens ─── */
 const C = {
@@ -93,13 +92,6 @@ const MODULES = [
       <path d="M4 4h12v12H4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
       <path d="M7 8h6M7 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       <path d="M13 2v3M7 2v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-    </svg> },
-  { to:"/simulateur",           label:"Simulateur what-if",   tag:"Scénarios · Projection",
-    desc:"Ajustez les variables clés d'une compagnie ou du marché et visualisez l'impact recalculé en direct.",
-    color:"#9333EA",
-    icon:<svg viewBox="0 0 20 20" fill="none" width="16" height="16">
-      <path d="M4 16V8M10 16V4M16 16v-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-      <circle cx="4" cy="8" r="1.4" fill="currentColor"/><circle cx="10" cy="4" r="1.4" fill="currentColor"/><circle cx="16" cy="10" r="1.4" fill="currentColor"/>
     </svg> },
 ];
 
@@ -258,6 +250,13 @@ function ModuleCard({ mod }) {
 }
 
 /* ─── Slides hero ─── */
+/* Les 6 slides couvraient jusqu'ici surtout la vue macro (2 pointaient vers
+   /fiches, 2 vers /analyse-comparative) et le chiffre "11 compagnies" datait
+   d'avant l'extension à 24 compagnies (dont 3 Takaful). Contenu actualisé
+   (2026-08-21) : chaque slide pointe désormais vers une destination
+   distincte, dont 2 nouvelles capacités construites depuis (Qualité des
+   données/traçabilité, Anomalies Système/notifications) - mêmes images de
+   fond (aucune nouvelle image disponible), texte et destination repensés. */
 const SLIDES = [
   {
     imgSrc: "/imagesFond/CGA.png",
@@ -272,7 +271,7 @@ const SLIDES = [
     imgSrc: "/imagesFond/CMF.png",
     tag: "CMF · Marchés financiers",
     headline: "Performance & ratios\nau cœur de l'analyse",
-    body: "La Commission du Marché Financier publie les données de performance des sociétés cotées. Ratios combinés, sinistralité et tendances de profitabilité sur 6 exercices.",
+    body: "La Commission du Marché Financier publie les données de performance des sociétés cotées. Ratios combinés, sinistralité et rentabilité — avec une logique dédiée pour les assureurs Takaful, distincte du conventionnel.",
     cta: "Ouvrir l'analyse comparative",
     to: "/analyse-comparative",
   },
@@ -280,8 +279,8 @@ const SLIDES = [
     /* FTUSA — architecture Tunis moderne / médina */
     imgSrc: "/imagesFond/FTUSA.png",
     tag: "FTUSA · Secteur assurance",
-    headline: "11 compagnies,\nune vision d'ensemble",
-    body: "La Fédération Tunisienne des Sociétés d'Assurances regroupe tous les acteurs Vie & Non-Vie. Parts de marché, primes émises et résultats techniques sous un même tableau de bord.",
+    headline: "24 compagnies,\nune vision d'ensemble",
+    body: "La Fédération Tunisienne des Sociétés d'Assurances regroupe l'ensemble des acteurs Vie, Non-Vie et Takaful. Parts de marché, primes émises et résultats techniques sous un même tableau de bord.",
     cta: "Explorer l'aperçu marché",
     to: "/apercu-marche",
   },
@@ -290,26 +289,26 @@ const SLIDES = [
     imgSrc: "/imagesFond/BVMT.png",
     tag: "BVMT · Bourse & cotations",
     headline: "La valeur boursière\ndes assureurs tunisiens",
-    body: "La Bourse des Valeurs Mobilières de Tunis révèle capitalisations et cours des compagnies cotées. Suivez STAR, Salim, Tunis Re et Carte en temps réel.",
+    body: "La Bourse des Valeurs Mobilières de Tunis révèle capitalisations et cours des compagnies cotées. Suivez STAR, Tunis Re, Carte et les autres acteurs cotés en temps réel.",
     cta: "Consulter les fiches compagnies",
     to: "/fiches",
   },
   {
     /* STAR / COMAR — Tunis Les Berges du Lac / quartier affaires */
     imgSrc: "/imagesFond/STAR.png",
-    tag: "STAR · Analyse compagnie",
-    headline: "Décryptez chaque acteur\ndu marché en détail",
-    body: "Fiches individuelles par compagnie : bilan, compte de résultat, ratio de solvabilité, sinistralité branche par branche. Benchmark précis pour vos décisions stratégiques.",
-    cta: "Voir les fiches entreprises",
-    to: "/fiches",
+    tag: "Qualité des données · Traçabilité",
+    headline: "Chaque chiffre,\nvérifiable jusqu'à sa source",
+    body: "Aucune valeur affichée sans preuve : chaque indicateur renvoie directement à sa cellule d'origine dans le rapport financier PDF. Statut Extrait, Calculé ou Aberrant pour chaque compagnie et chaque exercice.",
+    cta: "Explorer la qualité des données",
+    to: "/qualite-donnees",
   },
   {
     imgSrc: "/imagesFond/LLOYD.png",
-    tag: "Lloyd's · Réassurance",
-    headline: "Réassurance & marchés\ninternationaux",
-    body: "La place de Lloyd's et les grands réassureurs internationaux structurent la capacité et les conditions de souscription du marché tunisien. Un prisme indispensable à l'analyse sectorielle.",
-    cta: "Explorer l'analyse comparative",
-    to: "/analyse-comparative",
+    tag: "Anomalies · Surveillance continue",
+    headline: "Des écarts détectés\navant qu'ils ne deviennent des erreurs",
+    body: "Variations improbables, déséquilibres de bilan, échecs d'extraction : la plateforme surveille automatiquement chaque donnée et notifie toute nouveauté ou anomalie détectée.",
+    cta: "Voir les anomalies système",
+    to: "/anomalies-systeme",
   },
 ];
 
@@ -353,7 +352,7 @@ function EYFrame({ width=720, height=240, strokeW=7, fill="#030810",
 }
 
 /* ─── Brand EY navbar ─── */
-function NavBrand({ onClick }) {
+function NavBrand({ onClick, compact }) {
   return (
     <div onClick={onClick} style={{
       height:"100%", display:"flex", alignItems:"center",
@@ -364,30 +363,32 @@ function NavBrand({ onClick }) {
       {/* Zone logo */}
       <div style={{
         height:"100%", display:"flex", alignItems:"center",
-        padding:"0 18px 0 20px",
-        borderRight:"1.5px solid rgba(255,230,0,.3)",
+        padding: compact ? "0 12px 0 14px" : "0 18px 0 20px",
+        borderRight:"1.5px solid rgba(255,255,255,.14)",
       }}>
         <img src="/imagesFond/LogoEY.png" alt="EY" style={{
-          height:64, width:"auto", objectFit:"contain",
+          height: compact ? 48 : 64, width:"auto", objectFit:"contain",
           filter:"none",
         }}/>
       </div>
 
       {/* Zone texte */}
-      <div style={{ padding:"0 28px", lineHeight:1.38 }}>
+      <div style={{ padding: compact ? "0 16px" : "0 28px", lineHeight:1.38 }}>
         <div style={{
-          fontSize:17, fontWeight:800, letterSpacing:"-0.5px",
+          fontSize: compact ? 14 : 17, fontWeight:800, letterSpacing:"-0.5px",
           color:"white", whiteSpace:"nowrap",
         }}>
           Baromètre&nbsp;<span style={{ color:C.yellow }}>Assurance TN</span>
         </div>
-        <div style={{
-          fontSize:10, color:"rgba(255,255,255,.36)",
-          letterSpacing:"2.5px", textTransform:"uppercase",
-          whiteSpace:"nowrap", marginTop:3,
-        }}>
-          Intelligence marché · Tunisie
-        </div>
+        {!compact && (
+          <div style={{
+            fontSize:10, color:"rgba(255,255,255,.36)",
+            letterSpacing:"2.5px", textTransform:"uppercase",
+            whiteSpace:"nowrap", marginTop:3,
+          }}>
+            Intelligence marché · Tunisie
+          </div>
+        )}
       </div>
     </div>
   );
@@ -400,7 +401,6 @@ function Accueil() {
   const [introFading, setIntroFading]   = useState(false);
   const [slide, setSlide]               = useState(0);
   const [slideVisible, setSlideVisible] = useState(true);
-  const [hovMod, setHovMod]             = useState(null);
 
   /* intro → disparition fluide → hero */
   useEffect(() => {
@@ -467,51 +467,20 @@ function Accueil() {
         opacity:.35, zIndex:3, pointerEvents:"none",
       }}/>
 
-      {/* ══ NAVBAR ══ */}
-      <nav style={{
-        position:"absolute", top:0, left:0, right:0, zIndex:20,
-        display:"flex", alignItems:"center",
-        height:72, background:"#2E2E38",
-        animation:"navDown .65s cubic-bezier(.22,1,.36,1) both",
-      }}>
-        <NavBrand/>
-
-        <div style={{ display:"flex", alignItems:"center", flex:1, height:"100%" }}>
-          {MODULES.map((m, i) => {
-            const isH = hovMod === i;
-            return (
-              <button key={m.to} onClick={() => nav(m.to)}
-                onMouseEnter={() => setHovMod(i)} onMouseLeave={() => setHovMod(null)}
-                style={{
-                  background:"none", border:"none", cursor:"pointer",
-                  padding:"0 14px", height:"100%",
-                  display:"flex", alignItems:"center",
-                  fontSize:12.5, fontWeight: isH ? 500 : 400,
-                  color: isH ? "white" : "rgba(255,255,255,.68)",
-                  borderBottom:`3px solid ${isH ? C.yellow : "transparent"}`,
-                  borderTop:"3px solid transparent",
-                  transition:"color .18s, border-color .18s",
-                  whiteSpace:"nowrap",
-                }}>
-                {m.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div style={{ display:"flex", alignItems:"center", height:"100%",
-          flexShrink:0, borderLeft:"1px solid rgba(255,255,255,.1)" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 18px",
-            height:"100%", cursor:"pointer" }}>
-            <svg viewBox="0 0 18 18" fill="none" width="13" height="13">
-              <circle cx="9" cy="9" r="7.5" stroke="rgba(255,255,255,.6)" strokeWidth="1.3"/>
-              <ellipse cx="9" cy="9" rx="3.2" ry="7.5" stroke="rgba(255,255,255,.6)" strokeWidth="1.3"/>
-              <path d="M1.5 9h15" stroke="rgba(255,255,255,.6)" strokeWidth="1.3"/>
-            </svg>
-            <span style={{ fontSize:12, color:"rgba(255,255,255,.6)" }}>Tunisie</span>
-          </div>
-        </div>
-      </nav>
+      {/* ══ NAVBAR — même composant partagé que le reste de la plateforme
+          (AppNavbar, défini plus bas) ══
+          Avant : copie manuelle propre à l'Accueil (72px, position absolute,
+          animation d'entrée "navDown"), qui avait fini par diverger du
+          composant partagé — il lui manquait les boutons Anomalies/Qualité
+          et la cloche de notifications, présents partout ailleurs (signalé
+          par l'utilisateur le 2026-08-20, captures d'écran à l'appui : la
+          navbar Accueil n'avait ni ⚠️ Anomalies, ni ✓ Qualité, ni 🔔).
+          Utiliser directement AppNavbar élimine la duplication : impossible
+          que les deux redivergent à l'avenir. Seule différence visuelle :
+          92px au lieu de 72px et pas d'animation d'entrée dédiée - les
+          éléments du hero (positionnés en pourcentages de la fenêtre, pas
+          relatifs à la hauteur de la navbar) n'en dépendent pas. */}
+      <AppNavbar/>
 
       {/* ══ CADRE EY HERO — contenu slide dans le parallélogramme ══ */}
       <div style={{
@@ -619,10 +588,6 @@ function Accueil() {
         }
         @keyframes slideUp {
           from { opacity:0; transform:translateY(18px); }
-          to   { opacity:1; transform:translateY(0); }
-        }
-        @keyframes navDown {
-          from { opacity:0; transform:translateY(-100%); }
           to   { opacity:1; transform:translateY(0); }
         }
         @keyframes progressGrow {
@@ -751,11 +716,36 @@ function Accueil() {
   );
 }
 
+/* ─── Taille de fenêtre : la navbar (logo + 8 modules + Anomalies/Qualité/
+   notifications/globe) dépasse ~1880px de contenu naturel — au-delà de la
+   pleine largeur 1920px, elle poussait les boutons de droite hors écran
+   (invisibles, pas juste "coupés") sur toute résolution plus modeste
+   (1366/1440/1680px, fenêtre non maximisée, DevTools ouvert...). Le
+   scaling ci-dessous réduit paddings/police en dessous de 1780px pour que
+   tout reste visible sans scroll sur la plupart des résolutions réelles ;
+   le scroll horizontal sur les modules (voir plus bas) reste le filet de
+   sécurité ultime en dessous de ça, plutôt que de laisser des boutons
+   totalement inaccessibles. ─── */
+function useWindowWidth() {
+  const [w, setW] = useState(window.innerWidth);
+  useEffect(() => {
+    const fn = () => setW(window.innerWidth);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+  return w;
+}
+
 /* ─── Navbar partagée (toutes les pages hors Accueil) ─── */
 function AppNavbar() {
   const nav  = useNavigate();
   const loc  = useLocation();
   const [hov, setHov] = useState(null);
+  const winW = useWindowWidth();
+  const compact = winW < 1780;
+  const modulePad = compact ? 6 : 10;
+  const moduleFont = compact ? 11.5 : 12.5;
+
   return (
     <nav style={{
       position:"fixed", top:0, left:0, right:0, zIndex:100,
@@ -764,10 +754,13 @@ function AppNavbar() {
       boxShadow:"0 1px 0 rgba(255,255,255,.07)",
       fontFamily:"Barlow,system-ui,sans-serif",
     }}>
-      <NavBrand onClick={() => nav("/accueil")}/>
+      <NavBrand onClick={() => nav("/accueil")} compact={compact}/>
 
-      {/* Modules */}
-      <div style={{ display:"flex", alignItems:"center", flex:1, height:"100%" }}>
+      {/* Modules — overflow-x:auto en filet de sécurité : si même la
+          version compacte ne suffit pas (fenêtre très étroite), on peut
+          faire défiler cette zone plutôt que de perdre des boutons hors
+          écran. */}
+      <div style={{ display:"flex", alignItems:"stretch", flex:1, height:"100%", minWidth:0, overflowX:"auto", scrollbarWidth:"none" }}>
         {MODULES.map((m, i) => {
           const isActive = loc.pathname === m.to;
           const isH = hov === i;
@@ -776,9 +769,9 @@ function AppNavbar() {
               onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}
               style={{
                 background:"none", border:"none", cursor:"pointer",
-                padding:"0 10px", height:"100%",
-                display:"flex", alignItems:"center",
-                fontSize:12.5,
+                padding:`0 ${modulePad}px`, height:"100%", flex:"1 1 0", minWidth:"fit-content",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                fontSize:moduleFont,
                 fontWeight: isActive || isH ? 600 : 400,
                 color: isActive ? C.yellow : isH ? "white" : "rgba(255,255,255,.65)",
                 borderBottom:`3px solid ${isActive ? C.yellow : isH ? "rgba(255,255,255,.3)" : "transparent"}`,
@@ -806,7 +799,7 @@ function AppNavbar() {
                 background: isAnom ? "rgba(99,102,241,.14)" : "none",
                 border:`1px solid ${isAnom ? "rgba(99,102,241,.4)" : "transparent"}`,
                 borderRadius:8, cursor:"pointer",
-                padding:"7px 12px", margin:"0 2px",
+                padding: compact ? "6px 8px" : "7px 12px", margin:"0 2px", flexShrink:0,
                 display:"flex", alignItems:"center", gap:6,
                 fontSize:11.5, fontWeight: isAnom ? 700 : 500,
                 color: isAnom ? "#818CF8" : "rgba(255,255,255,.55)",
@@ -838,7 +831,7 @@ function AppNavbar() {
                 background: isQualite ? "rgba(255,230,0,.12)" : "none",
                 border:`1px solid ${isQualite ? "rgba(255,230,0,.35)" : "transparent"}`,
                 borderRadius:8, cursor:"pointer",
-                padding:"7px 14px", margin:"0 8px",
+                padding: compact ? "6px 10px" : "7px 14px", margin: compact ? "0 4px" : "0 8px", flexShrink:0,
                 display:"flex", alignItems:"center", gap:7,
                 fontSize:12, fontWeight: isQualite ? 700 : 500,
                 color: isQualite ? C.yellow : "rgba(255,255,255,.55)",
@@ -877,14 +870,14 @@ function AppNavbar() {
         {/* Globe Tunisie */}
         <div style={{ display:"flex", alignItems:"center", height:"100%",
           borderLeft:"1px solid rgba(255,255,255,.1)" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, padding:"0 18px",
+          <div style={{ display:"flex", alignItems:"center", gap:6, padding: compact ? "0 12px" : "0 18px",
             height:"100%", cursor:"pointer" }}>
             <svg viewBox="0 0 18 18" fill="none" width="13" height="13">
               <circle cx="9" cy="9" r="7.5" stroke="rgba(255,255,255,.6)" strokeWidth="1.3"/>
               <ellipse cx="9" cy="9" rx="3.2" ry="7.5" stroke="rgba(255,255,255,.6)" strokeWidth="1.3"/>
               <path d="M1.5 9h15" stroke="rgba(255,255,255,.6)" strokeWidth="1.3"/>
             </svg>
-            <span style={{ fontSize:12, color:"rgba(255,255,255,.6)" }}>Tunisie</span>
+            {!compact && <span style={{ fontSize:12, color:"rgba(255,255,255,.6)" }}>Tunisie</span>}
           </div>
         </div>
       </div>
@@ -952,7 +945,6 @@ function AppShell() {
             <Route path="/kpi-detail"            element={<KpiDetail/>}/>
             <Route path="/rapport-pipeline"      element={<RapportPipeline/>}/>
             <Route path="/anomalies-systeme"     element={<AnomaliesSysteme/>}/>
-            <Route path="/simulateur"            element={<SimulateurWhatIf/>}/>
           </Routes>
         </PageTransition>
       </main>

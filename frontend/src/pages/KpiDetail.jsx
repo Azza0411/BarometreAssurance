@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { KPI_META } from "../utils/kpiMeta";
+import { isTakaful } from "../utils/famille";
 import { kpiLabel } from "../utils/kpiCatalog";
 import { classifyCell, resolveCellVisual } from "../utils/kpiStatus";
 import AnomalyDetail from "../components/AnomalyDetail";
@@ -59,8 +60,21 @@ function PdfCanvas({ pdfUrl, pageNum, highlight }) {
   const pdfDocCacheRef = useRef({ url: null, pdf: null });
   const [loading, setLoading] = useState(false);
   const [zoom, setZoom] = useState(1.0);
+  // Rotation manuelle ajoutée par l'utilisateur (0/90/180/270), en plus de
+  // la rotation propre du PDF (page.rotate) — utile pour les rapports
+  // sectoriels FTUSA/CGA dont le tableau chiffré est dessiné à 90° dans le
+  // flux de contenu (pas via /Rotate, voir sector_pdf_cell_coords.py), donc
+  // toujours rendu "sur le côté" sans ce contrôle. Réinitialisée à chaque
+  // changement de document (pdfUrl) pour ne pas laisser un PDF société
+  // tourné par erreur après avoir consulté un PDF sectoriel.
+  const [rotation, setRotation] = useState(0);
+  useEffect(() => { setRotation(0); }, [pdfUrl]);
   // pdfDims as state (not ref) so overlay effect re-runs when render completes
   const [pdfDims, setPdfDims] = useState(null);
+  // Dernier viewport pdf.js utilisé pour le rendu — nécessaire pour convertir
+  // les coordonnées du surlignage (espace PDF natif, non tourné) vers
+  // l'espace pixel du canvas, quelle que soit la rotation appliquée.
+  const viewportRef = useRef(null);
 
   /* Rendu de la page PDF */
   useEffect(() => {
@@ -100,10 +114,16 @@ function PdfCanvas({ pdfUrl, pageNum, highlight }) {
       }
       if (cancelled) return;
 
+      const effRotation = ((page.rotate || 0) + rotation) % 360;
       const containerW = containerRef.current?.offsetWidth || 640;
-      const pdfVP0 = page.getViewport({ scale: 1 });
+      // getViewport({scale:1, rotation}) déjà avec la rotation appliquée :
+      // pour 90°/270°, largeur et hauteur sont inversées, donc l'ajustement
+      // à la largeur du conteneur reste correct après rotation (sinon un
+      // tableau tourné à 90° s'affichait bien plus large/étroit que prévu).
+      const pdfVP0 = page.getViewport({ scale: 1, rotation: effRotation });
       const scale  = (containerW / pdfVP0.width) * zoom;
-      const vp     = page.getViewport({ scale });
+      const vp     = page.getViewport({ scale, rotation: effRotation });
+      viewportRef.current = vp;
 
       const canvas = canvasRef.current;
       if (!canvas || cancelled) return;
@@ -143,7 +163,7 @@ function PdfCanvas({ pdfUrl, pageNum, highlight }) {
         renderTaskRef.current = null;
       }
     };
-  }, [pdfUrl, pageNum, zoom]);
+  }, [pdfUrl, pageNum, zoom, rotation]);
 
   /* Dessin de l'overlay de surlignage — se redessine quand highlight OU pdfDims change */
   useEffect(() => {
@@ -157,17 +177,22 @@ function PdfCanvas({ pdfUrl, pageNum, highlight }) {
     const ctx = overlay.getContext("2d");
     ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-    if (!highlight || !pdfDims) return;
+    if (!highlight || !pdfDims || !viewportRef.current) return;
 
-    const { x0, y0, x1, y1, page_width, page_height } = highlight;
-    const scaleX = canvas.width  / page_width;
-    const scaleY = canvas.height / page_height;
-
-    // PDF coords (bas-gauche) → canvas coords (haut-gauche)
-    const rx = x0 * scaleX;
-    const ry = (page_height - y1) * scaleY;
-    const rw = (x1 - x0) * scaleX;
-    const rh = (y1 - y0) * scaleY;
+    const { x0, y0, x1, y1 } = highlight;
+    // convertToViewportPoint applique la même transformation (échelle +
+    // rotation) que celle utilisée pour le rendu du canvas — fonctionne donc
+    // quelle que soit la rotation choisie (voir `rotation` plus haut), pas
+    // seulement à 0°. (pdfjs-dist n'expose pas de convertToViewportRectangle
+    // dans cette version — seulement le point-à-point ; on convertit donc
+    // les 2 coins séparément.) Les coins renvoyés ne sont pas forcément
+    // "haut-gauche puis bas-droite" une fois tournés, d'où le Math.min/abs.
+    const [vx0, vy0] = viewportRef.current.convertToViewportPoint(x0, y0);
+    const [vx1, vy1] = viewportRef.current.convertToViewportPoint(x1, y1);
+    const rx = Math.min(vx0, vx1);
+    const ry = Math.min(vy0, vy1);
+    const rw = Math.abs(vx1 - vx0);
+    const rh = Math.abs(vy1 - vy0);
 
     ctx.fillStyle = "rgba(239, 68, 68, 0.30)";
     ctx.fillRect(rx, ry, rw, rh);
@@ -210,7 +235,18 @@ function PdfCanvas({ pdfUrl, pageNum, highlight }) {
         <button onClick={() => setZoom(z => Math.min(3.0, +(z + 0.25).toFixed(2)))}
           style={{ background: "#334155", border: "none", borderRadius: 6, color: "#CBD5E1",
             width: 28, height: 28, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>+</button>
-        <button onClick={() => setZoom(1.0)}
+        <span style={{ width: 1, alignSelf: "stretch", background: "#334155", margin: "0 2px" }} />
+        <button onClick={() => setRotation(r => (r + 90) % 360)}
+          title="Tourner la page de 90°"
+          aria-label="Tourner la page de 90°"
+          style={{ background: "#334155", border: "none", borderRadius: 6, color: "#CBD5E1",
+            width: 28, height: 28, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 4v5h5" />
+            <path d="M4.5 9A8 8 0 1 1 4 13" />
+          </svg>
+        </button>
+        <button onClick={() => { setZoom(1.0); setRotation(0); }}
           style={{ background: "none", border: "1px solid #334155", borderRadius: 6,
             color: "#64748B", fontSize: 10, padding: "3px 8px", cursor: "pointer" }}>Réinitialiser</button>
       </div>
@@ -386,8 +422,36 @@ function MathFormula({ meta, raw, activeIdx, onChipClick }) {
 }
 
 /* ── Détail d'un nœud extrait ────────────────────────────────────────────── */
-function ExtraitDetail({ node, annee, pdfSections, onGoPage }) {
-  const page = node.section ? pdfSections?.[node.section] : null;
+// AL_AMANAH_TAKAFUL publie en arabe — le ligne/colonne français de
+// kpiMeta.js ne s'y applique pas et pdfSections (détection française) y
+// est toujours vide, donc le badge/bouton habituel (gated sur `page`)
+// n'apparaît jamais pour cette société. Repli dédié : bouton "Localiser"
+// TOUJOURS visible, page ET cellule déterminées côté serveur au clic (voir
+// goArabicPage / /api/arabic-pdf-cell) plutôt que pré-calculées. Ajouté le
+// 2026-08-19, étape 3 du plan explicite de l'utilisateur.
+const _ARABIC_TAKAFUL_CODE = "AL_AMANAH_TAKAFUL";
+
+// Libellés arabes réellement recherchés dans le PDF pour chaque KPI (copie
+// d'affichage des constantes _AR_* de extraction/takaful_kpi_extractor.py —
+// dupliquées ici plutôt qu'exposées par API, ce sont des libellés fixes qui
+// ne changent qu'avec le format du rapport CMF). Affiché à côté de la
+// source PDF pour AL_AMANAH_TAKAFUL sur demande explicite de l'utilisateur
+// ("afficher sa traduction à côté avec la formule", 2026-08-19) : permet de
+// vérifier visuellement, même sans lire l'arabe, que le bon libellé est
+// recherché sur la page ouverte.
+const _AR_LABELS = {
+  "Total actif": "مجموع الأصول",
+  "Capitaux propres": "مجموع الأموال الذاتية",
+  "Résultat Net": "مال ذاتي نتيجة السنة المحاسبية",
+  "Primes émises par assurance": "أقساط تأمين صادرة و مقبولة",
+  "Charges de prestations": "أعباء تقديم الخدمة",
+  "Charges d'acquisition et de gestion nettes": "أعباء تصرف و اقتناء أخرى صافية",
+};
+
+function ExtraitDetail({ node, annee, pdfSections, onGoPage, code, onGoArabicPage }) {
+  const isArabic = code === _ARABIC_TAKAFUL_CODE;
+  const page = !isArabic && node.section ? pdfSections?.[node.section] : null;
+  const canLocateArabic = isArabic && Boolean(node.rawKey) && Boolean(onGoArabicPage);
   return (
     <div style={{ borderRadius: 8, border: "1px solid #E5E7EB", overflow: "hidden", background: "#fff" }}>
       <div style={{
@@ -402,22 +466,41 @@ function ExtraitDetail({ node, annee, pdfSections, onGoPage }) {
           }}>PDF</span>
           <span style={{ fontSize: 12, fontWeight: 700, color: "#111827" }}>{node.label}</span>
         </div>
-        <PageBadge page={page} onClick={page ? () => onGoPage(page, node) : null} />
+        {!isArabic && <PageBadge page={page} onClick={page ? () => onGoPage(page, node) : null} />}
       </div>
       <div style={{ padding: "10px 14px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: "4px 10px", fontSize: 11 }}>
           <span style={{ color: "#9CA3AF", fontWeight: 600, paddingTop: 1 }}>Tableau</span>
           <span style={{ color: "#374151", lineHeight: 1.5 }}>{node.tableau}</span>
-          <span style={{ color: "#9CA3AF", fontWeight: 600 }}>Ligne</span>
-          <span style={{ color: "#374151", fontFamily: "ui-monospace, monospace" }}>« {node.ligne} »</span>
-          <span style={{ color: "#9CA3AF", fontWeight: 600 }}>Colonne</span>
-          <span style={{ color: "#374151", fontFamily: "ui-monospace, monospace" }}>« {node.colonne?.replace("{annee}", annee)} »</span>
+          {!isArabic && <>
+            <span style={{ color: "#9CA3AF", fontWeight: 600 }}>Ligne</span>
+            <span style={{ color: "#374151", fontFamily: "ui-monospace, monospace" }}>« {node.ligne} »</span>
+            <span style={{ color: "#9CA3AF", fontWeight: 600 }}>Colonne</span>
+            <span style={{ color: "#374151", fontFamily: "ui-monospace, monospace" }}>« {node.colonne?.replace("{annee}", annee)} »</span>
+          </>}
           {page && <>
             <span style={{ color: "#9CA3AF", fontWeight: 600 }}>Page</span>
             <span style={{ color: "#111827", fontWeight: 700 }}>{page}</span>
           </>}
         </div>
-        {page && (
+        {isArabic && (
+          <div style={{ marginTop: 8, fontSize: 10.5, color: "#9CA3AF", fontStyle: "italic" }}>
+            Document en arabe — libellé/colonne français non applicables. Localisation par reconnaissance de texte arabe.
+          </div>
+        )}
+        {isArabic && _AR_LABELS[node.rawKey] && (
+          <div style={{
+            marginTop: 8, padding: "8px 10px", borderRadius: 6,
+            background: "#F9FAFB", border: "1px solid #E5E7EB",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+          }}>
+            <span style={{ fontSize: 10, fontWeight: 600, color: "#9CA3AF", whiteSpace: "nowrap" }}>Libellé recherché</span>
+            <span dir="rtl" lang="ar" style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>
+              {_AR_LABELS[node.rawKey]}
+            </span>
+          </div>
+        )}
+        {page && !isArabic && (
           <button
             onClick={() => onGoPage(page, node)}
             style={{
@@ -438,13 +521,34 @@ function ExtraitDetail({ node, annee, pdfSections, onGoPage }) {
             Localiser dans le PDF — page {page}
           </button>
         )}
+        {canLocateArabic && (
+          <button
+            onClick={() => onGoArabicPage(node)}
+            style={{
+              marginTop: 10, width: "100%", padding: "7px 12px",
+              borderRadius: 6, border: "1px solid #D1D5DB",
+              background: "#fff", color: "#374151",
+              fontSize: 11, fontWeight: 600, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              transition: "background 0.12s",
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = "#F3F4F6"}
+            onMouseLeave={e => e.currentTarget.style.background = "#fff"}
+          >
+            <svg viewBox="0 0 14 14" fill="none" width="11" height="11">
+              <rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.4"/>
+              <path d="M4 5h6M4 7.5h4M4 10h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            </svg>
+            Localiser dans le PDF
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
 /* ── Détail d'un nœud calculé (avec ses sous-composantes) ───────────────── */
-function CalcDetail({ node, raw, annee, pdfSections, onGoPage }) {
+function CalcDetail({ node, raw, annee, pdfSections, onGoPage, code, onGoArabicPage }) {
   const val    = node.rawKey ? raw[node.rawKey] : null;
   const valStr = fmtVal(val, node.rawKey ?? "");
 
@@ -481,7 +585,7 @@ function CalcDetail({ node, raw, annee, pdfSections, onGoPage }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {node.sousComposantes.map((sc, i) =>
               sc.type === "extrait"
-                ? <ExtraitDetail key={i} node={sc} annee={annee} pdfSections={pdfSections} onGoPage={onGoPage} />
+                ? <ExtraitDetail key={i} node={sc} annee={annee} pdfSections={pdfSections} onGoPage={onGoPage} code={code} onGoArabicPage={onGoArabicPage} />
                 : null
             )}
           </div>
@@ -498,9 +602,12 @@ function CalcDetail({ node, raw, annee, pdfSections, onGoPage }) {
 // ce n'est pas une source PDF (API/série statistique), il n'y a rien à ouvrir.
 const _SECTORAL_PDF_SOURCES = ["FTUSA", "CGA"];
 
-function ExterneDetail({ node, annee }) {
+function ExterneDetail({ node, annee, raw = {}, onLocate }) {
   const sourceCode = _SECTORAL_PDF_SOURCES.find(s => node.source?.toUpperCase().startsWith(s));
   const pdfUrl = sourceCode ? `${API}/api/pdf-local?source=${sourceCode}&annee=${annee}` : null;
+  const val    = node.rawKey ? raw[node.rawKey] : null;
+  const valStr = fmtVal(val, node.rawKey ?? "");
+  const canLocate = Boolean(sourceCode && node.ligne && node.colonne && onLocate);
 
   return (
     <div style={{ borderRadius: 8, border: "1px solid #E5E7EB", overflow: "hidden", background: "#fff" }}>
@@ -513,17 +620,44 @@ function ExterneDetail({ node, annee }) {
             fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em",
             color: "#6B7280", background: "#F3F4F6", border: "1px solid #D1D5DB",
             padding: "2px 6px", borderRadius: 3,
-          }}>Externe</span>
+          }}>🌐 Secteur</span>
           <span style={{ fontSize: 12, fontWeight: 700, color: "#111827" }}>{node.label}</span>
+          {valStr && (
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#111827", fontVariantNumeric: "tabular-nums" }}>
+              {valStr}
+            </span>
+          )}
         </div>
-        {pdfUrl && (
-          <a href={pdfUrl} target="_blank" rel="noreferrer" style={{
-            fontSize: 11, fontWeight: 600, color: "#1D4ED8", textDecoration: "none",
-            display: "flex", alignItems: "center", gap: 4,
-          }}>
-            Ouvrir le PDF source ↗
-          </a>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {canLocate && (
+            <button
+              onClick={() => onLocate(sourceCode, node)}
+              style={{
+                fontSize: 11, fontWeight: 600, color: "#1D4ED8", background: "none",
+                border: "none", padding: 0, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 4,
+              }}
+            >
+              📍 Localiser dans le PDF
+            </button>
+          )}
+          {pdfUrl && (
+            <a href={pdfUrl} target="_blank" rel="noreferrer" style={{
+              fontSize: 11, fontWeight: 600, color: "#1D4ED8", textDecoration: "none",
+              display: "flex", alignItems: "center", gap: 4,
+            }}>
+              Ouvrir le PDF source ↗
+            </a>
+          )}
+          {!pdfUrl && node.lien && (
+            <a href={node.lien} target="_blank" rel="noreferrer" style={{
+              fontSize: 11, fontWeight: 600, color: "#1D4ED8", textDecoration: "none",
+              display: "flex", alignItems: "center", gap: 4,
+            }}>
+              Ouvrir le portail source ↗
+            </a>
+          )}
+        </div>
       </div>
       <div style={{ padding: "10px 14px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: "4px 10px", fontSize: 11 }}>
@@ -536,9 +670,14 @@ function ExterneDetail({ node, annee }) {
           <span style={{ color: "#9CA3AF", fontWeight: 600 }}>Colonne</span>
           <span style={{ color: "#374151", fontFamily: "ui-monospace, monospace" }}>« {node.colonne} »</span>
         </div>
-        {!pdfUrl && (
+        {!pdfUrl && !node.lien && (
           <div style={{ marginTop: 10, fontSize: 10.5, color: "#9CA3AF", fontStyle: "italic" }}>
-            Pas de PDF disponible pour cette source (série statistique, pas de rapport PDF).
+            Pas de PDF ni de lien disponible pour cette source.
+          </div>
+        )}
+        {!pdfUrl && node.lien && (
+          <div style={{ marginTop: 10, fontSize: 10.5, color: "#9CA3AF", fontStyle: "italic" }}>
+            Série statistique (pas de rapport PDF) — valeur consultable sur le portail INS ci-dessus.
           </div>
         )}
       </div>
@@ -563,6 +702,14 @@ export default function KpiDetail() {
   const [highlight,   setHighlight]   = useState(null); // coords cellule {x0,y0,x1,y1,page_width,page_height}
   const [noHighlightReason, setNoHighlightReason] = useState(null); // raison si non trouvée
   const [selectedAnomalyIdx, setSelectedAnomalyIdx] = useState(0); // pour le lien "cause amont" du diagnostic intégré
+  // Source active du panneau PDF de droite quand elle est sectorielle
+  // (FTUSA/CGA) plutôt qu'une société CMF — voir goSectorPage. Ajouté le
+  // 2026-08-19 : les KPI sectoriels n'avaient jusqu'ici qu'un lien "Ouvrir
+  // le PDF" en nouvel onglet, pas de surlignage dans le panneau comme les
+  // KPI société (retour utilisateur explicite).
+  const [sectorPdfSource, setSectorPdfSource] = useState(null);
+
+  useEffect(() => { setSectorPdfSource(null); setPdfPage(null); setHighlight(null); setNoHighlightReason(null); }, [code, kpiName, annee]);
 
   /* Années réellement présentes en base (au lieu d'une liste codée en dur) —
      même source que QualiteDonnees.jsx/AnomaliesSysteme.jsx pour rester
@@ -597,16 +744,42 @@ export default function KpiDetail() {
       .then(r => r.ok ? r.json() : null).then(setPdfSections).catch(() => {});
   }, [code, annee]);
 
+  /* Valeurs brutes des KPI sectoriels (FTUSA/CGA/INS — Population, PIB,
+     Total Primes marché, ratios techniques marché, Total agences...) —
+     fusionnées avec les KPI société ci-dessous. Nécessaire pour deux cas :
+     (1) un KPI "calculé" société dont une composante est sectorielle (ex:
+     "Part de marché (%)" = Primes émises compagnie / Total Primes marché
+     FTUSA — le dénominateur ne s'affichait jusqu'ici JAMAIS, `raw` ne
+     contenant que les KPI de `code`) ; (2) un KPI purement sectoriel
+     (code="MARCHE", ex: Population, Total agences) affiché directement.
+     Ajouté le 2026-08-19 sur demande explicite de l'utilisateur ("on ne
+     peut pas voir la source des KPI sectoriels"). */
+  const [sectorRaw, setSectorRaw] = useState({});
+  useEffect(() => {
+    fetch(`${API}/api/sector-kpi-value?annee=${annee}`)
+      .then(r => r.ok ? r.json() : {}).then(setSectorRaw).catch(() => setSectorRaw({}));
+  }, [annee]);
+
   const detail = qualData?.kpi_detail?.[code];
-  const meta   = KPI_META[kpiName];
-  const raw    = detail?.kpis_raw ?? {};
+  // Priorité : variante arabe (AL_AMANAH_TAKAFUL uniquement — pas de
+  // segmentation Vie/Non-Vie du tout, contrairement à AT_TAKAFULIA/
+  // ZITOUNA_TAKAFUL qui publient en français et ont une vraie Annexe 12/13
+  // Vie/Non-Vie déjà localisable normalement) > variante Takaful générique
+  // (ratios techniques, mêmes clés brutes pour les 3 sociétés) > défaut.
+  const meta   = (code === _ARABIC_TAKAFUL_CODE && KPI_META[`${kpiName} Arabe`])
+    || (isTakaful(code) && KPI_META[`${kpiName} Takaful`])
+    || KPI_META[kpiName];
+  const raw    = { ...sectorRaw, ...(detail?.kpis_raw ?? {}) };
 
-  const pdfUrl = detail?.pdf_local
-    ? `${API}/api/pdf-local?code=${encodeURIComponent(code)}&annee=${annee}`
-    : null;
+  const pdfUrl = sectorPdfSource
+    ? `${API}/api/pdf-local?source=${sectorPdfSource}&annee=${annee}`
+    : detail?.pdf_local
+      ? `${API}/api/pdf-local?code=${encodeURIComponent(code)}&annee=${annee}`
+      : null;
 
-  /* Aller à une page + surligner une cellule extrait */
+  /* Aller à une page + surligner une cellule extrait (KPI société, CMF) */
   const goPage = useCallback(async (page, nodeOrSection) => {
+    setSectorPdfSource(null);
     setPdfPage(page);
     setHighlight(null);
     setNoHighlightReason(null);
@@ -629,9 +802,66 @@ export default function KpiDetail() {
     }
   }, [code, annee]);
 
+  /* Équivalent sectoriel de goPage : la page n'est pas connue à l'avance
+     (déterminée côté serveur, voir /api/sector-pdf-cell), donc reçue depuis
+     la réponse plutôt que passée en argument. */
+  const goSectorPage = useCallback(async (sourceCode, node) => {
+    setSectorPdfSource(sourceCode);
+    setPdfPage(null);
+    setHighlight(null);
+    setNoHighlightReason(null);
+    if (!node?.ligne || !node?.colonne || !sourceCode) return;
+
+    const colonne = node.colonne?.replace("{annee}", annee);
+    try {
+      const r = await fetch(
+        `${API}/api/sector-pdf-cell?source=${encodeURIComponent(sourceCode)}&annee=${annee}` +
+        `&ligne=${encodeURIComponent(node.ligne)}&colonne=${encodeURIComponent(colonne)}`
+      );
+      const data = await r.json();
+      setPdfPage(data.page ?? null);
+      if (data.found) setHighlight(data);
+      else setNoHighlightReason(data.reason ?? "inconnue");
+    } catch {
+      setNoHighlightReason("erreur_reseau");
+    }
+  }, [annee]);
+
+  /* Équivalent AL_AMANAH_TAKAFUL (PDF en arabe) de goPage : le ligne/
+     colonne français de kpiMeta.js ne s'applique pas à ce document — page
+     ET cellule déterminées côté serveur par recherche floue RTL (voir
+     /api/arabic-pdf-cell, arabic_pdf_cell_coords.py), le KPI étant
+     identifié par sa clé de stockage plutôt que par ligne/colonne. Ajouté
+     le 2026-08-19, étape 3 du plan explicite de l'utilisateur ("documents
+     Takaful arabe"). */
+  const goArabicPage = useCallback(async (node) => {
+    setPdfPage(null);
+    setHighlight(null);
+    setNoHighlightReason(null);
+    if (!code || !node?.rawKey) return;
+    try {
+      const r = await fetch(
+        `${API}/api/arabic-pdf-cell?code=${encodeURIComponent(code)}&annee=${annee}` +
+        `&kpi=${encodeURIComponent(node.rawKey)}`
+      );
+      const data = await r.json();
+      setPdfPage(data.page ?? null);
+      if (data.found) setHighlight(data);
+      else setNoHighlightReason(data.reason ?? "inconnue");
+    } catch {
+      setNoHighlightReason("erreur_reseau");
+    }
+  }, [code, annee]);
+
   const NO_HIGHLIGHT_LABELS = {
     pdf_manquant:         "PDF non disponible localement.",
     page_invalide:        "Numéro de page invalide pour ce PDF.",
+    page_introuvable:     "Tableau source introuvable dans ce PDF.",
+    source_non_prise_en_charge: "Localisation non prise en charge pour cette source.",
+    kpi_non_pris_en_charge: "Localisation non prise en charge pour ce KPI.",
+    valeur_non_confirmee: "Ligne repérée, mais la valeur ne correspond pas à celle extraite — surlignage non affiché par prudence.",
+    page_scannee_pas_de_surlignage: "Page scannée (OCR) — position exacte non surlignable, page ouverte tout de même.",
+    position_approximative: "Page probable repérée par libellé (OCR), mais sans confirmation par la valeur — à vérifier manuellement.",
     page_vide:            "Aucun texte extractible sur cette page (page probablement scannée).",
     ligne_introuvable:    "Ligne introuvable sur cette page — le libellé attendu ne correspond à aucune ligne du PDF.",
     colonne_introuvable:  "Colonne introuvable sur cette page — l'en-tête attendu n'a pas été trouvé.",
@@ -668,11 +898,18 @@ export default function KpiDetail() {
      résout déjà la valeur (extraite, calculée ou recalculée de secours),
      pas besoin de dupliquer cette logique ici. ── */
   const anomalies = qualData?.anomalies ?? [];
-  const cellStatus = classifyCell(code, kpiName, qualData);
+  const cellStatus = classifyCell(code, kpiName, qualData, raw);
   const s      = resolveCellVisual(cellStatus);
   const valStr = fmtVal(cellStatus.value, kpiName);
 
   const activeComp = activeIdx !== null ? meta?.composantes?.[activeIdx] : null;
+  // Lien web (portail INS...) du KPI "externe" actuellement affiché, quand
+  // il n'a pas de PDF — permet au panneau de droite d'afficher un état
+  // "donnée web" au lieu de réutiliser le message "PDF non disponible
+  // localement" (trompeur ici : il n'y a jamais eu de PDF à trouver).
+  const noPdfLien = activeComp?.type === "externe" ? activeComp.lien
+    : meta?.type === "externe" ? meta.lien
+    : null;
 
   /* Diagnostic d'anomalie intégré — remplace la navigation vers une page
      séparée (voir Partie 3 du plan) : toute anomalie déjà classifiée par
@@ -721,7 +958,7 @@ export default function KpiDetail() {
           <span style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", padding: "3px 10px", background: "#F3F4F6", borderRadius: 6 }}>
             {code}
           </span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{kpiLabel(kpiName)}</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{kpiLabel(kpiName, code)}</span>
           <span
             title={s.detail}
             style={{
@@ -829,11 +1066,28 @@ export default function KpiDetail() {
                 Source dans le PDF
               </div>
               <ExtraitDetail
-                node={{ ...meta, label: kpiName }}
+                node={{ ...meta, label: kpiLabel(kpiName, code), rawKey: meta.rawKey ?? kpiName }}
                 annee={annee}
                 pdfSections={pdfSections}
                 onGoPage={goPage}
+                code={code}
+                onGoArabicPage={goArabicPage}
               />
+            </section>
+          )}
+
+          {/* KPI sectoriel direct (Population, Total agences...) — pas de
+              formule ni de PDF société, voir kpiMeta.js "KPI sectoriels" et
+              ExterneDetail. Ajouté le 2026-08-19 : ces KPI n'avaient
+              jusqu'ici AUCUN rendu au premier niveau (seul `type: "extrait"`
+              et `type: "calcule"` étaient gérés ici), donc rien ne
+              s'affichait pour eux malgré une entrée kpiMeta correcte. */}
+          {meta?.type === "externe" && (
+            <section>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#9CA3AF", marginBottom: 12 }}>
+                Source du KPI sectoriel
+              </div>
+              <ExterneDetail node={{ ...meta, label: kpiName ? kpiLabel(kpiName, code) : meta.label }} annee={annee} raw={raw} onLocate={goSectorPage} />
             </section>
           )}
 
@@ -848,12 +1102,12 @@ export default function KpiDetail() {
                 >×</button>
               </div>
               {activeComp.type === "calcule" && (
-                <CalcDetail node={activeComp} raw={raw} annee={annee} pdfSections={pdfSections} onGoPage={goPage} />
+                <CalcDetail node={activeComp} raw={raw} annee={annee} pdfSections={pdfSections} onGoPage={goPage} code={code} onGoArabicPage={goArabicPage} />
               )}
               {activeComp.type === "extrait" && (
-                <ExtraitDetail node={activeComp} annee={annee} pdfSections={pdfSections} onGoPage={goPage} />
+                <ExtraitDetail node={activeComp} annee={annee} pdfSections={pdfSections} onGoPage={goPage} code={code} onGoArabicPage={goArabicPage} />
               )}
-              {activeComp.type === "externe" && <ExterneDetail node={activeComp} annee={annee} />}
+              {activeComp.type === "externe" && <ExterneDetail node={activeComp} annee={annee} raw={raw} onLocate={goSectorPage} />}
             </section>
           )}
 
@@ -887,7 +1141,19 @@ export default function KpiDetail() {
               <span style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8" }}>PDF — {code} · {annee}</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {highlight && (
+              {highlight && highlight.note && (
+                <span
+                  title={highlight.note}
+                  style={{
+                    fontSize: 10, fontWeight: 700, padding: "3px 10px",
+                    borderRadius: 8, background: "#0c2d48", color: "#7dd3fc",
+                    display: "flex", alignItems: "center", gap: 5, cursor: "help",
+                  }}
+                >
+                  <span style={{ fontSize: 12 }}>📍</span> Cellule surlignée — somme sur 2 pages
+                </span>
+              )}
+              {highlight && !highlight.note && (
                 <span style={{
                   fontSize: 10, fontWeight: 700, padding: "3px 10px",
                   borderRadius: 8, background: "#450a0a", color: "#fca5a5",
@@ -937,6 +1203,29 @@ export default function KpiDetail() {
               <div style={{ textAlign: "center", fontSize: 13, color: "#64748B", lineHeight: 1.6 }}>
                 Cliquez sur un élément de la formule<br/>pour ouvrir la page PDF correspondante.
               </div>
+            </div>
+          ) : noPdfLien ? (
+            // KPI "externe" sans PDF (série statistique en ligne, ex. INS) :
+            // pas de document à paginer/surligner, donc pas de panneau PDF
+            // vide — juste un accès direct à la source web, sur demande
+            // explicite de l'utilisateur ("trouvez autre chose que
+            // d'afficher un espace pdf" pour ce cas, 2026-08-19).
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#1E293B", gap: 16, padding: "0 32px" }}>
+              <svg viewBox="0 0 48 48" fill="none" width="44" height="44">
+                <circle cx="24" cy="24" r="19" stroke="#475569" strokeWidth="2"/>
+                <ellipse cx="24" cy="24" rx="8" ry="19" stroke="#475569" strokeWidth="2"/>
+                <path d="M5 24h38M24 5v38" stroke="#475569" strokeWidth="1.4"/>
+                <path d="M7.5 15h33M7.5 33h33" stroke="#475569" strokeWidth="1.4"/>
+              </svg>
+              <div style={{ textAlign: "center", fontSize: 13, color: "#94A3B8", lineHeight: 1.6, maxWidth: 300 }}>
+                Donnée issue d'une série statistique en ligne — pas de document PDF associé.
+              </div>
+              <a href={noPdfLien} target="_blank" rel="noreferrer" style={{
+                fontSize: 12, fontWeight: 700, color: "#0F172A", background: "#60A5FA",
+                padding: "9px 18px", borderRadius: 8, textDecoration: "none",
+              }}>
+                Ouvrir le portail source ↗
+              </a>
             </div>
           ) : (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#1E293B", gap: 14 }}>

@@ -136,6 +136,19 @@ def _compute_cmf_kpis_for_document(kpis, sector_totals_for_year):
         computed["Charges de prestations"] = charges_prestations
     if charges_acquisition is not None:
         computed["Charges d'acquisition et de gestion nettes"] = charges_acquisition
+
+    # Repli Takaful (ratios uniquement, PAS de ré-écriture de computed[...]
+    # ci-dessus) : les compagnies Takaful n'ont pas de segmentation
+    # Vie/Non-Vie (structure Familial/Général), donc charges_prestations et
+    # charges_acquisition restent None pour elles à ce stade. Les valeurs
+    # déjà persistées directement (takaful_kpi_extractor._extract_ventilation_charges_kpis,
+    # tableau "Annexes 14/15...") servent de repli - même principe que
+    # "primes_pour_pdm" plus bas pour Part de marché. On ne les réassigne
+    # PAS dans `computed` pour ne pas re-taguer ces lignes "Calcul interne"
+    # (elles restent sous leur vrai tableau source).
+    charges_prestations_ratios = charges_prestations if charges_prestations is not None else kpis.get("Charges de prestations")
+    charges_acquisition_ratios = charges_acquisition if charges_acquisition is not None else kpis.get("Charges d'acquisition et de gestion nettes")
+
     if charge_sinistres is not None:
         computed["Charge de sinistres"] = charge_sinistres
     if primes_emises is not None:
@@ -153,28 +166,69 @@ def _compute_cmf_kpis_for_document(kpis, sector_totals_for_year):
     # toujours positif quelle que soit la convention de signe de la source,
     # comme attendu pour un ratio de sinistralite/frais/combine.
     abs_charge_sinistres = abs(charge_sinistres) if charge_sinistres is not None else None
-    abs_charges_prestations = abs(charges_prestations) if charges_prestations is not None else None
-    abs_charges_acquisition = abs(charges_acquisition) if charges_acquisition is not None else None
+    abs_charges_prestations = abs(charges_prestations_ratios) if charges_prestations_ratios is not None else None
+    abs_charges_acquisition = abs(charges_acquisition_ratios) if charges_acquisition_ratios is not None else None
 
     computed["ROA (%)"] = _safe_ratio(kpis.get("Résultat Net"), kpis.get("Total actif"), 100)
     computed["ROE (%)"] = _safe_ratio(kpis.get("Résultat Net"), kpis.get("Capitaux propres"), 100)
 
-    # Segment Vie/Non-Vie coherent entre numerateur et denominateur : si les
-    # charges Vie representent plus de 10 % du total des charges connues mais
-    # que les primes Vie sont absentes, tout ratio dont le numerateur inclut
-    # ces charges (RC, RSP, RF) serait faussé (numérateur Vie+Non-Vie vs
-    # dénominateur Non-Vie seulement). Generalise a RSP et RF le garde-fou
-    # initialement pose pour RC seul : le meme motif est documente pour BIAT
-    # sur RSP (CAS_PARTICULIERS_CALCULS.md - "Charge de sinistres inclut Vie,
-    # Primes émises Vie non extraites -> RSP gonflé à 119,8 %").
+    # Segment Vie/Non-Vie coherent entre numerateur (charges) et denominateur
+    # (primes) : si un segment (Vie ou Non-Vie) est present d'un cote mais
+    # absent de l'autre, tout ratio dont le numerateur inclut ces charges
+    # (RC, RSP, RF) serait faussé (numérateur couvrant un segment que le
+    # dénominateur ne couvre pas, ou l'inverse). Verifie les DEUX sens pour
+    # les DEUX segments — le garde-fou initial (BIAT, RSP gonflé à 119,8 %)
+    # ne couvrait que "charges Vie présentes / primes Vie absentes" ; le cas
+    # LLOYD_TUNISIEN 2018 (RC = 3,46 % au lieu de ~80 %) est le sens inverse
+    # sur le segment Non-Vie : "primes Non-Vie présentes / charges Non-Vie
+    # absentes" — non détecté par la version initiale.
     # Ex RC : ASTREE — charges Vie 163 M vs primes Non-Vie 176 M → 116 % erroné.
+    vie_charges_present = (
+        kpis.get("Charges de prestations Vie") is not None
+        or kpis.get("Charges d'acquisition et de gestion nettes Vie") is not None
+    )
+    nv_charges_present = (
+        kpis.get("Charges de prestations Non-Vie") is not None
+        or kpis.get("Charges d'acquisition et de gestion nettes Non-Vie") is not None
+    )
+    vie_primes_present = kpis.get("Primes émises Vie par assurance") is not None
+    nv_primes_present = kpis.get("Primes émises Non-Vie par assurance") is not None
+
     vie_charges_abs = abs(kpis.get("Charges de prestations Vie") or 0) + abs(
         kpis.get("Charges d'acquisition et de gestion nettes Vie") or 0
     )
+    nv_charges_abs = abs(kpis.get("Charges de prestations Non-Vie") or 0) + abs(
+        kpis.get("Charges d'acquisition et de gestion nettes Non-Vie") or 0
+    )
     total_charges_abs = (abs_charges_prestations or 0) + (abs_charges_acquisition or 0)
-    vie_primes_missing = kpis.get("Primes émises Vie par assurance") is None
-    vie_weight = vie_charges_abs / total_charges_abs if total_charges_abs else 0
-    segment_mismatch = vie_primes_missing and vie_weight > 0.10
+
+    # Repli Takaful pour les denominateurs de ratios (meme principe que
+    # charges_prestations_ratios ci-dessus) : "Primes émises par assurance"
+    # (Familial+Général déjà sommés à l'extraction, voir
+    # takaful_kpi_extractor.extract_all_takaful_kpis/extract_al_amanah_takaful_kpis)
+    # sert de repli quand la ventilation Vie/Non-Vie (structure inexistante
+    # côté Takaful) est absente.
+    primes_emises_ratios = primes_emises if primes_emises is not None else kpis.get("Primes émises par assurance")
+    total_primes_abs = abs(primes_emises_ratios) if primes_emises_ratios else 0
+
+    def _segment_weight(seg_charges_abs, seg_primes_abs):
+        # Mesure le poids du segment avec le cote pour lequel une valeur
+        # existe (primes en priorite, presentes pour la quasi-totalite des
+        # societes) — sert a juger si l'asymetrie detectee est significative
+        # ou negligeable (societe sans activite reelle dans ce segment).
+        if seg_primes_abs and total_primes_abs:
+            return seg_primes_abs / total_primes_abs
+        if seg_charges_abs and total_charges_abs:
+            return seg_charges_abs / total_charges_abs
+        return 0
+
+    vie_mismatch = (vie_charges_present != vie_primes_present) and _segment_weight(
+        vie_charges_abs, abs(kpis.get("Primes émises Vie par assurance") or 0)
+    ) > 0.10
+    nv_mismatch = (nv_charges_present != nv_primes_present) and _segment_weight(
+        nv_charges_abs, abs(kpis.get("Primes émises Non-Vie par assurance") or 0)
+    ) > 0.10
+    segment_mismatch = vie_mismatch or nv_mismatch
 
     # RSP : dénominateur = primes_acquises si complet (Vie+NV).
     # Si primes_acquises_vie manque mais que les charges sinistres incluent la Vie
@@ -184,6 +238,12 @@ def _compute_cmf_kpis_for_document(kpis, sector_totals_for_year):
     if (primes_acquises_vie is None and primes_emises_vie is not None
             and charge_sin_vie is not None):
         primes_for_rsp = primes_emises  # Vie+NV déjà correctement sommés
+    # Repli Takaful : ni "Primes acquises" ni la condition STAR ci-dessus ne
+    # s'appliquent (pas de segmentation Vie/Non-Vie) - primes_emises_ratios
+    # (Primes émises par assurance, déjà Familial+Général) sert de repli
+    # final, cohérent avec le dénominateur utilisé pour RF/RC ci-dessous.
+    if primes_for_rsp is None:
+        primes_for_rsp = primes_emises_ratios
 
     if segment_mismatch:
         # Numerateur et denominateur ne couvrent pas les memes segments :
@@ -193,14 +253,39 @@ def _compute_cmf_kpis_for_document(kpis, sector_totals_for_year):
         computed["Ratio de frais de gestion (%)"] = None
         computed["Ratio combiné (%)"] = None
     else:
+        # "Charges de prestations" (Annexe 12/13) prime sur "Charge de
+        # sinistres" (résultat_kpi_extractor, ligne CHV1/CHNV1) : cette
+        # dernière est ponctuellement mal extraite (ligne trop étroite -
+        # ex. BH 2024 où "Charge de sinistres Non-Vie" = -2,45 MDT contre
+        # "Charges de prestations Non-Vie" = -89,5 MDT pour les mêmes primes,
+        # donnant un RSP à 2,3 % au lieu de ~60 % ; même schéma sur COMAR,
+        # CARTE, STAR, UIB, ASTREE). "Charge de sinistres" ne sert plus que
+        # de dernier recours quand "Charges de prestations" est absente (cas
+        # Takaful notamment, qui n'a pas d'équivalent "Charge de sinistres" -
+        # le DVRB définit le Ratio S/P Takaful directement à partir de
+        # "Charges de prestations", voir Annexes 14/15).
+        abs_charge_sinistres_for_rsp = abs_charges_prestations if abs_charges_prestations is not None else abs_charge_sinistres
+        # Dénominateur aligné sur RC/RF (primes_emises_ratios) plutôt que
+        # primes_for_rsp (Primes acquises, Etat de résultat) quand la
+        # première est disponible : RSP était le seul des 3 ratios
+        # techniques à utiliser une base de primes différente de ses deux
+        # cousins, mélangeant un numérateur Annexe 12/13 ("Charges de
+        # prestations") avec un dénominateur Etat de résultat ("Primes
+        # acquises") d'un tableau distinct - source du même bug que
+        # ci-dessus (ex. COMAR 2022 : 161 M / 88,7 M (Primes acquises,
+        # incohérente avec les 253 M de Primes émises Vie+Non-Vie de la
+        # même annexe) = 182 % au lieu de ~64 % avec primes_emises_ratios).
+        # primes_for_rsp (calcul ci-dessus, replis Takaful/STAR inclus)
+        # reste utilisé quand primes_emises_ratios est indisponible.
+        denom_rsp = primes_emises_ratios if primes_emises_ratios is not None else primes_for_rsp
         computed["Ratio de sinistralité (%)"] = _valid_ratio(
-            _safe_ratio(abs_charge_sinistres, primes_for_rsp, 100)
+            _safe_ratio(abs_charge_sinistres_for_rsp, denom_rsp, 100)
         )
         computed["Ratio de frais de gestion (%)"] = _valid_ratio(
-            _safe_ratio(abs_charges_acquisition, primes_emises, 100)
+            _safe_ratio(abs_charges_acquisition, primes_emises_ratios, 100)
         )
         computed["Ratio combiné (%)"] = _valid_ratio(_safe_ratio(
-            _safe_sum(abs_charges_prestations, abs_charges_acquisition), primes_emises, 100
+            _safe_sum(abs_charges_prestations, abs_charges_acquisition), primes_emises_ratios, 100
         ))
 
     known_names = _CMF_COMPUTED_KPI_NAMES
@@ -209,8 +294,20 @@ def _compute_cmf_kpis_for_document(kpis, sector_totals_for_year):
         # FTUSA de cette année est disponible : son absence signifie
         # seulement "pas encore comparé" (ex: FTUSA pas encore scrapé pour
         # cette année), pas "cette société n'a plus de part de marché".
+        #
+        # Repli sur la valeur brute "Primes émises par assurance" (Etat de
+        # résultat global, déjà Vie+Non-Vie combinées à la source) quand la
+        # somme Vie+Non-Vie ventilée est indisponible — découvert le
+        # 2026-08-07 sur AT_TAKAFULIA : aucune des deux primes ventilées
+        # n'est extraite pour cette société, alors que le total combiné
+        # existe bel et bien (69,1 M en 2024) ; sans ce repli, "Part de
+        # marché (%)" restait None et la société disparaissait purement et
+        # simplement du classement (api/routes/comparative.py::
+        # classement_compagnies filtre les PDM None), alors que la donnée
+        # nécessaire au calcul était disponible.
+        primes_pour_pdm = primes_emises if primes_emises is not None else kpis.get("Primes émises par assurance")
         computed["Part de marché (%)"] = _safe_ratio(
-            primes_emises, sector_totals_for_year.get("Total Primes émises"), 100
+            primes_pour_pdm, sector_totals_for_year.get("Total Primes émises"), 100
         )
         known_names = _CMF_COMPUTED_KPI_NAMES + ("Part de marché (%)",)
 
@@ -228,7 +325,11 @@ def compute_cmf_derived_kpis(conn):
     cmf_docs = list_documents_by_source(conn, "CMF")
     saved = documents_updated = 0
     for document_id, _cmf_id, code, annee in cmf_docs:
-        kpis = get_kpi_values_for_document(conn, document_id)
+        # exclude_tableaux=("Calcul interne",) : ce run ne doit lire QUE des
+        # valeurs brutes (Bilan, Annexes 12/13, Etat de resultat...), jamais
+        # sa PROPRE sortie d'un run precedent - voir la note detaillee sur
+        # get_kpi_values_for_document (bug ASTREE 2025 corrige le 2026-08-16).
+        kpis = get_kpi_values_for_document(conn, document_id, exclude_tableaux=(TABLEAU_LABEL,))
         computed = _compute_cmf_kpis_for_document(kpis, sector_totals_by_year.get(annee))
         touched = False
         for name, value in computed.items():

@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import ReactApexChart from "react-apexcharts";
 import TunisiaMap from "../components/TunisiaMap";
 import { getLogoSrc } from "../utils/logos";
+import { isTakaful } from "../utils/famille";
 import PageHeaderBar, { DarkKpiBanner } from "../components/PageHeaderBar";
 import ExportPdfButton from "../components/ExportPdfButton";
+import KpiOptionsMenu from "../components/KpiOptionsMenu";
+import { classifyCell, resolveCellVisual } from "../utils/kpiStatus";
 
 const Y  = "#FFE600";
 const D  = "#2E2E38";
@@ -58,19 +62,79 @@ function SectionHead({ label }) {
   );
 }
 
-function KpiBox({ label, value, unit = "", delta = null, deltaUp = null }) {
+/* anomaly (optionnel) : { aberrant, detail, onClick } — voir kpiAnomaly() ci-
+   dessous, même taxonomie/classification que Qualité Données/Anomalies
+   Système (utils/kpiStatus.js), pas une logique inventée pour cette page.
+
+   Une valeur manquante (N/D) n'est PLUS affichée du tout sur cette fiche
+   (retour utilisateur 2026-08-18 : trop de cases vides, page qui déborde) —
+   le KPI reste néanmoins signalé dans Anomalies Système (voir
+   api/services/pipeline_audit.py::_KPIS_TAKAFUL pour la version Takaful,
+   ajoutée le même jour) : masquer la case ici ne masque pas le problème,
+   juste sa présentation sur cette page précise. Seule une valeur PRÉSENTE
+   mais jugée aberrante (anomaly.aberrant) reste visible, en évidence. */
+function KpiBox({ label, value, unit = "", delta = null, deltaUp = null, note = null, anomaly = null, code = null, annee = null, kpi = null }) {
+  if (value === "N/D") return null;
   return (
-    <div style={{ background: "#FAFAFA", borderRadius: 9, border: "1px solid #F0F0F0", padding: "9px 10px" }}>
-      <div style={{ fontSize: 8, fontWeight: 800, color: G, textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 4, lineHeight: 1.3 }}>{label}</div>
-      <div style={{ fontSize: 17, fontWeight: 900, color: value === "N/D" ? "#C0C0C8" : D, lineHeight: 1 }}>{value}</div>
+    <div className="kpi-hover-card" style={{ background: "#FAFAFA", borderRadius: 9, border: `1px solid ${anomaly?.aberrant ? "#FDE68A" : "#F0F0F0"}`, padding: "9px 10px" }} title={note || undefined}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 4, marginBottom: 4 }}>
+        <div style={{ fontSize: 8, fontWeight: 800, color: G, textTransform: "uppercase", letterSpacing: "0.7px", lineHeight: 1.3 }}>{label}</div>
+        <KpiOptionsMenu code={code} kpi={kpi} annee={annee} label={label} value={`${value}${unit ? " " + unit : ""}`} />
+      </div>
+      <div style={{ fontSize: 17, fontWeight: 900, color: D, lineHeight: 1 }}>{value}</div>
       {unit && <div style={{ fontSize: 8, color: G, marginTop: 1 }}>{unit}</div>}
       {delta != null && (
         <div style={{ fontSize: 9, color: deltaUp ? "#15803D" : "#DC2626", fontWeight: 700, marginTop: 3 }}>
           {deltaUp ? "↗" : "↘"} {delta}
         </div>
       )}
+      {note && <div style={{ fontSize: 7.5, color: "#B8860B", marginTop: 3, lineHeight: 1.3 }}>☾ {note}</div>}
+      {anomaly?.aberrant && (
+        <button onClick={anomaly.onClick} title={anomaly.detail} style={{
+          display: "flex", alignItems: "center", gap: 3, marginTop: 4, padding: "2px 6px 2px 0",
+          background: "none", border: "none", cursor: "pointer",
+          fontSize: 8.5, fontWeight: 700, color: "#B45309",
+        }}>
+          ⚠ Anomalie détectée
+        </button>
+      )}
     </div>
   );
+}
+
+/* Enveloppe de section qui ne s'affiche QUE si au moins un de ses KpiBox a
+   une valeur — évite les cartons avec un titre suivi d'une grille vide
+   quand toutes les cases d'une section (ex: Solvabilité pour une société
+   où Placements/Actions ne sont pas extraits) sont manquantes. `items` :
+   liste de props KpiBox (pas de children JSX directement, pour pouvoir
+   filtrer AVANT de décider si la section elle-même doit exister). */
+function KpiSection({ label, description, columns = 4, items, code = null, annee = null }) {
+  const visible = items.filter(it => it.value !== "N/D");
+  if (visible.length === 0) return null;
+  return (
+    <div style={{ background: "white", borderRadius: 14, border: "1px solid #EBEBEB", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", padding: "14px" }}>
+      <SectionHead label={label} />
+      {description && <div style={{ fontSize: 9, color: G, marginTop: -6, marginBottom: 10, lineHeight: 1.4 }}>{description}</div>}
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: 8 }}>
+        {visible.map((it, i) => <KpiBox key={i} {...it} code={code} annee={annee} />)}
+      </div>
+    </div>
+  );
+}
+
+/* Classification identique à Qualité Données/Anomalies Système
+   (utils/kpiStatus.js) plutôt qu'une logique de N/D locale à cette page —
+   ne renvoie un objet QUE s'il y a quelque chose à signaler (valeur absente
+   ou aberrante), sinon null (pas de bouton sur une cellule qui va bien). */
+function kpiAnomaly(code, annee, storageKey, qualite, navigate) {
+  if (!qualite || !annee) return null;
+  const status = classifyCell(code, storageKey, qualite);
+  if (status.available && !status.aberrant) return null;
+  return {
+    aberrant: status.aberrant,
+    detail: resolveCellVisual(status).detail,
+    onClick: () => navigate(`/kpi-detail?code=${encodeURIComponent(code)}&kpi=${encodeURIComponent(storageKey)}&annee=${annee}`),
+  };
 }
 
 /* ── Dropdown compagnie ── */
@@ -93,7 +157,7 @@ function CompanyDropdown({ companies, selected, onSelect }) {
         padding: "8px 14px", borderRadius: 10, fontSize: 12, fontWeight: 800,
         boxShadow: "0 2px 8px rgba(255,230,0,0.4)", color: D, minWidth: 160,
       }}>
-        {logo && <img src={logo} alt={selected} style={{ height: 22, maxWidth: 52, objectFit: "contain" }} />}
+        {logo && <img src={logo} alt={selected} style={{ height: 30, maxWidth: 72, objectFit: "contain" }} />}
         <span style={{ flex: 1, textAlign: "left" }}>{LABEL[selected] || selected}</span>
         <ChevronDown color={D} size={13} />
       </button>
@@ -112,7 +176,7 @@ function CompanyDropdown({ companies, selected, onSelect }) {
                 padding: "9px 14px", border: "none", background: c === selected ? "#FFFBE6" : "transparent",
                 cursor: "pointer", textAlign: "left", fontSize: 12, fontWeight: c === selected ? 700 : 500, color: D,
               }}>
-                {lg ? <img src={lg} alt={c} style={{ height: 20, width: 44, objectFit: "contain" }} /> : <div style={{ width: 44 }} />}
+                {lg ? <img src={lg} alt={c} style={{ height: 28, width: 60, objectFit: "contain" }} /> : <div style={{ width: 60 }} />}
                 {LABEL[c] || c}
               </button>
             );
@@ -127,9 +191,30 @@ function CompanyDropdown({ companies, selected, onSelect }) {
 /* ══════════════════════════════════════════════════════════════ */
 /* TAB 1 — PROFIL DE L'ASSURANCE                                 */
 /* ══════════════════════════════════════════════════════════════ */
-function ProfilAssurance({ code, annee, profil }) {
-  if (!profil) return <div style={{ color: G, padding: 40, textAlign: "center" }}>Chargement…</div>;
+/* Note d'interprétation Takaful restante — les autres (Résultat net/ROA/
+   ROE/Ratio combiné/sinistralité/frais) ont été retirées le 2026-08-18
+   (retour utilisateur : trop de texte visible sur les KpiBox, la
+   ségrégation Opérateur/Fonds des Participants est déjà explicite via le
+   découpage en 2 sections ci-dessous). Celle-ci reste une info-bulle au
+   survol (title), pas un texte visible en permanence. */
+const TAKAFUL_NOTES = {
+  pdm: "Part du marché total (Takaful + conventionnel) — la référence pertinente pour comparer entre opérateurs Takaful reste le classement dans Analyse Comparative (filtre Takaful).",
+};
 
+/* Point d'entrée : n'affiche que le squelette (bandeau identité + carte
+   réseau) commun aux deux familles, puis délègue le corps à
+   ProfilConventionnel ou ProfilTakaful — deux fiches réellement distinctes
+   (pas une seule grille générique avec des notes conditionnelles), sur
+   demande explicite de l'utilisateur (2026-08-17) : la structure comptable
+   Takaful (Opérateur/Fonds des Participants, voir docs/
+   ratios_takaful_ifsb_aaoifi.md §4) n'a pas d'équivalent conventionnel et
+   mérite un regroupement propre plutôt que des KpiBox partagées avec une
+   info-bulle. */
+function ProfilAssurance({ code, annee, profil, qualite, navigate }) {
+  if (!profil) return <div style={{ color: G, padding: 40, textAlign: "center" }}>Chargement…</div>;
+  const anomaly = (storageKey) => kpiAnomaly(code, annee, storageKey, qualite, navigate);
+
+  const takaful = isTakaful(code);
   const logo = getLogoSrc(code);
   const totalAg = profil.total_agences;
   const agReg = profil.agences_region || {};
@@ -166,13 +251,13 @@ function ProfilAssurance({ code, annee, profil }) {
       }}>
         {/* Logo */}
         <div style={{
-          width: 130, flexShrink: 0,
+          width: 168, flexShrink: 0,
           background: "linear-gradient(160deg,#FFF9CC 0%,#FFE600 100%)",
           display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center", gap: 4, padding: "12px",
         }}>
           {logo
-            ? <img src={logo} alt={code} style={{ height: 52, width: "auto", maxWidth: 110, objectFit: "contain" }} />
+            ? <img src={logo} alt={code} style={{ height: 70, width: "auto", maxWidth: 148, objectFit: "contain" }} />
             : <div style={{ fontSize: 16, fontWeight: 900, color: D }}>{code}</div>
           }
           <div style={{ fontSize: 7.5, fontWeight: 800, color: "rgba(46,46,56,0.45)", letterSpacing: "1.2px", textAlign: "center", textTransform: "uppercase" }}>
@@ -189,9 +274,9 @@ function ProfilAssurance({ code, annee, profil }) {
         </div>
 
         {/* Part de marché */}
-        <div style={{ borderLeft: "1px solid #F0F0F0", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 24px", gap: 12 }}>
+        <div style={{ borderLeft: "1px solid #F0F0F0", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 24px", gap: 12 }} title={takaful ? TAKAFUL_NOTES.pdm : undefined}>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 8.5, fontWeight: 800, color: G, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 3 }}>Part de marché</div>
+            <div style={{ fontSize: 8.5, fontWeight: 800, color: G, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 3 }}>Part de marché{takaful ? " ☾" : ""}</div>
             <div style={{ fontSize: 26, fontWeight: 900, color: D, lineHeight: 1 }}>{fmtPct(profil.pdm)}</div>
             <div style={{ fontSize: 9, fontWeight: 600, color: G, marginTop: 2 }}>du marché {annee}</div>
           </div>
@@ -248,46 +333,115 @@ function ProfilAssurance({ code, annee, profil }) {
         </div>
       </div>
 
-      {/* Corps 2 colonnes */}
-      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 16, alignItems: "start" }}>
+      {/* Corps 2 colonnes — la carte réseau ne s'affiche que si la
+          compagnie a un jour figuré dans l'Annexe 2 CGA (distribution
+          géographique des agents d'assurance) : plusieurs compagnies en
+          sont structurellement absentes sur les 12 années disponibles
+          (bancassurance distribuée via agences bancaires, société Vie
+          seule dont le réseau est rapporté sous la marque non-Vie du
+          groupe, réassureur/assurance-crédit sans réseau d'agents) — pas
+          un problème d'extraction, voir extraction/CAS_PARTICULIERS_CGA.md.
+          Dans ce cas, afficher un encart "Données non disponibles" serait
+          un N/D trompeur (retour utilisateur 2026-08-18) -> on masque la
+          carte entièrement plutôt que la carte réseau vide. */}
+      <div style={{ display: "grid", gridTemplateColumns: totalAg != null ? "auto 1fr" : "1fr", gap: 16, alignItems: "start" }}>
 
         {/* Carte réseau */}
-        <div style={{ background: "white", borderRadius: 14, border: "1px solid #EBEBEB", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", padding: "14px" }}>
-          <SectionHead label={`Réseau d'agences ${profil.annee_cga || annee}${totalAg ? ` — ${totalAg} au total` : ""}`} />
-          {Object.keys(mapData).length > 0
-            ? <TunisiaMap data={mapData} />
-            : <div style={{ width: 200, height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: G, fontSize: 12 }}>Données non disponibles</div>
-          }
-        </div>
-
-        {/* Col droite */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-
-          {/* Indicateurs financiers */}
+        {totalAg != null && (
           <div style={{ background: "white", borderRadius: 14, border: "1px solid #EBEBEB", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", padding: "14px" }}>
-            <SectionHead label={`Indicateurs financiers ${annee}`} />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-              <KpiBox label="PRIMES ÉMISES"      value={fmtM(profil.primes_emises)}      unit="TND (M)" />
-              <KpiBox label="RÉSULTAT NET"        value={fmtM(profil.resultat_net)}        unit="TND (M)" />
-              <KpiBox label="TOTAL ACTIF"         value={fmtM(profil.total_actif)}         unit="TND (M)" />
-              <KpiBox label="RATIO COMBINÉ"       value={fmtPct(profil.ratio_combine)}                   />
-              <KpiBox label="RATIO SINISTRALITÉ"  value={fmtPct(profil.ratio_sp)}                        />
-              <KpiBox label="RATIO DE FRAIS"      value={fmtPct(profil.ratio_frais)}                     />
-            </div>
+            <SectionHead label={`Réseau d'agences ${profil.annee_cga || annee} — ${totalAg} au total`} />
+            {Object.keys(mapData).length > 0
+              ? <TunisiaMap data={mapData} />
+              : <div style={{ width: 200, height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: G, fontSize: 12 }}>Données non disponibles</div>
+            }
           </div>
+        )}
 
-          {/* ROA / ROE / Résultat technique */}
-          <div style={{ background: "white", borderRadius: 14, border: "1px solid #EBEBEB", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", padding: "14px" }}>
-            <SectionHead label="Rentabilité" />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-              <KpiBox label="ROA"                  value={fmtPct(profil.roa)}                              />
-              <KpiBox label="ROE"                  value={fmtPct(profil.roe)}                              />
-              <KpiBox label="RÉSULTAT TECHNIQUE"   value={fmtM(profil.resultat_technique)}  unit="TND (M)" />
-            </div>
-          </div>
-
-        </div>
+        {/* Col droite — corps distinct par famille */}
+        {takaful
+          ? <ProfilTakafulBody profil={profil} annee={annee} anomaly={anomaly} code={code} />
+          : <ProfilConventionnelBody profil={profil} annee={annee} anomaly={anomaly} code={code} />}
       </div>
+    </div>
+  );
+}
+
+/* ── Corps CONVENTIONNEL : bilan/résultat d'une seule entité, un seul
+   compte de résultat, un seul jeu de ratios techniques (voir
+   docs/ratios_takaful_ifsb_aaoifi.md §4 pour le contraste avec Takaful). ── */
+function ProfilConventionnelBody({ profil, annee, anomaly, code }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+      <KpiSection code={code} annee={annee} label={`Indicateurs financiers ${annee}`} items={[
+        { label: "PRIMES ÉMISES",      kpi: "Primes émises par assurance",       value: fmtM(profil.primes_emises),    unit: "TND (M)", anomaly: anomaly("Primes émises par assurance") },
+        { label: "RÉSULTAT NET",       kpi: "Résultat Net",                      value: fmtM(profil.resultat_net),     unit: "TND (M)", anomaly: anomaly("Résultat Net") },
+        { label: "TOTAL ACTIF",        kpi: "Total actif",                       value: fmtM(profil.total_actif),      unit: "TND (M)", anomaly: anomaly("Total actif") },
+        { label: "CAPITAUX PROPRES",   kpi: "Capitaux propres",                  value: fmtM(profil.capitaux_propres), unit: "TND (M)", anomaly: anomaly("Capitaux propres") },
+        { label: "RATIO COMBINÉ",      kpi: "Ratio combiné (%)",                 value: fmtPct(profil.ratio_combine),  anomaly: anomaly("Ratio combiné (%)") },
+        { label: "RATIO SINISTRALITÉ", kpi: "Ratio de sinistralité (%)",         value: fmtPct(profil.ratio_sp),       anomaly: anomaly("Ratio de sinistralité (%)") },
+        { label: "RATIO DE FRAIS",     kpi: "Ratio de frais de gestion (%)",     value: fmtPct(profil.ratio_frais),    anomaly: anomaly("Ratio de frais de gestion (%)") },
+      ]} />
+
+      <KpiSection code={code} annee={annee} label="Rentabilité" columns={3} items={[
+        { label: "ROA",                kpi: "ROA (%)",                     value: fmtPct(profil.roa),                     anomaly: anomaly("ROA (%)") },
+        { label: "ROE",                kpi: "ROE (%)",                     value: fmtPct(profil.roe),                     anomaly: anomaly("ROE (%)") },
+        { label: "RÉSULTAT TECHNIQUE", kpi: "Résultat technique (TND)",    value: fmtM(profil.resultat_technique), unit: "TND (M)", anomaly: anomaly("Résultat technique (TND)") },
+      ]} />
+
+      <KpiSection code={code} annee={annee} label="Solvabilité & investissement" items={[
+        { label: "DETTES / CAP. PROPRES",     kpi: "Dettes/Capitaux propres (%)",       value: fmtPct(profil.dette_cp) },
+        { label: "DETTES / ACTIF",            kpi: "Dettes/Actif (%)",                  value: fmtPct(profil.dette_actif) },
+        { label: "ACTIONS / ACTIF",           kpi: "Actions/Actif (%)",                 value: fmtPct(profil.actions_actif) },
+        { label: "PLACEMENTS / CAP. PROPRES", kpi: "Placements/Capitaux propres (%)",   value: fmtPct(profil.placements_cp) },
+      ]} />
+
+    </div>
+  );
+}
+
+/* ── Corps TAKAFUL : reflète la ségrégation des fonds propre au modèle
+   (IFSB-11 §10-12 ; docs/ratios_takaful_ifsb_aaoifi.md §4) — l'Opérateur
+   (actionnaires, rémunéré en Wakala/Moudharaba) et le Fonds des
+   Participants/PRF (propriété collective des participants, où résident
+   les contributions et le résultat technique mutualisé) sont deux entités
+   économiques distinctes avec chacune leur bilan/résultat. Les regrouper
+   dans une seule grille "Indicateurs financiers" comme pour le
+   conventionnel mélangerait la rentabilité de l'actionnaire (ROA/ROE/
+   Résultat net) avec l'équilibre du fonds mutuel (Ratio combiné/
+   sinistralité/frais) — deux choses économiquement différentes. ── */
+function ProfilTakafulBody({ profil, annee, anomaly, code }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+      <KpiSection code={code} annee={annee} label={`Compte de l'Opérateur (Wakala / Moudharaba) — ${annee}`} items={[
+        { label: "RÉSULTAT NET",          kpi: "Résultat Net",                      value: fmtM(profil.resultat_net),          unit: "TND (M)", anomaly: anomaly("Résultat Net") },
+        { label: "ROA",                   kpi: "ROA (%)",                           value: fmtPct(profil.roa),                                  anomaly: anomaly("ROA (%)") },
+        { label: "ROE",                   kpi: "ROE (%)",                           value: fmtPct(profil.roe),                                  anomaly: anomaly("ROE (%)") },
+        { label: "TOTAL ACTIF",           kpi: "Total actif",                       value: fmtM(profil.total_actif),           unit: "TND (M)", anomaly: anomaly("Total actif") },
+        { label: "CAPITAUX PROPRES",      kpi: "Capitaux propres",                  value: fmtM(profil.capitaux_propres),      unit: "TND (M)", anomaly: anomaly("Capitaux propres") },
+        { label: "COMMISSION WAKALA",     kpi: "Commission Wakala (TND)",           value: fmtM(profil.commission_wakala),     unit: "TND (M)" },
+        { label: "COMMISSION MOUDHARABA", kpi: "Commission Moudharaba (TND)",       value: fmtM(profil.commission_moudharaba), unit: "TND (M)" },
+      ]} />
+
+      <KpiSection code={code} annee={annee} label={`Fonds des Participants (PRF) — ${annee}`} items={[
+        { label: "CONTRIBUTIONS",             kpi: "Primes émises par assurance",                          value: fmtM(profil.primes_emises),         unit: "TND (M)", anomaly: anomaly("Primes émises par assurance") },
+        { label: "RATIO COMBINÉ",             kpi: "Ratio combiné (%)",                                    value: fmtPct(profil.ratio_combine),                        anomaly: anomaly("Ratio combiné (%)") },
+        { label: "RATIO SINISTRALITÉ",        kpi: "Ratio de sinistralité (%)",                            value: fmtPct(profil.ratio_sp),                             anomaly: anomaly("Ratio de sinistralité (%)") },
+        { label: "RATIO DE FRAIS",            kpi: "Ratio de frais de gestion (%)",                        value: fmtPct(profil.ratio_frais),                          anomaly: anomaly("Ratio de frais de gestion (%)") },
+        { label: "SURPLUS FONDS FAMILIAL",    kpi: "Surplus du Fonds Takaful Familial (TND)",              value: fmtM(profil.surplus_familial),      unit: "TND (M)" },
+        { label: "SURPLUS FONDS GÉNÉRAL",     kpi: "Surplus du Fonds Takaful Général (TND)",               value: fmtM(profil.surplus_general),       unit: "TND (M)" },
+        { label: "ACTIFS NETS DES ADHÉRENTS", kpi: "Total actifs nets des adhérents (TND)",                value: fmtM(profil.actifs_nets_adherents), unit: "TND (M)" },
+        { label: "PROVISIONS TECH. DU FONDS", kpi: "Provisions techniques du Fonds des Adhérents (TND)",   value: fmtM(profil.provisions_adherents),  unit: "TND (M)" },
+      ]} />
+
+      <KpiSection code={code} annee={annee} label="Solvabilité & investissement (univers Sharia-compliant)" items={[
+        { label: "DETTES / CAP. PROPRES",     kpi: "Dettes/Capitaux propres (%)",       value: fmtPct(profil.dette_cp) },
+        { label: "DETTES / ACTIF",            kpi: "Dettes/Actif (%)",                  value: fmtPct(profil.dette_actif) },
+        { label: "ACTIONS / ACTIF",           kpi: "Actions/Actif (%)",                 value: fmtPct(profil.actions_actif) },
+        { label: "PLACEMENTS / CAP. PROPRES", kpi: "Placements/Capitaux propres (%)",   value: fmtPct(profil.placements_cp) },
+      ]} />
+
     </div>
   );
 }
@@ -357,6 +511,8 @@ function PerformanceFinanciere({ code, profil, evolution, bilan }) {
     return <div style={{ color: G, padding: 40, textAlign: "center" }}>Données non disponibles pour {LABEL[code] || code}</div>;
   }
 
+  const takaful = isTakaful(code);
+
   const years = Object.keys(evolution).map(Number).sort();
   const get   = (field) => years.map(y => evolution[y]?.[field] ?? null);
 
@@ -389,11 +545,15 @@ function PerformanceFinanciere({ code, profil, evolution, bilan }) {
     { name: "Résultat de l'exercice", data: get("resultat_net")  },
   ];
 
-  /* Chart 2 — Ratios de performance (lignes %) */
+  /* Chart 2 — Ratios de performance (lignes %). "Ratio combiné" exclu côté
+     Takaful : même constat que sur Analyse Comparative
+     (AnalyseComparative.jsx::INDICATEURS_TAKAFUL) — les valeurs extraites
+     tombent hors plage plausible pour les 2 opérateurs Takaful exploitables
+     et ressortent toujours null, ce qui affichait une 3e ligne vide/plate. */
   const chartRatiosOpts = {
     chart: { type: "line", toolbar: { show: false }, animations: { enabled: false }, background: "transparent" },
-    stroke: { width: [2.5, 2.5, 2], curve: "smooth", dashArray: [0, 0, 4] },
-    colors: [D, Y, G],
+    stroke: takaful ? { width: [2.5, 2.5], curve: "smooth" } : { width: [2.5, 2.5, 2], curve: "smooth", dashArray: [0, 0, 4] },
+    colors: takaful ? [D, Y] : [D, Y, G],
     markers: { size: 3 },
     legend: { position: "top", fontSize: "9px", fontFamily: "Barlow,system-ui,sans-serif",
               markers: { width: 10, height: 6, radius: 2 } },
@@ -404,7 +564,10 @@ function PerformanceFinanciere({ code, profil, evolution, bilan }) {
     grid:   { borderColor: "#F0F0F0", strokeDashArray: 3 },
     dataLabels: { enabled: false },
   };
-  const chartRatiosSeries = [
+  const chartRatiosSeries = takaful ? [
+    { name: "ROE (%)",          data: get("roe")           },
+    { name: "ROA (%)",          data: get("roa")           },
+  ] : [
     { name: "ROE (%)",          data: get("roe")           },
     { name: "ROA (%)",          data: get("roa")           },
     { name: "Ratio combiné (%)", data: get("ratio_combine") },
@@ -534,6 +697,7 @@ function PerformanceFinanciere({ code, profil, evolution, bilan }) {
 /* PAGE PRINCIPALE                                               */
 /* ══════════════════════════════════════════════════════════════ */
 export default function FichesEntreprises() {
+  const navigate = useNavigate();
   const [tab,        setTab]        = useState("profil");
   const [companies,  setCompanies]  = useState([]);
   const [code,       setCode]       = useState("STAR");
@@ -542,6 +706,17 @@ export default function FichesEntreprises() {
   const [evolution,  setEvolution]  = useState(null);
   const [bilan,      setBilan]      = useState(null);
   const [loading,    setLoading]    = useState(false);
+  const [qualite,    setQualite]    = useState(null);
+
+  // Classification anomalies (extrait/calculé/non extrait/non calculé/
+  // aberrant) — même source que Qualité Données/Anomalies Système, pas une
+  // logique locale à cette page. Un seul fetch par année (toutes compagnies),
+  // réutilisé pour chaque société sélectionnée.
+  useEffect(() => {
+    if (!annee) return;
+    fetch(`${API}/api/rapport-qualite?annee=${annee}`)
+      .then(r => r.json()).then(setQualite).catch(() => setQualite(null));
+  }, [annee]);
 
   // Charger la liste des compagnies
   useEffect(() => {
@@ -550,12 +725,23 @@ export default function FichesEntreprises() {
       .then(data => { setCompanies(data); if (!data.includes(code)) setCode(data[0] || "STAR"); });
   }, []);
 
-  // Toujours prendre la dernière année disponible pour la compagnie
+  // Année de référence de la plateforme : 2024 (même ancrage que Aperçu
+  // Marché/Analyse Comparative/Rapport Pipeline, tous fixés sur 2024) —
+  // demande explicite de l'utilisateur (2026-08-19) : le choix précédent
+  // ("toujours la dernière année disponible pour la compagnie") faisait
+  // qu'une compagnie avec des données 2025 partielles s'affichait par
+  // défaut sur 2025 pendant que le reste de la plateforme montrait 2024,
+  // cassant la cohérence de contexte entre les pages. On ne replafonne
+  // PAS la liste elle-même côté backend (voir /api/vue-assurance/annees :
+  // un plafond backend avait déjà causé un décalage label/donnée, voir
+  // commit 5ae8a76) — seul le choix du défaut change ici. Si 2024 n'existe
+  // pas pour cette compagnie (cas réel : documents manquants), on retombe
+  // sur la dernière année disponible plutôt que de bloquer la page.
   useEffect(() => {
     if (!code) return;
     fetch(`${API}/api/vue-assurance/annees?code=${code}`)
       .then(r => r.json())
-      .then(data => setAnnee(data[data.length - 1] || null));
+      .then(data => setAnnee(data.includes(2024) ? 2024 : (data[data.length - 1] || null)));
   }, [code]);
 
   // Charger le profil quand compagnie ou année change
@@ -614,7 +800,7 @@ export default function FichesEntreprises() {
       {loading && <div style={{ color: G, textAlign: "center", padding: 40 }}>Chargement…</div>}
 
       {!loading && tab === "profil" && (
-        <ProfilAssurance code={code} annee={annee} profil={profil} />
+        <ProfilAssurance code={code} annee={annee} profil={profil} qualite={qualite} navigate={navigate} />
       )}
       {tab === "perf" && (
         <PerformanceFinanciere code={code} profil={profil} evolution={evolution} bilan={bilan} />

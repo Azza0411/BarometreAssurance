@@ -12,7 +12,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak,
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak, HRFlowable,
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT
@@ -26,14 +26,73 @@ WHITE  = colors.white
 
 _LOGO_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "assets", "EyDark.png",
+    "assets", "EyForDarkBg.png",
 )
 # Copie locale (api/assets/) plutôt qu'un lien vers frontend/public/logos/ :
 # Dockerfile.api ne copie pas le dossier frontend/ dans l'image, le logo
 # serait introuvable (silencieusement omis, cf. le if os.path.exists ci-dessous).
-_LOGO_ASPECT = 0.836  # largeur/hauteur du PNG source (474x567) — évite un
-                      # étirement/débordement si drawImage() ne préserve pas
-                      # le ratio comme attendu quand une seule dimension est fournie.
+#
+# "EyForDarkBg.png" — PAS "EyDark.png" (utilisé jusqu'au 2026-08-19) : ce
+# dernier s'est avéré être un WebP renommé .png, entièrement OPAQUE (aucun
+# canal alpha — vérifié via PIL, `mode == "RGB"`, alpha uniforme à 255 sur
+# toute l'image) avec un fond blanc plein ET des lettres "EY" elles-mêmes en
+# gris quasi blanc (luminance > 230 partout hors du triangle jaune) —
+# probablement un export raté (silhouette blanche destinée à un fond sombre,
+# mais enregistrée sans transparence). `mask="auto"` de ReportLab masquait
+# ce défaut par chance en PDF (d'où le "ça a l'air propre" des captures
+# précédentes), mais openpyxl (export Excel) colle les pixels tels quels :
+# un bloc blanc plein apparaissait sur le bandeau sombre — signalé par
+# l'utilisateur comme "logo pas clair". Ce fichier est reconstruit à partir
+# de "EYLight.png" (texte "EY"/tagline gris foncé ~(21,28,35), triangle
+# jaune (255,230,0), VRAIE transparence alpha) en inversant le texte foncé
+# en blanc pur (garde le jaune inchangé) — silhouette blanche+jaune correcte
+# avec une vraie transparence, exploitable telle quelle en PDF ET en Excel.
+_LOGO_ASPECT = 0.864  # largeur/hauteur du PNG source (768x889)
+
+# Logos compagnies — copie locale de frontend/src/utils/logos.js (même
+# raison que EyDark.png : api/assets/ est le seul dossier d'images accessible
+# depuis l'image Docker api, voir commentaire ci-dessus). Utilisés pour
+# afficher le logo de la compagnie à côté du logo EY dans l'en-tête de la
+# fiche compagnie exportée — ajouté le 2026-08-19 sur demande explicite
+# ("améliorer l'allure générale" des exports).
+_LOGOS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "assets", "logos",
+)
+_COMPANY_LOGO_MAP = {
+    "AL_AMANAH_TAKAFUL": "El Amana Takaful.png",
+    "AMI":               "AMI.png",
+    "ASTREE":            "astree.png",
+    "ATTIJARI":          "Attijari.png",
+    "AT_TAKAFULIA":      "At-Takafulia.png",
+    "BH":                "BH.png",
+    "BIAT":              "BIAT.png",
+    "BNA":                "BNA.png",
+    "CARTE":             "Carte.png",
+    "CARTE_VIE":         "Carte-Vie.png",
+    "COMAR":             "COMAR.png",
+    "COTUNACE":          "COTUNACE.png",
+    "CTAMA":             "CTAMA.png",
+    "GAT":               "GAT.png",
+    "GAT_VIE":           "GAT-vie.png",
+    "HAYETT":            "hayett.png",
+    "LLOYD_TUNISIEN":    "LLOYD.png",
+    "LLOYD_VIE":         "LLOYD-Vie.png",
+    "MAGHREBIA":         "Maghrebia.png",
+    "MAGHREBIA_VIE":     "Maghrebia-Vie.png",
+    "STAR":              "STAR.png",
+    "TUNIS_RE":          "TunisRe.png",
+    "UIB":               "UIB.png",
+    "ZITOUNA_TAKAFUL":   "Zitouna-Takaful.png",
+}
+
+
+def _company_logo_path(code):
+    filename = _COMPANY_LOGO_MAP.get((code or "").upper())
+    if not filename:
+        return None
+    path = os.path.join(_LOGOS_DIR, filename)
+    return path if os.path.exists(path) else None
 
 _styles = getSampleStyleSheet()
 STYLE_TITLE = ParagraphStyle("EYTitle", parent=_styles["Title"], textColor=WHITE,
@@ -68,7 +127,7 @@ def _fmt(value, unit="", decimals=1, na="—"):
     return str(value)
 
 
-def _header_footer(title, subtitle):
+def _header_footer(title, subtitle, company_logo_path=None):
     def _draw(cnv, doc):
         cnv.saveState()
         page_w, page_h = A4
@@ -77,10 +136,43 @@ def _header_footer(title, subtitle):
         cnv.rect(0, page_h - 2.6 * cm, page_w, 2.6 * cm, fill=1, stroke=0)
         if os.path.exists(_LOGO_PATH):
             try:
-                logo_h = 1.1 * cm
+                logo_h = 1.7 * cm  # agrandi le 2026-08-19 (retour utilisateur)
                 logo_w = logo_h * _LOGO_ASPECT
-                cnv.drawImage(_LOGO_PATH, 1.5 * cm, page_h - 2.05 * cm,
+                cnv.drawImage(_LOGO_PATH, 1.5 * cm, page_h - 2.25 * cm,
                                width=logo_w, height=logo_h, mask="auto")
+            except Exception:
+                pass
+        # Logo compagnie (fiche compagnie uniquement), coin opposé du logo
+        # EY. Historique du 2026-08-19, 2 essais avant celui-ci :
+        #   1) médaillon blanc rond (Ø1,7cm) — carré ~1,3cm imposé aux
+        #      logos, illisible pour les formats très en largeur (BH,
+        #      BIAT : texte écrasé à l'illisibilité).
+        #   2) posé à même le bandeau dark, sans fond (retour utilisateur
+        #      explicite "mettre un fond foncé") — corrige bien la taille
+        #      (boîte large 4,2cm au lieu d'un carré) mais CASSE la
+        #      lisibilité des logos à texte sombre conçus pour un fond
+        #      clair (BIAT : "ASSURANCES BIAT" en gris foncé devient quasi
+        #      invisible sur le bandeau navy) — la plupart des logos
+        #      compagnies ici sont dans ce cas, pas dans celui de STAR/BH
+        #      qui s'en sortent car assez colorés/contrastés.
+        # Solution retenue : garder le fond CLAIR (fonctionne pour la
+        # quasi-totalité des logos, conçus pour un support clair comme
+        # n'importe quel document imprimé) mais sur une carte LARGE
+        # (4,2cm, pas un carré/rond) plutôt qu'un médaillon — corrige le
+        # vrai problème (écrasement des logos en largeur), pas la couleur.
+        if company_logo_path:
+            try:
+                badge_w, badge_h = 4.4 * cm, 1.55 * cm
+                badge_x = page_w - 1.3 * cm - badge_w
+                badge_y = page_h - 2.05 * cm
+                cnv.setFillColor(WHITE)
+                cnv.roundRect(badge_x, badge_y, badge_w, badge_h, 6, fill=1, stroke=0)
+                logo_w = badge_w - 0.5 * cm
+                logo_h = badge_h - 0.4 * cm
+                cnv.drawImage(company_logo_path,
+                               badge_x + (badge_w - logo_w) / 2, badge_y + (badge_h - logo_h) / 2,
+                               width=logo_w, height=logo_h, mask="auto",
+                               preserveAspectRatio=True, anchor="c")
             except Exception:
                 pass
         cnv.setFillColor(WHITE)
@@ -90,6 +182,9 @@ def _header_footer(title, subtitle):
         cnv.setFont("Helvetica", 10)
         cnv.drawString(4.2 * cm, page_h - 1.9 * cm, subtitle)
         # Pied de page
+        cnv.setStrokeColor(colors.HexColor("#44444E"))
+        cnv.setLineWidth(0.5)
+        cnv.line(1.5 * cm, 1.55 * cm, page_w - 1.5 * cm, 1.55 * cm)
         cnv.setFillColor(GREY)
         cnv.setFont("Helvetica", 7.5)
         cnv.drawString(1.5 * cm, 1.2 * cm,
@@ -100,17 +195,28 @@ def _header_footer(title, subtitle):
     return _draw
 
 
-def _doc(buffer, title, subtitle):
+def _doc(buffer, title, subtitle, company_logo_path=None):
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
         topMargin=3.2 * cm, bottomMargin=2 * cm,
         leftMargin=1.5 * cm, rightMargin=1.5 * cm,
     )
-    draw = _header_footer(title, subtitle)
+    draw = _header_footer(title, subtitle, company_logo_path)
     doc.build_with_header = lambda flowables: doc.build(
         flowables, onFirstPage=draw, onLaterPages=draw
     )
     return doc
+
+
+def _section_header(text):
+    """Titre de section + filet jaune — remplace un simple Paragraph pour
+    donner plus de repère visuel entre sections (ajouté le 2026-08-19,
+    passe d'amélioration générale de l'allure des exports)."""
+    return [
+        Paragraph(text, STYLE_SECTION),
+        HRFlowable(width="100%", thickness=1.4, color=YELLOW, spaceBefore=0, spaceAfter=8,
+                   lineCap="round"),
+    ]
 
 
 def _table(data, col_widths=None, align_right_from=1):
@@ -147,21 +253,27 @@ def _kpi_row(items):
         while len(cur) < 4:
             cur.append(["", ""])
         rows.append(cur)
-    flat = [[c[1] for c in row] for row in rows]  # valeurs
-    labels = [[c[0] for c in row] for row in rows]
-    # Intercale label/valeur verticalement dans une même cellule via Table imbriquée
+    # Intercale label/valeur verticalement dans une même cellule via Table
+    # imbriquée, avec un filet jaune en haut de chaque carte — même accent
+    # que les cartes KPI de l'application (voir .kpi-card dans index.css) —
+    # pour que l'export "ressemble" visuellement à l'écran d'origine.
     cells = []
     for row in rows:
-        cells.append([
-            Table([[c[0]], [c[1]]], colWidths=[4.1 * cm])
-            for c in row
-        ])
+        card_cells = []
+        for c in row:
+            card = Table([[c[0]], [c[1]]], colWidths=[4.0 * cm])
+            card.setStyle(TableStyle([
+                ("LINEABOVE", (0, 0), (-1, 0), 2.2, YELLOW),
+                ("TOPPADDING", (0, 0), (-1, 0), 6),
+            ]))
+            card_cells.append(card)
+        cells.append(card_cells)
     t = Table(cells, colWidths=[4.3 * cm] * 4)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
         ("BOX", (0, 0), (-1, -1), 0, WHITE),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
@@ -183,7 +295,8 @@ def build_fiche_compagnie_pdf(code, annee):
 
     buffer = io.BytesIO()
     doc = _doc(buffer, f"Fiche compagnie — {code}",
-               f"Exercice {profil.get('annee') or annee} · FS Market Intelligence")
+               f"Exercice {profil.get('annee') or annee} · FS Market Intelligence",
+               company_logo_path=_company_logo_path(code))
 
     flow = [Spacer(1, 0.2 * cm)]
     flow.append(_kpi_row([
@@ -201,7 +314,7 @@ def build_fiche_compagnie_pdf(code, annee):
         flow.append(Spacer(1, 0.3 * cm))
         flow.append(Paragraph(f"Siège social : {profil['siege_social']}", STYLE_BODY))
 
-    flow.append(Paragraph("Bilan (MDT)", STYLE_SECTION))
+    flow.extend(_section_header("Bilan (MDT)"))
     if bilan.get("actif") or bilan.get("passif"):
         actif_rows = [["Actif", "Valeur (MDT)"]] + [
             [it["label"], _fmt(it["value"], decimals=1)] for it in bilan.get("actif", [])
@@ -222,7 +335,7 @@ def build_fiche_compagnie_pdf(code, annee):
         ))
 
     if evolution:
-        flow.append(Paragraph("Évolution historique", STYLE_SECTION))
+        flow.extend(_section_header("Évolution historique"))
         years = sorted(evolution.keys())
         header = ["Année", "Primes (MDT)", "Résultat net (MDT)", "Total actif (MDT)",
                   "ROE (%)", "Ratio combiné (%)", "PDM (%)"]
@@ -304,7 +417,7 @@ def build_apercu_marche_pdf(annee):
         ("Nombre d'assureurs", _fmt(profil.get("nb_assureurs"), decimals=0)),
     ]))
 
-    flow.append(Paragraph("Ratios techniques (%)", STYLE_SECTION))
+    flow.extend(_section_header("Ratios techniques (%)"))
     header = ["Segment", "Ratio S/P", "Ratio de frais", "Ratio combiné"]
     rows = [header]
     for label, key in [("Vie", "vie"), ("Non-Vie", "non_vie"), ("Total", "total")]:
@@ -315,8 +428,9 @@ def build_apercu_marche_pdf(annee):
 
     classement = agences.get("classement", [])
     if classement:
-        flow.append(Paragraph(f"Réseau d'agences — classement (année {agences.get('annee_cga', annee)})",
-                               STYLE_SECTION))
+        flow.extend(_section_header(
+            f"Réseau d'agences — classement (année {agences.get('annee_cga', annee)})"
+        ))
         header = ["Rang", "Compagnie", "Agences", "Part réseau (%)"]
         rows = [header] + [
             [c["rang"], c["code"], _fmt(c.get("n"), decimals=0), _fmt(c.get("pct"))]

@@ -11,9 +11,18 @@ from extraction.kpi_definitions import filter_reliable
 
 bp = Blueprint("comparative", __name__)
 
+# Une compagnie n'est retenue que si AU MOINS une de ces valeurs existe —
+# sans ça, elle apparaîtrait dans le sélecteur sans une seule case
+# exploitable derrière. Initialement restreint aux 4 indicateurs de primes/
+# ratios techniques : ATTIJARI 2024 a un document CMF avec Résultat Net,
+# Capitaux propres, Total actif et ROE/ROA correctement extraits (23 KPI au
+# total), mais aucun des 4 KPI de primes — elle disparaissait donc
+# entièrement du comparateur alors qu'elle a de vraies données de
+# solvabilité/rentabilité à montrer (retour utilisateur du 2026-08-09).
 _KEY_KPIS = {
     "Primes émises par assurance", "Ratio combiné (%)",
     "Ratio de frais de gestion (%)", "Part de marché (%)",
+    "ROE (%)", "ROA (%)", "Total actif", "Capitaux propres",
 }
 
 # row_key (sortie de build_company_row) -> nom KPI affiché sur Qualité Data,
@@ -27,6 +36,10 @@ _ROW_KEY_TO_KPI = {
     "pdm":           "Part de marché (%)",
     "roe":           "ROE (%)",
     "roa":           "ROA (%)",
+    "dette_cp":      "Dettes/Capitaux propres (%)",
+    "dette_actif":   "Dettes/Actif (%)",
+    "actions_actif": "Actions/Actif (%)",
+    "placements_cp": "Placements/Capitaux propres (%)",
 }
 
 # Réutilise la liste unique de quality.py (raison documentée par société)

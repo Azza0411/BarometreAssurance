@@ -90,6 +90,40 @@ STAR", "Primes émises par branche - Automobile").
 
 ## Non résolu / limitations connues
 
+- **8 compagnies jamais présentes dans l'Annexe 2, sur les 12 années
+  disponibles (2013-2024)** : ATTIJARI, CARTE_VIE, COTUNACE, GAT_VIE,
+  HAYETT, MAGHREBIA_VIE, TUNIS_RE, UIB. Vérifié le 2026-08-18 en listant
+  les libellés bruts de ligne de chaque rapport CGA_20XX.pdf (pas de
+  ligne contenant leur nom, sous aucune variante testée par
+  `find_code_by_name`) — ce n'est PAS un échec de rattachement nom→code,
+  la ligne est structurellement absente du tableau source. Explication
+  probable par famille de cas (non confirmée avec le CGA, déduite de la
+  nature de chaque société) :
+  - **UIB, ATTIJARI** : filiales de bancassurance, distribuées via les
+    agences de leur banque respective plutôt qu'un réseau d'agents
+    d'assurance dédié — hors périmètre de ce tableau par construction.
+  - **HAYETT** : compagnie Vie seule ; peut ne pas opérer de réseau
+    d'agences physique au même sens que les compagnies Non-Vie/mixtes.
+  - **CARTE_VIE, GAT_VIE, MAGHREBIA_VIE** : branche Vie d'un groupe dont
+    la branche Non-Vie (CARTE/GAT/MAGHREBIA) est, elle, bien présente —
+    cohérent avec un réseau d'agences unique par groupe, rapporté sous la
+    marque non-Vie uniquement (cf. LLOYD_VIE, listé seul jusqu'en 2016
+    puis remplacé par LLOYD_TUNISIEN à partir de 2017, signe d'une
+    fusion/renommage de la structure déclarée).
+  - **TUNIS_RE** : réassureur, ne traite pas directement avec des
+    assurés/agences.
+  - **COTUNACE** : assurance-crédit à l'export, structure de
+    distribution spécialisée hors réseau d'agents classique.
+
+  Conséquence côté application : `/api/vue-assurance/profil` renvoie
+  `total_agences: null` pour ces 8 compagnies quelle que soit l'année
+  demandée (le repli "année la plus récente disponible" déjà en place
+  dans `vue_assurance.py` ne peut rien trouver puisqu'aucune année n'a de
+  donnée) — la fiche masque désormais entièrement la carte "Réseau
+  d'agences" plutôt que d'afficher un encart vide (retour utilisateur
+  2026-08-18), au lieu de tenter une correction qui n'a pas de source à
+  extraire.
+
 - **2018 et 2021 : branche "Automobile" manquante** dans l'Annexe 4-1.
   Cause identifiée : le PDF source utilise un point comme séparateur
   décimal pour cette seule valeur au lieu d'une virgule (ex: "939.8" au

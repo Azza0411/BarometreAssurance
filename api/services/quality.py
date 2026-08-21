@@ -47,12 +47,17 @@ _ZERO_SUSPECT_KPIS = ZERO_SUSPECT_KPIS
 # détail de chaque cas) — avant juillet 2026, une seule raison générique
 # ("PDF scanné / OCR corrompu / logique Takaful incompatible") était
 # affichée pour les 8, sans dire laquelle s'appliquait à quelle société.
+#
+# UIB, HAYETT, CARTE_VIE, AMI sorties de cette liste le 2026-08-17 : le motif
+# "aucun texte extractible" ne décrivait plus la réalité — vérifié sur les
+# documents réels, la majorité de leurs années ont du texte natif exploitable
+# (CARTE_VIE : 9/11 années ≥3 KPI-clés sur 6 ; HAYETT : 9/11 années ≥4/6 ;
+# UIB : 5/6 années ≥2/6 ; AMI, le cas le plus faible des 4 : 3/8 années
+# partielles). Seules certaines années précises restent scannées/introuvables
+# (ex: HAYETT 2018/2019, UIB 2024, AMI la plupart des années) — ce sont des
+# lacunes ponctuelles normales (`None` par KPI/année), pas un motif pour
+# masquer la société entière de Vue par Assurance. Voir CAS_PARTICULIERS.md.
 PROBLEMATIC_CODES: dict[str, str] = {
-    "AL_AMANAH_TAKAFUL": "Document entièrement rédigé en arabe — motifs de recherche actuels non compatibles",
-    "AMI":                "Pages scannées en image, aucun texte extractible (nécessite OCR)",
-    "CARTE_VIE":          "Pages scannées en image, aucun texte extractible (nécessite OCR)",
-    "UIB":                "Pages scannées en image, aucun texte extractible (nécessite OCR)",
-    "HAYETT":             "Pages scannées en image, aucun texte extractible (nécessite OCR)",
     "COTUNACE":           "Texte corrompu par un OCR de mauvaise qualité à la source (fautes de caractères aléatoires)",
 }
 

@@ -8,6 +8,34 @@ FTUSA x INS), par année (réseau d'agences CGA).
 
 ## Résolu
 
+- **[2026-08-16] Bug systémique : lecture auto-référentielle de "Calcul
+  interne"** — `compute_cmf_derived_kpis` lisait `get_kpi_values_for_document`
+  SANS exclure le tableau "Calcul interne", alors que 4 KPI calculés
+  ("Primes acquises", "Charges de prestations", "Charges d'acquisition et de
+  gestion nettes", "Primes émises par assurance") portent le MÊME NOM que
+  leur propre repli de secours (`kpis.get("Primes acquises")` etc., utilisé
+  quand le détail Vie/Non-Vie manque). La clé unique en base est
+  (document_id, tableau, kpi), pas (document_id, kpi) : les deux valeurs
+  (brute et calculée) coexistent sous des tableaux différents, et le dict
+  fusionné ne garde qu'UNE des deux selon l'ordre de retour SQL — non
+  déterministe. Au fil des runs successifs, un calcul pouvait relire SA
+  PROPRE sortie d'un run antérieur comme si c'était une donnée brute,
+  produisant une valeur qui dérive sans lien avec le PDF source.
+  **Découvert sur ASTREE 2025** : "Primes acquises" (Calcul interne) valait
+  2 863 645 917 TND (2,86 milliards !) au lieu de ~148M — donnait un Ratio de
+  sinistralité à 5,5 % (rejeté par le filtre de plausibilité, donc affiché
+  "N/D"). Vérifié : le même mécanisme avait aussi faussé (SANS déclencher le
+  filtre de plausibilité, donc affichées comme normales alors que fausses)
+  ASTREE 2024, COMAR 2024/2025, GAT 2024/2025, STAR 2025 — au minimum.
+  **Corrigé** en ajoutant un paramètre `exclude_tableaux` à
+  `get_kpi_values_for_document` (database/repository.py), utilisé par
+  `compute_cmf_derived_kpis` pour ne lire QUE des valeurs brutes. Après
+  recalcul complet (`python -m extraction.calculated_kpi_extractor`), le
+  Ratio de sinistralité de GAT_VIE (jusque-là filtré N/D, valeur brute
+  anormalement basse ~3-7 %) est lui aussi rétabli à une valeur normale
+  (39,8 %/57,8 % en 2024/2025) — c'était donc CE bug, pas un problème de
+  calibration du seuil de plausibilité comme initialement suspecté.
+
 - **Convention de signe des charges** : les tableaux Annexe 12/13 (CMF) et
   FTUSA notent les charges (prestations, acquisition) en **négatif**
   (déductions dans un compte de résultat), alors que "Charge de sinistres"
@@ -76,9 +104,15 @@ FTUSA x INS), par année (réseau d'agences CGA).
 
 - **ATTIJARI** : aucun ratio (combiné, sinistralité, frais) dans le document CMF 2024 — PDM = 0.1 %, primes = 3.5 MDT. Calcul impossible sans données sources ; affiché N/D.
 
-- **BIAT** — ~~RSP calculé = 119.8 % gonflé artificiellement~~ **Fixé (juillet 2026)** : `Primes émises par assurance` = 110.7 MDT (Non-Vie seule), `Charge de sinistres` = 132.6 MDT (Vie + Non-Vie) — exactement le motif que `segment_mismatch` détecte désormais, RC/RSP/RF sont maintenant tous les 3 invalidés (`None`/`__delete__`) plutôt que RSP seul gonflé silencieusement. Les primes Vie BIAT restent non extraites du PDF (cause racine non corrigée, seul le symptôme l'est) ; à réévaluer si elles deviennent disponibles.
+- **BIAT** — ~~RSP calculé = 119.8 % gonflé artificiellement~~ **Fixé (juillet 2026)** : `Primes émises par assurance` = 110.7 MDT (Non-Vie seule), `Charge de sinistres` = 132.6 MDT (Vie + Non-Vie) — exactement le motif que `segment_mismatch` détecte désormais, RC/RSP/RF sont maintenant tous les 3 invalidés (`None`/`__delete__`) plutôt que RSP seul gonflé silencieusement. ~~Les primes Vie BIAT restent non extraites du PDF~~ **Cause racine également fixée le 2026-08-05** : `annexe12_kpi_extractor.py` ne reconnaissait pas le titre de page "RESULTAT TECHNIQUE VIE PAR CATEGORIE..." (mot "VIE" avant "PAR CATÉGORIE" au lieu d'après) ni le libellé "Primes" seul (sans "émises") — voir CAS_PARTICULIERS_ANNEXE12.md. Primes Vie désormais extraites pour BIAT (et 8 autres sociétés, 80 valeurs au total, 2017-2022) ; RC/RSP/RF de BIAT passent de "toujours None" à correctement calculés pour 8 des 10 exercices disponibles.
 
 - **COTUNACE** : `Primes émises par assurance` = 19 TND (numéro de ligne capturé). Corrigé côté API par fallback sur `Primes acquises` = 13.3 MDT. Ratios absents ou aberrants (> 1 000 % → filtrés par `_ratio`).
+
+- **LLOYD_TUNISIEN (2018) — ~~`Ratio combiné (%)` = 3.46 % (aberrant, trop bas)~~ Fixé (2026-08-06)** : découvert le 2026-08-05 en vérifiant l'effet du fix BIAT ci-dessus sur les autres exercices. Cause : `charges_acquisition` (Vie+Non-Vie) est entièrement `None` cette année-là (`Charges d'acquisition et de gestion nettes Vie` ET `...Non-Vie` absentes), alors que `charges_prestations` a la partie Vie seule (Non-Vie absente aussi, mais `_safe_sum` ignore silencieusement le côté manquant plutôt que d'invalider tout le calcul) — le numérateur du ratio combiné (charges Vie seules) est donc comparé à un dénominateur (primes) qui, lui, additionne correctement Vie+Non-Vie. Le garde-fou `segment_mismatch` d'origine ne couvrait que le sens "primes Vie manquantes alors que charges Vie présentes" (cas BIAT) — il ne détectait pas le sens inverse observé ici. **Corrigé** en généralisant `segment_mismatch` (`calculated_kpi_extractor.py::_compute_cmf_kpis_for_document`) pour comparer, séparément pour le segment Vie et pour le segment Non-Vie, la présence des charges à la présence des primes correspondantes (au lieu de ne vérifier qu'un seul segment dans un seul sens) ; le poids du segment asymétrique est mesuré côté primes en priorité (disponibles pour la quasi-totalité des sociétés), avec repli sur les charges si les primes du segment sont absentes des deux côtés (cas où aucune primes Vie/Non-Vie n'est extraite du tout). Validé par une comparaison "ancien calcul vs nouveau calcul" sur les 223 documents CMF, à données identiques : **6 documents affectés**, tous dans le même sens (un ratio auparavant affiché — souvent déjà suspect, > 100 % — devient `None`/anomalie détectée), aucune régression (aucun ratio correct n'est invalidé, aucune nouvelle valeur n'est introduite) :
+  - `LLOYD_TUNISIEN 2018` (RC 3.46 % → `None`, le cas d'origine) ;
+  - `COMAR 2019` (RSP 134.6 % → `None` — primes émises Vie ET Non-Vie toutes deux absentes cette année-là, alors que les charges des deux segments sont présentes) ;
+  - `ATTIJARI 2021/2022/2023` (RSP/RF/RC → `None` — "Charges de prestations Non-Vie" et "Charges d'acquisition... Non-Vie" y sont des valeurs suspectes, la seconde étant une copie exacte du chiffre Vie, alors que "Primes émises Non-Vie" n'est jamais extraite ces années-là) ;
+  - `MAGHREBIA_VIE 2025` (RF/RC → `None` — même motif qu'ATTIJARI : charges Non-Vie identiques aux charges Vie au chiffre près, primes Non-Vie absentes).
 
 - **ZITOUNA_TAKAFUL** : RC = 12.1 %, RSP = 8.2 %, RF = 3.9 % — cohérents avec les charges brutes. Faibles par rapport aux assureurs classiques car la structure Takaful sépare le fonds des adhérents du fonds de la société (provisions techniques de 20.9 MDT non incluses dans les charges de prestations retenues pour le calcul).
 

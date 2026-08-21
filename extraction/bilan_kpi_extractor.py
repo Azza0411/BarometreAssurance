@@ -75,8 +75,16 @@ SECTION_CODE_RE = re.compile(r"^(ac|pa)([1-7])\b")
 # Les libellés de lignes de détail sont souvent précédés du code de la ligne
 # (ex: "AC332 Obligations..." -> "ac332 obligations...") : on l'enlève avant
 # de comparer aux motifs, pour ne pas avoir à répéter tous les codes possibles
-# dans chaque motif.
-ROW_CODE_PREFIX_RE = re.compile(r"^(ac|pa|cp)\d+\s+")
+# dans chaque motif. "prv|prnv|chv|chnv" (codes Annexe 12/13 : Primes/Charges
+# Vie/Non-Vie, ex: "PRV11 Primes émises et acceptées") ajoutés le 2026-08-17 —
+# cette fonction est réutilisée telle quelle par annexe12/13_kpi_extractor.py
+# (import direct), mais n'y couvrait jusqu'ici que les codes Bilan (AC/PA/CP)
+# : chez CTAMA (et probablement d'autres), le code de ligne PRV/CHV n'est pas
+# détaché du libellé par pdfplumber comme il l'est chez la plupart des autres
+# sociétés — le préfixe non retiré empêchait tout motif "^primes emises\b"
+# de matcher, laissant Primes émises Vie/Non-Vie et tous les KPI dérivés
+# introuvables pour 100 % de ses documents.
+ROW_CODE_PREFIX_RE = re.compile(r"^(ac|pa|cp|prv|prnv|chv|chnv)\d+\s+")
 
 # Repli utilisé quand le code de section (AC1..AC7/PA1..PA7) n'est pas
 # détectable tel quel dans le texte extrait (ex: chiffre du code absent ou
@@ -141,7 +149,12 @@ MINUS_CHARS = "‐‑‒–—−"
 # Format virgule-décimale : "113,026" (un seul groupe → millimes tunisiens).
 # Format américain multi-groupes : "13,966,819.225" (virgule = milliers, point
 # = décimale) — rencontré dans les PDF COTUNACE 2021 et similaires.
-NUMERIC_TOKEN_RE = re.compile(rf"^[-{MINUS_CHARS}]?\d+(?:,\d+)*(?:\.\d+)?$")
+# Format tunisien alternatif multi-groupes point-milliers, sans virgule :
+# "79.274.708" (ex: UIB 2025, MAGHREBIA_VIE 2020) — `(?:\.\d+)*` (au lieu de
+# `?`) admet aussi plusieurs groupes séparés par un point ; la distinction
+# avec un simple nombre décimal ("63.8") est faite dans _parse_number selon
+# le nombre de points, pas ici (ici on ne fait que reconnaître le token).
+NUMERIC_TOKEN_RE = re.compile(rf"^[-{MINUS_CHARS}]?\d+(?:,\d+)*(?:\.\d+)*$")
 _MINUS_NORMALIZE_RE = re.compile(f"[{MINUS_CHARS}]")
 # Deux nombres consécutifs sans aucun espace entre eux, le second étant
 # négatif (ex: "104-1" = fin de "...350 104" suivi du début de "-1 144...")
@@ -160,6 +173,19 @@ _GLUED_NEGATIVE_RE = re.compile(rf"^(\d+)([-{MINUS_CHARS}]\d+(?:,\d+)?)$")
 # les deux à la fois avec du texte après) ne le gèrent -> le mot est perdu
 # tel quel, ce qui décale aussi le regroupement des colonnes suivantes.
 _GLUED_CLOSE_PAREN_RE = re.compile(r"^(\d+(?:,\d+)?)\)(\d+)$")
+# Séparateur de milliers en POINTS ("8.671.061" au lieu de "8 671 061" —
+# rencontré chez TUNIS_RE 2024) : la couche texte du PDF scinde ce nombre en
+# DEUX mots ("8" et ".671.061" — vérifié via page.extract_words()). Le
+# second mot ne correspond à aucun format reconnu par NUMERIC_TOKEN_RE (il
+# commence par un point) et est silencieusement perdu, ne laissant que le
+# chiffre isolé — d'où les valeurs absurdement petites observées partout où
+# ce format apparaît (voir MIN_PLAUSIBLE_VALUE ci-dessus et
+# CAS_PARTICULIERS_RESULTAT.md). "\.\d{3}(?:\.\d{3})*$" exige des groupes
+# de 3 chiffres pleins : une vraie décimale (ex: ".5", ".54") ne matche
+# jamais cette forme, ce qui limite le risque de fusionner à tort un chiffre
+# et une décimale non liée.
+_PERIOD_THOUSANDS_CONTINUATION_RE = re.compile(r"^\.\d{3}(?:\.\d{3})*$")
+_LEADING_DIGIT_GROUP_RE = re.compile(rf"^[-{MINUS_CHARS}]?\d{{1,3}}$")
 # Aucune société d'assurance tunisienne n'approche cet ordre de grandeur (en
 # dinars) : une valeur qui le dépasse trahit une erreur d'extraction (nombres
 # fusionnés) plutôt qu'un vrai montant — on la rejette plutôt que de renvoyer
@@ -272,11 +298,31 @@ def _split_glued_close_paren(word, gap_threshold=NUMBER_GAP_THRESHOLD):
     return [first, second]
 
 
+def _merged_period_thousands(line, gap_threshold=NUMBER_GAP_THRESHOLD):
+    """Recolle un mot "8" suivi (à moins de gap_threshold) d'un mot
+    ".671.061" en un seul mot "8671061" — voir _PERIOD_THOUSANDS_CONTINUATION_RE
+    plus haut pour le contexte (TUNIS_RE 2024)."""
+    merged, i = [], 0
+    while i < len(line):
+        w = line[i]
+        nxt = line[i + 1] if i + 1 < len(line) else None
+        if (nxt is not None and _LEADING_DIGIT_GROUP_RE.match(w["text"])
+                and _PERIOD_THOUSANDS_CONTINUATION_RE.match(nxt["text"])
+                and (nxt["x0"] - w["x1"]) < gap_threshold):
+            merged.append({**w, "text": w["text"] + nxt["text"].replace(".", ""), "x1": nxt["x1"]})
+            i += 2
+            continue
+        merged.append(w)
+        i += 1
+    return merged
+
+
 def _extract_numeric_clusters(line, gap_threshold=NUMBER_GAP_THRESHOLD):
     """Regroupe les tokens numériques consécutifs d'une ligne (séparateur de
     milliers = espace) en nombres complets, dans l'ordre d'apparition
     (gauche à droite = colonnes du tableau). Renvoie une liste de
     (valeur, x0_premier_token)."""
+    line = _merged_period_thousands(line, gap_threshold)
     line = _words_with_bracket_negatives_resolved(line)
     once_split = [split_word for w in line for split_word in _split_glued_negative(w, gap_threshold)]
     expanded = [
@@ -333,6 +379,16 @@ def _parse_number(num_str, negative):
         elif "," in num_str:
             # Format tunisien/français : "113,026" — virgule = décimale
             value = float(num_str.replace(",", "."))
+        elif num_str.count(".") >= 2:
+            # Format tunisien alternatif (ex: UIB 2025, BH 2020, MAGHREBIA_VIE
+            # 2020) : "79.274.708" — point = séparateur de milliers, PAS de
+            # décimale (jamais >1 point dans un nombre réel). Sans ce cas,
+            # float() levait ValueError -> None (STAR/BIAT...), ou pire,
+            # ne consommait qu'un seul groupe de chiffres selon le decoupage
+            # de tokens amont, produisant une valeur minuscule et fausse
+            # (12.0, 20.0, 2041.0 vus en base) au lieu de rejeter la ligne.
+            # Documenté dans CAS_PARTICULIERS.md ("dot-separated thousands").
+            value = float(num_str.replace(".", ""))
         else:
             value = float(num_str)
     except ValueError:
@@ -434,6 +490,118 @@ def _select_column_value(clusters, lines, target_top, header_token):
     return value if _is_plausible(value) else None
 
 
+# Repli OCR (2026-08-17) : certains documents ont leur page Actif et/ou
+# Passif du Bilan remplacée par une image scannée — 0 caractère extractible
+# nativement — alors que le reste du document est en texte natif normal
+# (cas confirmé : STAR 2019/2023/2025, BH 2023, UIB 2024, MAGHREBIA_VIE
+# 2018 — voir CAS_PARTICULIERS.md). Plutôt que de laisser ces cas
+# indéfiniment `None`, on retente une extraction OCR (pytesseract + rendu
+# image pdfplumber, langue française) UNIQUEMENT quand l'extraction native
+# échoue (page quasi vide, < _OCR_MIN_NATIVE_CHARS caractères) — le reste du
+# pipeline (détection de page, parsing de lignes/colonnes) est réutilisé tel
+# quel sur les mots OCR (même format de dict : text/x0/x1/top/bottom en
+# points PDF), sans aucune logique dupliquée. Coût OCR (~1-3s/page) nul sur
+# les documents en texte natif normal (l'immense majorité) : la branche OCR
+# n'est jamais atteinte tant que le texte natif est présent.
+_OCR_MIN_NATIVE_CHARS = 20
+
+
+def _ocr_words(page, resolution=300):
+    """Rend `page` en image et en extrait les mots via OCR, au même format
+    que `page.extract_words()` de pdfplumber. Renvoie [] si pytesseract/
+    tesseract n'est pas installé (dépendance optionnelle) ou en cas d'échec
+    du rendu/OCR — dégradation silencieuse vers le comportement précédent
+    (page traitée comme vide)."""
+    try:
+        import pytesseract
+        from pytesseract import Output
+    except ImportError:
+        return []
+    try:
+        img = page.to_image(resolution=resolution).original
+        # --psm 6 ("bloc de texte uniforme") : le mode par défaut (psm 3,
+        # segmentation automatique complète) fusionne "Total"/"de"/"l'actif"
+        # en un seul mot garbled ("Toutde lactif") sur ces tableaux denses,
+        # cassant la reconnaissance du libellé "Total de l'actif" alors que
+        # les chiffres de la même ligne restent lisibles (constaté sur STAR
+        # 2025 : psm 6 lit "Total"/"l'actif" comme 2 mots distincts,
+        # correctement alignés avec les 4 colonnes de chiffres).
+        data = pytesseract.image_to_data(img, lang="fra", config="--psm 6", output_type=Output.DICT)
+    except Exception:
+        return []
+    scale = resolution / 72.0
+    words = []
+    n = len(data.get("text", []))
+    for i in range(n):
+        text = (data["text"][i] or "").strip()
+        if not text:
+            continue
+        left, top, width, height = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
+        words.append({
+            "text": text,
+            "x0": left / scale,
+            "x1": (left + width) / scale,
+            "top": top / scale,
+            "bottom": (top + height) / scale,
+        })
+    return words
+
+
+class _OcrFallbackPage:
+    """Enveloppe transparente d'une page pdfplumber : se comporte comme la
+    page native tant que celle-ci contient du texte exploitable, et ne
+    déclenche l'OCR (coûteux) que si extract_text()/extract_words() natifs
+    sont vides ou quasi vides. Tout attribut/méthode non redéfini est
+    délégué à la page pdfplumber d'origine (__getattr__).
+
+    `force=True` (utilisé par extract_all_bilan_kpis en 2e passe, seulement
+    si la 1ère n'a rien trouvé pour Total actif/Capitaux propres) ignore le
+    texte natif même non vide et impose l'OCR — couvre le cas BH (2020) où
+    le texte natif existe mais est gravement corrompu par l'encodage police
+    ("3992 196 2r9o 892 rSol 3o4" — lettres et chiffres mêlés), donc trop
+    long pour déclencher le seuil _OCR_MIN_NATIVE_CHARS mais inexploitable
+    par le parsing numérique. L'OCR relit l'image de la page, indépendant de
+    la couche texte corrompue."""
+
+    def __init__(self, page, force=False):
+        self._page = page
+        self._force = force
+        self._ocr_cache = None
+
+    def _ocr(self):
+        if self._ocr_cache is None:
+            self._ocr_cache = _ocr_words(self._page)
+        return self._ocr_cache
+
+    def extract_words(self, **kwargs):
+        if self._force:
+            return self._ocr() or self._page.extract_words(**kwargs)
+        native = self._page.extract_words(**kwargs)
+        return native if native else self._ocr()
+
+    def extract_text(self):
+        native = (self._page.extract_text() or "").strip()
+        if not self._force and len(native) >= _OCR_MIN_NATIVE_CHARS:
+            return native
+        ocr_words = self._ocr()
+        if not ocr_words:
+            return native
+        return "\n".join(" ".join(w["text"] for w in line) for line in _cluster_lines(ocr_words))
+
+    def __getattr__(self, name):
+        return getattr(self._page, name)
+
+
+class _PdfPagesProxy:
+    """Objet minimal exposant `.pages` (seul attribut de `pdf` utilisé dans
+    ce module) — permet d'injecter des pages avec repli OCR partout où le
+    code existant fait `pdf.pages[:max_pages]`, sans toucher chacun de ces
+    sites d'appel."""
+
+    def __init__(self, pages):
+        self.pages = pages
+
+
 def _page_lines(page):
     words = page.extract_words()
     if not words:
@@ -457,7 +625,14 @@ def _find_row_value(pdf, pattern_re, header_token=None, max_pages=MAX_PAGES_SCAN
     `forward_scan` lignes suivantes pour trouver les chiffres associés.
     `page_filter`, si fourni, restreint la recherche aux pages qu'il valide
     (ex: _is_actif_page) — utile pour éviter de matcher un libellé similaire
-    sur la mauvaise page."""
+    sur la mauvaise page.
+
+    `_is_plausible` (découvert manquant ici le 2026-08-06, sur "Résultat
+    Net"/resultat_kpi_extractor.py où le même trou existait) : sans ce
+    filtre, un fragment de nombre scindé par le PDF (ex: TUNIS_RE 2024,
+    séparateur de milliers en points — voir CAS_PARTICULIERS_RESULTAT.md)
+    ressortirait tel quel (valeur absurdement petite) au lieu de redevenir
+    `None`/anomalie détectée."""
     for page in pdf.pages[:max_pages]:
         if page_filter and not page_filter(page):
             continue
@@ -473,22 +648,28 @@ def _find_row_value(pdf, pattern_re, header_token=None, max_pages=MAX_PAGES_SCAN
                 if not clusters:
                     continue
                 value = _select_column_value(clusters, lines, lines[j][0]["top"], header_token)
-                if value is not None:
+                if value is not None and _is_plausible(value):
                     return value
     return None
 
 
-def _is_actif_page(page, lines_checked=10):
+def _is_actif_page(page, lines_checked=20):
     """Une page est considérée comme la page "Actif" du Bilan si le mot
     "actif(s)" apparaît dans l'un de ses premiers titres (ex: "ACTIF",
     "Actifs du Bilan", "Annexe 1 : ACTIF"), sans que "passif" y apparaisse
     aussi (pour ne pas confondre avec la page combinée Capitaux propres et
-    Passif qui peut mentionner "actif" en passant). lines_checked=10 (au
-    lieu de 5) : certains documents (ex: BIAT 2025) ont un bandeau d'en-tête
-    de 5 lignes ("Assurances X / Bilan / Arrêté au... / Unité... / dates")
-    avant la ligne "ACTIFS Brut Amort. Net Net" elle-même — avec
-    lines_checked=5 elle tombait juste hors fenêtre, la page entière était
-    ignorée et "Total actif" ressortait introuvable."""
+    Passif qui peut mentionner "actif" en passant). lines_checked=20 (au
+    lieu de 10, lui-même déjà élargi depuis 5) : certains documents (ex:
+    BIAT 2025) ont un bandeau d'en-tête de 5 lignes ("Assurances X / Bilan /
+    Arrêté au... / Unité... / dates") avant la ligne "ACTIFS Brut Amort. Net
+    Net" elle-même. D'autres (ex: STAR/BIAT/CARTE/ASTREE 2015, gabarit "AVIS
+    DES SOCIÉTÉS" avec préambule narratif de 8 lignes avant "BILAN AU
+    .../ACTIF") poussent le titre à la 12e ligne, hors de la fenêtre à 10 —
+    découvert le 2026-08-17 en auditant Vue par Assurance ("Total actif"/
+    "ROA" manquants ensemble sur plusieurs sociétés en 2015, motif récurrent
+    au lieu d'un cas isolé). Sans risque de faux positif : le titre Bilan
+    est toujours en tout début de SA page, jamais enfoui dans un corps de
+    texte, quelle que soit la longueur du préambule."""
     text = (page.extract_text() or "").strip()
     if not text:
         return False
@@ -499,7 +680,7 @@ def _is_actif_page(page, lines_checked=10):
     return False
 
 
-def _is_passif_page(page, lines_checked=10):
+def _is_passif_page(page, lines_checked=20):
     """Une page est considérée comme la page "Passif" (ou "Capitaux propres
     et Passif") du Bilan si le mot "passif(s)" apparaît dans l'un de ses
     premiers titres. Même marge élargie que _is_actif_page, pour la même
@@ -596,6 +777,20 @@ def _find_section_total(pdf, side_prefix, code, header_token, max_pages=MAX_PAGE
             header_clusters = _extract_numeric_clusters(lines[line_idx])
             if len(header_clusters) >= 2:
                 return _select_column_value(header_clusters, lines, lines[line_idx][0]["top"], header_token)
+            # On retient le MAXIMUM des candidats de la plage, pas le
+            # dernier trouvé : un vrai total de section, somme de
+            # composantes positives, est mathématiquement toujours >= à
+            # chacune d'elles — ce qui couvre aussi bien le cas où le total
+            # est légitimement la dernière ligne (STAR/COMAR, alors le
+            # maximum coïncide avec le dernier) que celui, découvert le
+            # 2026-08-18 sur MAGHREBIA_VIE 2025, où le document ne porte
+            # AUCUNE ligne de total pour la section : l'ancien
+            # comportement ("dernière ligne à ≥2 colonnes") retenait alors
+            # un sous-élément quelconque en fin de plage (ex: "créances
+            # pour espèces déposées" = 2 487 652 TND retenu comme
+            # "Placements", alors que le vrai total valait ~711,4M TND,
+            # dominé par "obligations et autres titres" = 530 992 021 TND
+            # resté plus proche de la vraie grandeur).
             value = None
             for j in range(line_idx + 1, end_idx):
                 clusters = _extract_numeric_clusters(lines[j])
@@ -605,7 +800,7 @@ def _find_section_total(pdf, side_prefix, code, header_token, max_pages=MAX_PAGE
                 if len(clusters) < 2:
                     continue
                 candidate = _select_column_value(clusters, lines, lines[j][0]["top"], header_token)
-                if candidate is not None:
+                if candidate is not None and (value is None or candidate > value):
                     value = candidate
             return value
     return None
@@ -732,20 +927,88 @@ KPI_DEFINITIONS = [
 ]
 
 
-def extract_all_bilan_kpis(pdf):
-    """Renvoie {nom_kpi: valeur|None} pour tous les KPI de KPI_DEFINITIONS,
-    à partir du tableau Bilan du PDF ouvert `pdf` (objet pdfplumber.PDF)."""
+_ACTIF_COMPONENT_KPIS = [
+    "Actifs incorporels", "Actifs corporels", "Placements", "Créances",
+    "Autres éléments d'actifs", "Part des réassureurs dans les provisions techniques",
+    "Obligations", "Actions et titres de participation", "OPCVM",
+    "Dépôts et liquidité", "Placements représentant des provisions techniques",
+]
+
+
+def _apply_composition_consistency_guard(results):
+    """Un poste de l'Actif ne peut jamais dépasser le Total actif (une
+    partie ne peut être plus grande que le tout) : découvert le 2026-08-18
+    sur STAR 2025, dont la page Actif du Bilan est une image scannée
+    (0 mot de texte natif -> repli OCR, voir _OcrFallbackPage) — l'OCR de
+    cette page précise a mal lu la section "OPCVM", produisant 8,9 Md TND
+    pour un Total actif de 1,66 Md TND. Filet de sécurité générique
+    (jamais spécifique à une compagnie) plutôt qu'un correctif OCR ciblé,
+    l'amélioration de la qualité OCR elle-même étant hors de portée ici.
+
+    Piste explorée puis abandonnée : comparer "Placements" (AC3) à la somme
+    de ses "sous-éléments" Obligations/Actions/OPCVM/Dépôts et liquidité.
+    Invalidée sur ASTREE 2015 (vérification manuelle ligne par ligne du
+    PDF) : "OPCVM" matche en réalité le sous-total AC33 "Autres placements
+    financiers", qui englobe DÉJÀ Obligations et Actions (pas des lignes
+    sœurs indépendantes) ; "Dépôts et liquidité" matche AC71 (Autres
+    éléments d'actif), une section différente d'AC3. Ces 4 KPI ne sont pas
+    des parts mutuellement exclusives d'AC3 -> aucune relation d'inégalité
+    fiable entre eux et le total de section ne peut être posée en règle
+    générale (le test faisait remonter ~90 faux positifs, dont la quasi-
+    totalité des années ASTREE/GAT/GAT_VIE, où Placements est en réalité
+    correct).
+
+    Ne s'applique que si `Total actif` lui-même est plausible (>= 1M TND,
+    même seuil que `kpi_builder._MIN_TOTAL_ACTIF_PLAUSIBLE`) : plusieurs
+    documents (ex: BH 2020, UIB 2020) ont un "Total actif" déjà erroné et
+    minuscule (20 TND, 2041 TND — un fragment de nombre, pas un vrai total)
+    -> comparer des composantes par ailleurs correctes à CE total casserait
+    des valeurs valides au lieu de détecter une vraie incohérence."""
+    total_actif = results.get("Total actif")
+    if total_actif is not None and abs(total_actif) >= 1_000_000:
+        for name in _ACTIF_COMPONENT_KPIS:
+            value = results.get(name)
+            if value is not None and abs(value) > total_actif:
+                results[name] = None
+
+
+def _extract_all_bilan_kpis_impl(pdf, force_ocr=False):
     results = {}
+    wrapped = _PdfPagesProxy([_OcrFallbackPage(p, force=force_ocr) for p in pdf.pages[:MAX_PAGES_SCANNED]])
     for definition in KPI_DEFINITIONS:
         name, kind = definition[0], definition[1]
         if kind == "special":
-            results[name] = definition[2](pdf)
+            results[name] = definition[2](wrapped)
         elif kind == "direct":
             _, _, pattern_re, header_token, page_filter = definition
-            results[name] = _find_row_value(pdf, pattern_re, header_token=header_token, page_filter=page_filter)
+            results[name] = _find_row_value(wrapped, pattern_re, header_token=header_token, page_filter=page_filter)
         elif kind == "section":
             _, _, side_prefix, code, header_token = definition
-            results[name] = _find_section_total(pdf, side_prefix, code, header_token)
+            results[name] = _find_section_total(wrapped, side_prefix, code, header_token)
+    _apply_composition_consistency_guard(results)
+    return results
+
+
+def extract_all_bilan_kpis(pdf):
+    """Renvoie {nom_kpi: valeur|None} pour tous les KPI de KPI_DEFINITIONS,
+    à partir du tableau Bilan du PDF ouvert `pdf` (objet pdfplumber.PDF).
+
+    2 passes : la 1ère utilise le texte natif, avec repli OCR uniquement sur
+    les pages vides (_OcrFallbackPage, voir commentaire au-dessus de
+    _ocr_words) — coût nul sur l'immense majorité des documents. Si "Total
+    actif" OU "Capitaux propres" est introuvable à l'issue de cette 1ère
+    passe (page trouvée mais texte natif inexploitable, ex: encodage police
+    corrompu — cas BH 2020, où seule la page Actif est corrompue et Capitaux
+    propres/Passif s'extrait normalement — un déclencheur "ET" raterait ce
+    cas), une 2e passe force l'OCR sur toutes les pages scannées ; ses
+    résultats ne comblent que les trous de la 1ère passe (jamais
+    d'écrasement d'une valeur déjà trouvée)."""
+    results = _extract_all_bilan_kpis_impl(pdf, force_ocr=False)
+    if results.get("Total actif") is None or results.get("Capitaux propres") is None:
+        forced = _extract_all_bilan_kpis_impl(pdf, force_ocr=True)
+        for name, value in forced.items():
+            if results.get(name) is None and value is not None:
+                results[name] = value
     return results
 
 

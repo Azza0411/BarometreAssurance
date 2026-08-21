@@ -133,12 +133,26 @@ def _find_page_lines(pdf, title_re, max_pages=MAX_PAGES_SCANNED, require_rotated
 
 def _extract_nombre_assureurs(pdf):
     """Compte les lignes de la section "Sociétés d'Assurance Directe" de
-    l'Annexe 1 (entre son en-tête et la prochaine ligne "TOTAL")."""
+    l'Annexe 1 (entre son en-tête et la prochaine ligne "TOTAL"), au total
+    et séparément pour les opérateurs Takaful (renvoie (total, takaful)).
+
+    Découvert le 2026-08-07 : cette section liste TOUS les assureurs agréés
+    sans distinction de référentiel — vérifié sur CGA_2024.pdf, les 3
+    dernières des 23 lignes sont "ZITOUNA TAKAFUL...", "ATTAKAFULIA...",
+    "EL AMANA TAKAFUL...". Un consommateur qui affiche "23 assureurs" comme
+    KPI "Conventionnelle" (ex: Aperçu Marché) mélangerait donc les deux
+    référentiels sans ce sous-comptage (règle métier n°1, PROMPT MAÎTRE).
+    `find_code_by_name` (Jaccard pondéré) échoue sur ces lignes précises :
+    le suffixe fixe "SOCIETE ANONYME S.A ... BRANCHES" (absent des alias,
+    donc non pondéré, poids 1 par mot) dilue le score sous le seuil - une
+    simple recherche de la sous-chaîne "takaful" est plus robuste ici (les
+    3 noms Takaful du marché tunisien contiennent tous ce mot, y compris
+    "ATTAKAFULIA" qui l'a soudé sans espace)."""
     lines = _find_page_lines(pdf, ANNEXE1_TITLE_RE)
     if not lines:
-        return None
+        return None, None
     in_section = False
-    count = 0
+    count = takaful_count = 0
     for line in lines:
         label = _row_label(line)
         if label is None:
@@ -151,7 +165,9 @@ def _extract_nombre_assureurs(pdf):
             if TOTAL_LINE_RE.match(normalized):
                 break
             count += 1
-    return count or None
+            if "takaful" in normalized:
+                takaful_count += 1
+    return count or None, takaful_count
 
 
 def _extract_annexe2_rows(pdf):
@@ -214,12 +230,19 @@ def _extract_branch_premiums(pdf):
 
 
 def extract_cga_kpis(pdf):
-    """Renvoie un dict KPI -> valeur : "Nombre d'assureurs", "Primes émises
-    par branche - {branche}" (Annexe 4-1), plus les KPI par compagnie et
-    par gouvernorat generes dynamiquement a partir des lignes trouvees dans
-    l'Annexe 2 (noms de KPI variables d'un document a l'autre, contrairement
-    aux autres extracteurs du projet)."""
-    result = {"Nombre d'assureurs": _extract_nombre_assureurs(pdf)}
+    """Renvoie un dict KPI -> valeur : "Nombre d'assureurs" (total, toutes
+    familles confondues - inchangé pour compatibilité), plus "Nombre
+    d'assureurs Conventionnelle"/"...Takaful" (voir _extract_nombre_assureurs
+    pour la raison de cette séparation), "Primes émises par branche -
+    {branche}" (Annexe 4-1), et les KPI par compagnie/gouvernorat generes
+    dynamiquement a partir des lignes trouvees dans l'Annexe 2 (noms de KPI
+    variables d'un document a l'autre, contrairement aux autres extracteurs
+    du projet)."""
+    nb_total, nb_takaful = _extract_nombre_assureurs(pdf)
+    result = {"Nombre d'assureurs": nb_total}
+    if nb_total is not None and nb_takaful is not None:
+        result["Nombre d'assureurs Takaful"] = nb_takaful
+        result["Nombre d'assureurs Conventionnelle"] = nb_total - nb_takaful
 
     for branch_name, value in _extract_branch_premiums(pdf).items():
         result[f"Primes émises par branche - {branch_name}"] = value

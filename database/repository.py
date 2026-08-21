@@ -415,7 +415,7 @@ def get_quality_score_history(conn, annee=None, limit=90):
     return list(reversed(history))
 
 
-def get_kpi_values_for_document(conn, document_id):
+def get_kpi_values_for_document(conn, document_id, exclude_tableaux=None):
     """Renvoie {kpi: valeur_nombre|valeur_texte} pour un document (les KPI
     numériques et textuels sont fusionnés dans le même dict, chaque KPI
     n'ayant jamais les deux à la fois).
@@ -428,12 +428,35 @@ def get_kpi_values_for_document(conn, document_id):
     plutôt que de risquer d'afficher une donnée inventée comme si elle était
     extraite. Voir extraction/data_cleaning.py pour le même principe côté
     contrôle de cohérence (une valeur suspecte est signalée, jamais corrigée
-    automatiquement)."""
+    automatiquement).
+
+    `exclude_tableaux` : tableaux à exclure du dict renvoyé (ex: "Calcul
+    interne" pour un appelant qui va lui-même RECALCULER des KPI portant le
+    même nom qu'un KPI brut — voir extraction/calculated_kpi_extractor.py::
+    compute_cmf_derived_kpis). Un même nom de KPI peut légitimement exister
+    sous deux tableaux différents (ex: "Primes acquises" brut, extrait de
+    l'Annexe 13 Non-Vie seule ; "Primes acquises" calculé, somme Vie+Non-Vie
+    dans "Calcul interne") — la clé UNIQUE en base est (document_id, tableau,
+    kpi), pas (document_id, kpi). Sans ce filtre, le dict fusionné ne garde
+    qu'UNE des deux valeurs selon l'ordre de retour SQL (non déterministe),
+    et un appelant qui recalcule risque de relire sa PROPRE valeur calculée
+    au tour précédent comme si c'était la donnée brute — corruption
+    auto-référentielle découverte le 2026-08-16 sur ASTREE 2025 ("Primes
+    acquises" calculé à 2,86 milliards TND au lieu de ~148M, la valeur
+    "Calcul interne" d'un run précédent ayant été relue comme valeur brute)."""
     with conn.cursor() as cur:
-        cur.execute(
-            "SELECT kpi, valeur_nombre, valeur_texte FROM kpi_values WHERE document_id = %s",
-            (document_id,),
-        )
+        if exclude_tableaux:
+            placeholders = ", ".join(["%s"] * len(exclude_tableaux))
+            cur.execute(
+                f"SELECT kpi, valeur_nombre, valeur_texte FROM kpi_values "
+                f"WHERE document_id = %s AND tableau NOT IN ({placeholders})",
+                (document_id, *exclude_tableaux),
+            )
+        else:
+            cur.execute(
+                "SELECT kpi, valeur_nombre, valeur_texte FROM kpi_values WHERE document_id = %s",
+                (document_id,),
+            )
         return {kpi: (nombre if nombre is not None else texte) for kpi, nombre, texte in cur.fetchall()}
 
 
@@ -641,3 +664,65 @@ def mark_notification_read(conn, notif_id):
 def mark_all_notifications_read(conn):
     with conn.cursor() as cur:
         cur.execute("UPDATE notifications SET lu = 1 WHERE lu = 0")
+
+
+def diff_and_mark_actualites(conn, items):
+    """Reçoit la liste d'actualités fraîchement scrapée (dicts avec 'url',
+    'titre', 'src', 'date'), renvoie le sous-ensemble jamais vu auparavant
+    (clé = url), et persiste TOUS les items (nouveaux et déjà connus) dans
+    actualites_vues. Appelé uniquement par pipelines/run_pipeline.py -
+    /api/actualites reste un scrape live inchangé, cette table ne sert qu'à
+    détecter les nouveautés pour la cloche de notification.
+
+    Premier passage (table vide) : peuple la table SANS rien renvoyer comme
+    "nouveau" - tout serait nouveau par définition faute de ligne de base,
+    ce qui noierait l'utilisateur sous une notification "50 actualités"
+    dès le premier lancement du pipeline après ce déploiement."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM actualites_vues")
+        first_run = cur.fetchone()[0] == 0
+
+    nouveaux = []
+    with conn.cursor() as cur:
+        for it in items:
+            url = it.get("url")
+            if not url:
+                continue
+            cur.execute("SELECT id FROM actualites_vues WHERE url = %s", (url,))
+            if cur.fetchone() is None and not first_run:
+                nouveaux.append(it)
+            cur.execute(
+                """
+                INSERT IGNORE INTO actualites_vues (url, titre, src, date_publication)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (url, (it.get("titre") or "")[:500], it.get("src") or "?", it.get("date")),
+            )
+    return nouveaux
+
+
+def diff_and_mark_reglementation(conn, items):
+    """Équivalent de diff_and_mark_actualites pour la veille réglementaire
+    (table reglementation_vues, clé = id/url du texte source). Même garde
+    contre l'avalanche de notifications au premier passage."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM reglementation_vues")
+        first_run = cur.fetchone()[0] == 0
+
+    nouveaux = []
+    with conn.cursor() as cur:
+        for it in items:
+            doc_key = it.get("id") or it.get("url")
+            if not doc_key:
+                continue
+            cur.execute("SELECT id FROM reglementation_vues WHERE doc_key = %s", (doc_key,))
+            if cur.fetchone() is None and not first_run:
+                nouveaux.append(it)
+            cur.execute(
+                """
+                INSERT IGNORE INTO reglementation_vues (doc_key, titre, src, url)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (doc_key, (it.get("titre") or "")[:500], it.get("src") or "?", it.get("url")),
+            )
+    return nouveaux

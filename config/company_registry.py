@@ -150,6 +150,20 @@ COMPANY_REGISTRY = {
 }
 
 
+# Compagnies Takaful (assurance participative islamique) : même pattern que
+# COMPANY_CONTEXT dans extraction/kpi_definitions.py plutôt qu'un champ répété
+# sur chacune des 24 entrées de COMPANY_REGISTRY. AL_AMANAH_TAKAFUL est incluse
+# ici par cohérence de classification même si le pipeline ne la traite jamais
+# (PDF en arabe, voir extraction/takaful_kpi_extractor.py) : elle n'a donc
+# aucun document en base et n'apparaîtra jamais dans un résultat filtré.
+TAKAFUL_CODES = {"AT_TAKAFULIA", "ZITOUNA_TAKAFUL", "AL_AMANAH_TAKAFUL"}
+
+
+def get_famille(code):
+    """Renvoie "takaful" ou "conventionnelle" pour un code compagnie."""
+    return "takaful" if code in TAKAFUL_CODES else "conventionnelle"
+
+
 # Articles/connecteurs sans valeur distinctive (variantes de translittération
 # arabe-français notamment) : sans les exclure, un mot comme "EL" peut faire
 # gagner une correspondance non pertinente (ex: "EL Amana Takaful" matchait à

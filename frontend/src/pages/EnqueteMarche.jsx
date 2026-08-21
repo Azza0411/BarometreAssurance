@@ -208,7 +208,7 @@ function Card({ title, children, style={} }) {
       {title && (
         <div style={{ display:"flex", alignItems:"center", gap:5, marginBottom:7 }}>
           <span style={{ width:5, height:5, borderRadius:"50%", background:"#E70013", display:"block" }}/>
-          <span style={{ fontSize:8.5, fontWeight:900, textTransform:"uppercase", letterSpacing:"1.4px", color:"#E70013" }}>
+          <span style={{ fontSize:9.5, fontWeight:900, textTransform:"uppercase", letterSpacing:"1.2px", color:"#E70013" }}>
             {title}
           </span>
         </div>
@@ -227,14 +227,14 @@ function HBar({ labs=[], vals=[], labelWidth=130, fill=false }) {
       {labs.map((lab,i) => (
         <div key={i} style={{ display:"flex", alignItems:"center", gap:6, ...(fill && { flex:1 }) }}>
           <div style={{
-            width:labelWidth, fontSize:8, fontWeight:600, color:D, textAlign:"right", flexShrink:0,
+            width:labelWidth, fontSize:9.5, fontWeight:600, color:D, textAlign:"right", flexShrink:0,
             lineHeight:1.3, wordBreak:"break-word",
           }}>{lab}</div>
           <div style={{ flex:1, background:"#F0F0F4", borderRadius:3, overflow:"hidden",
             ...(fill ? { alignSelf:"stretch", minHeight:10 } : { height:13 }) }}>
             <div style={{ height:"100%", width:`${(vals[i]/max)*100}%`, background:i===0?"#C8C8D0":Y, borderRadius:3 }}/>
           </div>
-          <div style={{ width:32, fontSize:10.5, fontWeight:800, color:D, flexShrink:0, textAlign:"right" }}>
+          <div style={{ width:36, fontSize:11.5, fontWeight:800, color:D, flexShrink:0, textAlign:"right" }}>
             {vals[i]}%
           </div>
         </div>
@@ -769,7 +769,7 @@ function PodiumCol({ item, pos, accent, accentFg }) {
           {logo
             ? <img src={logo} alt={item.code}
                 style={{ height:LI, maxWidth:LW-10, objectFit:"contain" }}/>
-            : <span style={{ fontSize: isTop?9:7, fontWeight:900, color:D,
+            : <span style={{ fontSize: isTop?10:8, fontWeight:900, color:D,
                 textAlign:"center", padding:"2px 3px",
                 overflow:"hidden", display:"-webkit-box",
                 WebkitLineClamp:2, WebkitBoxOrient:"vertical" }}>
@@ -785,7 +785,7 @@ function PodiumCol({ item, pos, accent, accentFg }) {
               ? (accent===Y ? "#D4A900" : accent==="DB" ? Y : "#B80C26")
               : "#E8E8F0",
             display:"flex", alignItems:"center", justifyContent:"center",
-            fontSize: isTop?8:7, fontWeight:900,
+            fontSize: isTop?9:8, fontWeight:900,
             color: isTop ? (accent===Y?D:"black") : G,
             boxShadow:"0 1px 4px rgba(0,0,0,.18)",
             border:"1.5px solid white",
@@ -794,7 +794,7 @@ function PodiumCol({ item, pos, accent, accentFg }) {
 
         {/* pct — bold accent for #1 */}
         <div style={{
-          fontSize: isTop?13:8.5,
+          fontSize: isTop?14:9.5,
           fontWeight:900,
           color: pctColor,
           letterSpacing: isTop?"-0.5px":"-0.1px",
@@ -803,7 +803,7 @@ function PodiumCol({ item, pos, accent, accentFg }) {
 
         {/* name */}
         <div style={{
-          fontSize: isTop?7:6.5, fontWeight: isTop?700:500,
+          fontSize: isTop?8.5:7.5, fontWeight: isTop?700:500,
           color: isTop?"#333340":"#888898",
           textAlign:"center", lineHeight:1.2,
           overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
@@ -867,25 +867,25 @@ function RankingCard({ title, items=[], accent=Y, accentFg=D }) {
               const bw   = Math.round((item.pct / max1) * 100);
               return (
                 <div key={i} style={{ display:"flex", alignItems:"center", gap:5 }}>
-                  <div style={{ width:14, height:14, borderRadius:3, flexShrink:0,
+                  <div style={{ width:15, height:15, borderRadius:3, flexShrink:0,
                     background:"#F0F0F4", display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:7.5, fontWeight:900, color:G }}>{i+4}</div>
+                    fontSize:8.5, fontWeight:900, color:G }}>{i+4}</div>
                   {logo
                     ? <img src={logo} alt={item.code} style={{ height:12, maxWidth:28, objectFit:"contain", flexShrink:0 }}/>
-                    : <div style={{ width:28, fontSize:7, fontWeight:700, color:D, flexShrink:0,
+                    : <div style={{ width:28, fontSize:8, fontWeight:700, color:D, flexShrink:0,
                         overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                         {(LABEL[item.code]||item.label||"").split(" ")[0]}
                       </div>
                   }
-                  <div style={{ flex:1, fontSize:7.5, fontWeight:600, color:D,
+                  <div style={{ flex:1, fontSize:8.5, fontWeight:600, color:D,
                     overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                     {LABEL[item.code]||item.label||item.code}
                   </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:3, flexShrink:0, width:58 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:3, flexShrink:0, width:60 }}>
                     <div style={{ flex:1, height:4, background:"#EBEBEB", borderRadius:3, overflow:"hidden" }}>
                       <div style={{ height:"100%", width:`${bw}%`, background:barColor, borderRadius:3 }}/>
                     </div>
-                    <span style={{ fontSize:8, fontWeight:800, color:D, width:18, textAlign:"right" }}>{item.pct}%</span>
+                    <span style={{ fontSize:9, fontWeight:800, color:D, width:20, textAlign:"right" }}>{item.pct}%</span>
                   </div>
                 </div>
               );
@@ -900,8 +900,14 @@ function RankingCard({ title, items=[], accent=Y, accentFg=D }) {
 /* ══ FICHE CLIENT ENTREPRISE ══════════════════════════════════════════════════*/
 function FicheClientEntreprise({ data, code }) {
   const f      = data?.fiche      || {};
-  const counts = data?.counts     || {};
-  const total  = Object.values(counts).reduce((s,v)=>s+(v||0), 0);
+  // Clients RÉELS de la compagnie sélectionnée (colonnes "Assurance -
+  // Compagnie 1..5" du fichier source) - PAS `data.counts`, qui est
+  // l'échantillon global toutes compagnies confondues (utilisé par l'onglet
+  // "Analyse de l'échantillon", pas par cette fiche). Avant ce fix, ce
+  // widget affichait déjà "Clients de [la compagnie]" mais avec le total
+  // global (toujours 50, quelle que soit la compagnie) - corrigé 2026-08-21.
+  const counts = f.clientCounts   || {};
+  const total  = f.nbRepondants ?? Object.values(counts).reduce((s,v)=>s+(v||0), 0);
   const ca     = data?.entreprises?.ca  || { labs:[], vals:[] };
   const revMen = data?.segments?.all?.revFam || { labs:[], vals:[] };
   const GAP    = 6;
@@ -963,10 +969,25 @@ function FicheClientEntreprise({ data, code }) {
               <div style={{ flexShrink:0 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:5, marginBottom:1 }}>
                   <div style={{ width:3, height:12, background:Y, borderRadius:2, flexShrink:0 }}/>
-                  <div style={{ fontSize:7, fontWeight:700, textTransform:"uppercase", letterSpacing:"1.5px", color:G }}>Clients de la</div>
+                  <div style={{ fontSize:8, fontWeight:700, textTransform:"uppercase", letterSpacing:"1.3px", color:G }}>Clients de la</div>
                 </div>
-                <div style={{ fontSize:13, fontWeight:900, color:D, letterSpacing:"-0.3px", paddingLeft:8, lineHeight:1 }}>
-                  {LABEL[code]||code}
+                <div style={{ display:"flex", alignItems:"baseline", gap:6, paddingLeft:8 }}>
+                  <div style={{ fontSize:14, fontWeight:900, color:D, letterSpacing:"-0.3px", lineHeight:1.2 }}>
+                    {LABEL[code]||code}
+                  </div>
+                  {/* Échantillon restreint : la fiche est filtrée sur les clients
+                      RÉELS de la compagnie (colonnes "Assurance - Compagnie
+                      1..5") - un échantillon global de 50 répondants donne très
+                      peu de clients identifiés par compagnie prise isolément
+                      (souvent < 10). Signalé plutôt que masqué, cohérent avec le
+                      principe du projet de ne jamais présenter une donnée comme
+                      plus solide qu'elle ne l'est. */}
+                  {total > 0 && total < 15 && (
+                    <span style={{ fontSize:7.5, fontWeight:700, color:"#B8860B", background:"#FFF6DC",
+                      border:"1px solid #F0DFA0", borderRadius:4, padding:"1px 5px", whiteSpace:"nowrap" }}>
+                      échantillon restreint
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -985,8 +1006,8 @@ function FicheClientEntreprise({ data, code }) {
                       display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
                       boxShadow:"0 1px 4px rgba(0,0,0,.08)",
                     }}>
-                      <span style={{ fontSize:15, fontWeight:900, color:D, lineHeight:1 }}>{total||"—"}</span>
-                      <span style={{ fontSize:5.5, color:G, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.8px" }}>répond.</span>
+                      <span style={{ fontSize:16, fontWeight:900, color:D, lineHeight:1 }}>{total||"—"}</span>
+                      <span style={{ fontSize:7, color:G, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.6px" }}>répond.</span>
                     </div>
                   </div>
                 </div>
@@ -1003,10 +1024,10 @@ function FicheClientEntreprise({ data, code }) {
                       <div key={key}>
                         <div style={{ display:"flex", alignItems:"center", gap:4, marginBottom:2 }}>
                           <div style={{ width:7, height:7, borderRadius:2, flexShrink:0, background:c }}/>
-                          <div style={{ fontSize:8, color:G, fontWeight:600, flex:1 }}>{def.label}</div>
+                          <div style={{ fontSize:9, color:G, fontWeight:600, flex:1 }}>{def.label}</div>
                           <div style={{ display:"flex", alignItems:"baseline", gap:2 }}>
-                            <span style={{ fontSize:11, fontWeight:900, color:D, lineHeight:1 }}>{cnt||"—"}</span>
-                            <span style={{ fontSize:8, fontWeight:800, color: c===Y?"#8B7000":c }}> {pct}%</span>
+                            <span style={{ fontSize:12, fontWeight:900, color:D, lineHeight:1 }}>{cnt||"—"}</span>
+                            <span style={{ fontSize:9, fontWeight:800, color: c===Y?"#8B7000":c }}> {pct}%</span>
                           </div>
                         </div>
                         <div style={{ height:4, background:"#F0F0F4", borderRadius:3, overflow:"hidden" }}>
@@ -1045,7 +1066,7 @@ function FicheClientEntreprise({ data, code }) {
                     flex:modVals[i]||1, background:modColors[i],
                     display:"flex", alignItems:"center", justifyContent:"center",
                   }}>
-                    <span style={{ fontSize:8, fontWeight:900, color:modColors[i]===Y?D:"white",
+                    <span style={{ fontSize:9, fontWeight:900, color:modColors[i]===Y?D:"white",
                       writingMode:"vertical-rl", textOrientation:"mixed" }}>
                       {modVals[i]}%
                     </span>
@@ -1080,7 +1101,7 @@ function FicheClientEntreprise({ data, code }) {
           <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"space-between" }}>
             <div style={{ display:"flex", alignItems:"center", gap:5 }}>
               <span style={{ width:5, height:5, borderRadius:"50%", background:"#E70013", display:"block" }}/>
-              <span style={{ fontSize:8.5, fontWeight:900, textTransform:"uppercase", letterSpacing:"1.4px", color:"#E70013" }}>
+              <span style={{ fontSize:9.5, fontWeight:900, textTransform:"uppercase", letterSpacing:"1.2px", color:"#E70013" }}>
                 Perception générale
               </span>
             </div>
@@ -1090,7 +1111,7 @@ function FicheClientEntreprise({ data, code }) {
           <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"space-between" }}>
             <div style={{ display:"flex", alignItems:"center", gap:5 }}>
               <span style={{ width:5, height:5, borderRadius:"50%", background:"#E70013", display:"block" }}/>
-              <span style={{ fontSize:8.5, fontWeight:900, textTransform:"uppercase", letterSpacing:"1.4px", color:"#E70013" }}>
+              <span style={{ fontSize:9.5, fontWeight:900, textTransform:"uppercase", letterSpacing:"1.2px", color:"#E70013" }}>
                 Degré de confiance
               </span>
             </div>
@@ -1142,7 +1163,7 @@ function FicheClientEntreprise({ data, code }) {
                 gap:2, marginBottom:2, flexShrink:0 }}>
                 <div/>
                 {(canal.ops||[]).map((op, i) => (
-                  <div key={i} style={{ fontSize:7, fontWeight:700, color:G, textAlign:"center", lineHeight:1.3 }}>{op}</div>
+                  <div key={i} style={{ fontSize:8.5, fontWeight:700, color:G, textAlign:"center", lineHeight:1.25 }}>{op}</div>
                 ))}
               </div>
               {/* Rows */}
@@ -1155,13 +1176,13 @@ function FicheClientEntreprise({ data, code }) {
                     marginBottom:2, flex:1 }}>
                     <div style={{
                       background:bg, color:fg, borderRadius:4,
-                      fontSize:9, fontWeight:800, display:"flex", alignItems:"center", padding:"0 8px",
+                      fontSize:10, fontWeight:800, display:"flex", alignItems:"center", padding:"0 8px",
                     }}>{row.label}</div>
                     {(row.vals||[]).map((v,ci) => (
                       <div key={ci} style={{
                         background:row.label==="Digital"?"#FFFBE6":row.label==="Mixte"?"#F8F8F8":"#F0F0F4",
                         borderRadius:4, display:"flex", alignItems:"center", justifyContent:"center",
-                        fontSize:10, fontWeight:700, color:D,
+                        fontSize:11, fontWeight:700, color:D,
                       }}>{v}%</div>
                     ))}
                   </div>
@@ -1184,7 +1205,7 @@ function FicheClientEntreprise({ data, code }) {
                 gap:2, marginBottom:2, flexShrink:0 }}>
                 <div/>
                 {(satif.ops||[]).map((op, i) => (
-                  <div key={i} style={{ fontSize:6.5, fontWeight:700, color:G, textAlign:"center", lineHeight:1.3 }}>{op}</div>
+                  <div key={i} style={{ fontSize:8, fontWeight:700, color:G, textAlign:"center", lineHeight:1.25 }}>{op}</div>
                 ))}
               </div>
               {/* Rows */}
@@ -1194,13 +1215,13 @@ function FicheClientEntreprise({ data, code }) {
                   marginBottom:2, flex:1 }}>
                   <div style={{
                     background:satColors[ri]||G, color:"white", borderRadius:4,
-                    fontSize:8, fontWeight:700, display:"flex", alignItems:"center", padding:"0 6px", lineHeight:1.2,
+                    fontSize:9, fontWeight:700, display:"flex", alignItems:"center", padding:"0 6px", lineHeight:1.2,
                   }}>{row.label}</div>
                   {(row.vals||[]).map((v, ci) => (
                     <div key={ci} style={{
                       background:`${satColors[ri]}22`,
                       borderRadius:4, display:"flex", alignItems:"center", justifyContent:"center",
-                      fontSize:9.5, fontWeight:700, color:D,
+                      fontSize:10.5, fontWeight:700, color:D,
                       border:`1px solid ${satColors[ri]}33`,
                     }}>{v}%</div>
                   ))}

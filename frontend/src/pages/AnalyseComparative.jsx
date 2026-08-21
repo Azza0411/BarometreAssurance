@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
 import ReactApexChart from "react-apexcharts";
 import { getLogoSrc } from "../utils/logos";
-import { YearSelector, DarkKpiBanner } from "../components/PageHeaderBar";
+import KpiOptionsMenu from "../components/KpiOptionsMenu";
+import { YearSelector, DarkKpiBanner, FamilleFilter } from "../components/PageHeaderBar";
 import ExportPdfButton from "../components/ExportPdfButton";
 import ExportExcelButton from "../components/ExportExcelButton";
-import { kpiLabel } from "../utils/kpiCatalog";
+import { kpiLabel, LABELS_HORS_CATALOGUE } from "../utils/kpiCatalog";
+import { isTakaful } from "../utils/famille";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
 const Y   = "#FFE600";
@@ -15,7 +17,6 @@ const G   = "#747480";
 const COLOR_LEADER     = "#FFE600";   // #1  — jaune EY
 const COLOR_CHALLENGER = "#2E2E38";   // #2–5 — anthracite EY
 const COLOR_FOLLOWER   = "#747480";   // #6+  — gris EY
-const COLOR_ND         = "#E5E7EB";   // pas de données
 
 /* ── Seuils de catégorisation ──
    Leader     : rang 1 (meilleur score absolu)
@@ -38,26 +39,63 @@ function tierLabel(rank) {
   return "Follower";
 }
 
-// COTUNACE retirée (api/services/quality.py::PROBLEMATIC_CODES — corruption
-// OCR chronique, exclue de /api/analyse-comparative, sa sélection ici serait
-// une case à cocher sans aucune donnée derrière). ATTIJARI, AT_TAKAFULIA et
-// ZITOUNA_TAKAFUL ajoutées : la première avait toujours eu des données,
-// simplement jamais incluse dans ce comparatif ; les deux Takaful ont un
-// extracteur dédié depuis août 2026 (extraction/takaful_kpi_extractor.py).
+// COTUNACE, UIB et CARTE_VIE retirées (api/services/quality.py::
+// PROBLEMATIC_CODES — corruption OCR chronique à la source, exclues de
+// /api/analyse-comparative même quand une valeur numérique existe, car elle
+// n'est pas fiable ; les sélectionner ici serait une case à cocher sans
+// donnée fiable derrière). ATTIJARI, AT_TAKAFULIA et ZITOUNA_TAKAFUL
+// ajoutées : la première avait toujours eu des données, simplement jamais
+// incluse dans ce comparatif ; les deux Takaful ont un extracteur dédié
+// depuis août 2026 (extraction/takaful_kpi_extractor.py). LLOYD_VIE et
+// MAGHREBIA_VIE ajoutées le 2026-08-09 : contrairement à GAT_VIE/CARTE_VIE
+// (aucune des 4 données clés extraite / OCR défaillant à l'époque), leur
+// document CMF 2024 est intégralement exploitable — elles étaient de vraies
+// données prêtes à l'emploi, mais absentes de cette liste et donc invisibles
+// nulle part dans l'app.
+// GAT_VIE ajoutée le 2026-08-16 : la cause du "aucune des 4 données clés
+// extraite" ci-dessus est corrigée (bug de reconnaissance de page +
+// libellé "Primes Acquises" au lieu de "Primes émises" sur la page
+// raccordement, voir extraction/CAS_PARTICULIERS_ANNEXE12.md) — couverture
+// désormais complète sur les 11 exercices disponibles (2015-2025).
+// BNA ajoutée le 2026-08-16 : aucune donnée exploitable en 2024 (document
+// CMF présent mais rien d'extractible), mais 2025 est intégralement
+// exploitable (ratio combiné, ROE/ROA, primes...) — même raisonnement que
+// LLOYD_VIE/MAGHREBIA_VIE ci-dessus (couverture partielle sur les années,
+// pas absente de la liste pour autant).
 const ASSUREURS = [
-  "STAR","COMAR","GAT","ASTREE","CARTE","LLOYD_TUNISIEN",
-  "MAGHREBIA","BH","BIAT","TUNIS_RE","ATTIJARI","AT_TAKAFULIA","ZITOUNA_TAKAFUL",
+  "STAR","COMAR","GAT","GAT_VIE","ASTREE","CARTE","LLOYD_TUNISIEN","LLOYD_VIE",
+  "MAGHREBIA","MAGHREBIA_VIE","BH","BIAT","BNA","TUNIS_RE","ATTIJARI",
+  "AT_TAKAFULIA","ZITOUNA_TAKAFUL","AL_AMANAH_TAKAFUL",
 ];
 const ASSUREUR_LABELS = {
-  STAR:"STAR", COMAR:"COMAR", GAT:"GAT", ASTREE:"ASTREE", CARTE:"CARTE",
-  LLOYD_TUNISIEN:"LLOYD", MAGHREBIA:"MAGHREBIA", BH:"BH",
-  BIAT:"BIAT", TUNIS_RE:"TUNIS RE", ATTIJARI:"ATTIJARI",
+  STAR:"STAR", COMAR:"COMAR", GAT:"GAT", GAT_VIE:"GAT VIE", ASTREE:"ASTREE", CARTE:"CARTE",
+  LLOYD_TUNISIEN:"LLOYD", LLOYD_VIE:"LLOYD VIE", MAGHREBIA:"MAGHREBIA",
+  MAGHREBIA_VIE:"MAGHREBIA VIE", BH:"BH",
+  BIAT:"BIAT", BNA:"BNA", TUNIS_RE:"TUNIS RE", ATTIJARI:"ATTIJARI",
   AT_TAKAFULIA:"AT-TAKAFULIA", ZITOUNA_TAKAFUL:"ZITOUNA TAKAFUL",
+  AL_AMANAH_TAKAFUL:"EL AMANA TAKAFUL",
 };
 // Libellés repris de frontend/src/utils/kpiCatalog.js (source unique du nom
 // affiché) — seuls le champ backend, l'unité de formatage et le sens
 // "plus bas = mieux" restent propres à cette page.
-const INDICATEURS = {
+//
+// Ratio combiné / de sinistralité / de frais de gestion et Part de marché :
+// EXCLUS du référentiel Takaful jusqu'au 2026-08-16 (vérifié le 2026-08-09
+// sur AT_TAKAFULIA/ZITOUNA_TAKAFUL : les 3 ratios techniques ressortaient
+// null pour les deux, charges non extraites à l'époque). RÉINTÉGRÉS le
+// 2026-08-16 : l'extraction dédiée des Annexes 14/15 (Charges de prestations/
+// d'acquisition Takaful, voir extraction/takaful_kpi_extractor.py) couvre
+// désormais les 3 opérateurs Takaful avec des valeurs dans la plage plausible
+// — vérifié en direct sur /api/analyse-comparative (ex: AT_TAKAFULIA 2024 :
+// RC 93,1 %, RSP 74,5 %, RF 18,6 %, PDM 1,8 %, tous non-null). Rappel
+// d'interprétation : pour un opérateur Takaful, le Ratio combiné/de
+// sinistralité reflète l'équilibre du FONDS DES PARTICIPANTS (mutualisé),
+// pas la rentabilité propre de l'Opérateur — même nuance déjà affichée sur
+// Vue par Assurance (TAKAFUL_NOTES dans FichesEntreprises.jsx), reprise ici
+// via TAKAFUL_INDICATOR_NOTE ci-dessous. Ne jamais mélanger les deux listes :
+// chaque référentiel n'affiche que les indicateurs qui lui sont réellement
+// applicables (retour utilisateur).
+const INDICATEURS_CONVENTIONNELLE = {
   [kpiLabel("Ratio combiné (%)")]:             { field:"ratio_combine",     unit:"%",    lowerBetter:true  },
   [kpiLabel("Ratio de sinistralité (%)")]:     { field:"ratio_sp",           unit:"%",    lowerBetter:true  },
   [kpiLabel("Ratio de frais de gestion (%)")]: { field:"ratio_frais",        unit:"%",    lowerBetter:true  },
@@ -65,12 +103,86 @@ const INDICATEURS = {
   [kpiLabel("Primes émises par assurance")]:   { field:"primes",             unit:" MDT", lowerBetter:false },
   [kpiLabel("ROE (%)")]:                       { field:"roe",                unit:"%",    lowerBetter:false },
   [kpiLabel("ROA (%)")]:                       { field:"roa",                unit:"%",    lowerBetter:false },
+  [LABELS_HORS_CATALOGUE["Dettes/Capitaux propres (%)"].label]:    { field:"dette_cp",      unit:"%", lowerBetter:true  },
+  [LABELS_HORS_CATALOGUE["Dettes/Actif (%)"].label]:               { field:"dette_actif",   unit:"%", lowerBetter:true  },
+  [LABELS_HORS_CATALOGUE["Actions/Actif (%)"].label]:              { field:"actions_actif", unit:"%", lowerBetter:false },
+  [LABELS_HORS_CATALOGUE["Placements/Capitaux propres (%)"].label]:{ field:"placements_cp", unit:"%", lowerBetter:false },
 };
-const SANS_DONNEES = [
-  "AMI","BNA","UIB","HAYETT","CTAMA","COTUNACE",
-  "GAT VIE","CARTE VIE","LLOYD VIE","MAGHREBIA VIE",
-  "AL AMANAH TAKAFUL",
+const INDICATEURS_TAKAFUL = {
+  [kpiLabel("Ratio combiné (%)")]:             { field:"ratio_combine",     unit:"%",    lowerBetter:true  },
+  [kpiLabel("Ratio de sinistralité (%)")]:     { field:"ratio_sp",           unit:"%",    lowerBetter:true  },
+  [kpiLabel("Ratio de frais de gestion (%)")]: { field:"ratio_frais",        unit:"%",    lowerBetter:true  },
+  [kpiLabel("Part de marché (%)")]:            { field:"pdm",                unit:"%",    lowerBetter:false },
+  // "Contributions" et non "Primes émises" : en Takaful, le participant verse
+  // une cotisation de don mutuel (Tabarru') dans le fonds collectif, pas une
+  // prime commerciale (retour utilisateur du 2026-08-16) — même champ backend
+  // "primes" (le montant en base ne change pas), seul le libellé affiché
+  // diffère. Clé de menu volontairement distincte de kpiLabel("Primes émises
+  // par assurance") pour ne pas dupliquer l'entrée conventionnelle.
+  "Contributions":                             { field:"primes",             unit:" MDT", lowerBetter:false },
+  // Surplus du Fonds des Participants (Familial + Général) : indicateur
+  // Takaful sans équivalent conventionnel, déjà extrait et affiché sur Vue
+  // par Assurance (section "Fonds des Participants") mais absent d'Analyse
+  // Comparative jusqu'ici — ajouté le 2026-08-16 (retour utilisateur).
+  "Surplus du Fonds des Participants":         { field:"surplus_fonds",      unit:" MDT", lowerBetter:false },
+  [kpiLabel("ROE (%)")]:                       { field:"roe",                unit:"%",    lowerBetter:false },
+  [kpiLabel("ROA (%)")]:                       { field:"roa",                unit:"%",    lowerBetter:false },
+  [LABELS_HORS_CATALOGUE["Dettes/Capitaux propres (%)"].label]:    { field:"dette_cp",      unit:"%", lowerBetter:true  },
+  [LABELS_HORS_CATALOGUE["Dettes/Actif (%)"].label]:               { field:"dette_actif",   unit:"%", lowerBetter:true  },
+  [LABELS_HORS_CATALOGUE["Actions/Actif (%)"].label]:              { field:"actions_actif", unit:"%", lowerBetter:false },
+  [LABELS_HORS_CATALOGUE["Placements/Capitaux propres (%)"].label]:{ field:"placements_cp", unit:"%", lowerBetter:false },
+};
+// Note d'interprétation affichée sous le titre du graphique quand la famille
+// active est Takaful ET que l'indicateur choisi porte sur le Fonds des
+// Participants plutôt que sur l'Opérateur lui-même — condensé de
+// docs/ratios_takaful_ifsb_aaoifi.md, même texte que FichesEntreprises.jsx::
+// TAKAFUL_NOTES pour rester cohérent entre les deux pages.
+const TAKAFUL_INDICATOR_NOTE = {
+  "Ratio combiné":            "Reflète l'équilibre du Fonds des Participants (PRF), pas la rentabilité de l'Opérateur.",
+  "Ratio de sinistralité":    "Cotisation = don mutuel (Tabarru'), pas une prime commerciale — mesure l'équilibre du fonds.",
+};
+// AMI : aucun document CMF 2024 (dernier disponible : 2023). HAYETT :
+// document CMF 2024 présent mais aucune des 4 données clés (primes, ratio
+// combiné, ratio de frais, PDM) n'a pu en être extraite. CTAMA : absente du
+// portail CMF pour 2021-2025 (limite source, pas un bug pipeline — voir
+// commit du 2026-08-08). UIB/COTUNACE/CARTE VIE : données extraites mais
+// écartées par api/services/quality.py::PROBLEMATIC_CODES (qualité OCR
+// source non fiable), pas absentes à proprement parler. Cette liste
+// s'affiche telle quelle quelle que soit l'année sélectionnée : elle liste
+// les sociétés STRUCTURELLEMENT indisponibles (absentes de ASSUREURS
+// ci-dessus), pas les trous ponctuels d'une société déjà affichée sur une
+// année donnée (ceux-là remontent "N/D" cellule par cellule, pas ici).
+const SANS_DONNEES_CONVENTIONNELLE = [
+  "AMI","UIB","HAYETT","CTAMA","COTUNACE","CARTE VIE",
 ];
+// AL AMANAH TAKAFUL : etats financiers en arabe, extraction dediee ajoutee
+// le 2026-08-11 (voir extraction/CAS_PARTICULIERS_TAKAFUL.md) - couverture
+// partielle sur 2024 (Total actif introuvable, donc ROA/ratios bases sur
+// l'actif absents, mais Capitaux propres/Resultat Net/Primes disponibles).
+const SANS_DONNEES_TAKAFUL = [];
+
+// Indicateur par défaut par référentiel : "Ratio combiné" pour les deux
+// depuis le 2026-08-16 (voir note sur INDICATEURS_TAKAFUL ci-dessus — fiable
+// désormais pour les 3 opérateurs Takaful).
+const INDICATEUR_DEFAUT = { conventionnelle:"Ratio combiné", takaful:"Ratio combiné" };
+
+// Clé de stockage canonique (kpiMeta.js/KPI_CATALOG) par libellé d'indicateur
+// — nécessaire pour KpiOptionsMenu (icône ⋯ : Qualité data / Document source
+// / Chatbot), qui a besoin du storageKey, pas du libellé affiché. Seuls les
+// indicateurs réellement suivis dans kpiMeta.js sont listés : les ratios
+// "hors catalogue" (Dettes/Actif, Actions/Actif...) et les indicateurs
+// Takaful spécifiques (Contributions, Surplus du Fonds des Participants)
+// n'ont pas de fiche /kpi-detail — l'icône ne s'affiche alors pas
+// (KpiOptionsMenu se masque déjà tout seul si `kpi` est absent).
+const INDICATEUR_STORAGE_KEY = {
+  "Ratio combiné":            "Ratio combiné (%)",
+  "Ratio de sinistralité":    "Ratio de sinistralité (%)",
+  "Ratio de frais de gestion":"Ratio de frais de gestion (%)",
+  "Part de marché":           "Part de marché (%)",
+  "Primes émises":            "Primes émises par assurance",
+  "ROE":                      "ROE (%)",
+  "ROA":                      "ROA (%)",
+};
 
 function useWindowSize() {
   const [s, setS] = useState({ w: window.innerWidth, h: window.innerHeight });
@@ -112,10 +224,12 @@ export default function AnalyseComparative() {
   const { h: winH } = useWindowSize();
   const chartH = Math.max(180, winH - 400);
 
-  const [selected,      setSelected]      = useState(new Set(ASSUREURS));
+  // Jamais "toutes" au chargement : les deux familles ne doivent jamais
+  // être affichées simultanément (règle métier n°1, PROMPT MAÎTRE 2026-08-06).
+  const [selected,      setSelected]      = useState(new Set(ASSUREURS.filter(a => !isTakaful(a))));
+  const [famille,       setFamille]       = useState("conventionnelle");
   const [indicateur,    setIndicateur]    = useState("Ratio combiné");
   const [showIndDD,     setShowIndDD]     = useState(false);
-  const [showAssDD,     setShowAssDD]     = useState(false);
   const [annee,         setAnnee]         = useState(2024);
   const [apiData,       setApiData]       = useState({});
   // Années réellement présentes en base (même source que Qualité Data,
@@ -144,9 +258,61 @@ export default function AnalyseComparative() {
     setSelected(s);
   };
 
+  const applyFamilleFilter = (key) => {
+    setFamille(key);
+    const subset = ASSUREURS.filter(a => key === "takaful" ? isTakaful(a) : !isTakaful(a));
+    setSelected(new Set(subset));
+    setIndicateur(INDICATEUR_DEFAUT[key]);
+  };
+
+  // Les deux référentiels ne doivent jamais apparaître ensemble (règle
+  // métier n°1) : toute liste de compagnies affichée à l'écran (chips,
+  // dropdown, compteurs) doit être bornée à la famille active, pas aux 13
+  // compagnies au total.
+  const assureursFamille = useMemo(
+    () => ASSUREURS.filter(a => famille === "takaful" ? isTakaful(a) : !isTakaful(a)),
+    [famille]
+  );
+  const sansDonnees = famille === "takaful" ? SANS_DONNEES_TAKAFUL : SANS_DONNEES_CONVENTIONNELLE;
+  const INDICATEURS = famille === "takaful" ? INDICATEURS_TAKAFUL : INDICATEURS_CONVENTIONNELLE;
+
   const ind      = INDICATEURS[indicateur];
-  const filtered = ASSUREURS.filter(a => selected.has(a));
+  const filtered = assureursFamille.filter(a => selected.has(a));
   const vals     = filtered.map(a => apiData[a]?.[ind.field] ?? null);
+
+  // Un indicateur qu'une seule compagnie (ou aucune) de la sélection active
+  // peut renseigner n'a rien de "comparatif" — on le retire du menu plutôt
+  // que de laisser l'utilisateur choisir un graphique à une seule barre
+  // (retour utilisateur du 2026-08-16). Recalculé à chaque changement de
+  // sélection/année : un indicateur peut réapparaître si l'utilisateur
+  // réélargit sa sélection de compagnies.
+  const availableIndicateurs = useMemo(() => {
+    return Object.entries(INDICATEURS)
+      .filter(([, def]) => filtered.filter(a => apiData[a]?.[def.field] != null).length >= 2)
+      .map(([k]) => k);
+  }, [INDICATEURS, filtered, apiData]);
+
+  useEffect(() => {
+    if (availableIndicateurs.length === 0) return;
+    if (!availableIndicateurs.includes(indicateur)) {
+      const fallback = availableIndicateurs.includes(INDICATEUR_DEFAUT[famille])
+        ? INDICATEUR_DEFAUT[famille]
+        : availableIndicateurs[0];
+      setIndicateur(fallback);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableIndicateurs]);
+
+  // Le graphique ne trace QUE les compagnies avec une valeur pour l'indicateur/
+  // année courants — une barre "N/D" à 0 ne se distingue pas visuellement d'une
+  // vraie valeur nulle et encombre le classement pour rien (retour utilisateur
+  // du 2026-08-16). Les compagnies sans donnée pour CETTE sélection précise
+  // sont listées à part, par logo, sous le graphique (cf. missingForSelection
+  // plus bas) — distinct de `sansDonnees` (compagnies absentes de la liste
+  // elle-même, quelle que soit l'année/l'indicateur).
+  const plottedCodes = filtered.filter((a, i) => vals[i] != null);
+  const plottedVals  = filtered.map((a, i) => vals[i]).filter(v => v != null);
+  const missingForSelection = filtered.filter((a, i) => vals[i] == null);
 
   /* Classement des compagnies avec données pour déterminer les tiers */
   const rankMap = useMemo(() => {
@@ -159,16 +325,9 @@ export default function AnalyseComparative() {
     return m;
   }, [filtered, vals, ind]);
 
-  const barColors = vals.map((v, i) => {
-    if (v == null) return COLOR_ND;
-    const rank = rankMap[filtered[i]];
+  const barColors = plottedVals.map((v, i) => {
+    const rank = rankMap[plottedCodes[i]];
     return rank ? tierColor(rank) : COLOR_FOLLOWER;
-  });
-
-  const labelColors = vals.map((v, i) => {
-    if (v == null) return "#9CA3AF";
-    const rank = rankMap[filtered[i]];
-    return rank === 1 ? D : "#FFFFFF";
   });
 
   const Y_AXIS_W = 54;
@@ -183,7 +342,7 @@ export default function AnalyseComparative() {
     colors: barColors,
     legend: { show:false },
     xaxis: {
-      categories: filtered.map(a => ASSUREUR_LABELS[a] ?? a),
+      categories: plottedCodes.map(a => ASSUREUR_LABELS[a] ?? a),
       labels:{ show:false },
       axisBorder:{ show:false }, axisTicks:{ show:false },
     },
@@ -202,19 +361,34 @@ export default function AnalyseComparative() {
     },
     dataLabels: {
       enabled:true,
-      formatter: (v, { dataPointIndex }) => {
-        const orig = vals[dataPointIndex];
-        return orig != null ? `${orig}${ind.unit}` : "N/D";
+      formatter: (v, { dataPointIndex }) => `${plottedVals[dataPointIndex]}${ind.unit}`,
+      // dataLabels.style.colors est ignoré dès que background.enabled=true :
+      // ApexCharts réécrit alors le fill du texte avec background.foreColor
+      // (par défaut "#fff", voir apexcharts.esm.js::dataLabelsBackground —
+      // `el.setAttribute("fill", w.config.dataLabels.background.foreColor)`
+      // s'exécute APRÈS le dessin, écrasant toute couleur définie via
+      // style.colors). C'est ce qui rendait le texte blanc même avec un fond
+      // blanc — le vrai réglage de couleur de texte est foreColor, pas
+      // style.colors, dès qu'un fond est actif (bug de config découvert le
+      // 2026-08-17). Chip clair (fond blanc, bordure fine, ombre légère)
+      // plutôt qu'un badge plein : cohérent avec le reste de l'app (KpiBox,
+      // TierBadge — cartes claires à bordure fine) et moins "lourd"
+      // visuellement (retour utilisateur : le badge marine plein ne plaisait
+      // pas).
+      style:{ fontSize:"11px", fontWeight:800, fontFamily:"Barlow, system-ui, sans-serif" },
+      background:{
+        foreColor:D,
+        enabled:true, backgroundColor:"#FFFFFF", borderWidth:1, borderColor:"#E5E7EB",
+        borderRadius:6, padding:5, opacity:1,
+        dropShadow:{ enabled:true, top:1, left:0, blur:3, color:"#000000", opacity:0.10 },
       },
-      style:{ fontSize:"11px", fontWeight:700, fontFamily:"Barlow, system-ui, sans-serif", colors: labelColors },
-      background:{ enabled:false },
       offsetY: -7,
     },
     tooltip: {
       style:{ fontFamily:"Barlow, system-ui, sans-serif", fontSize:"12px" },
       y:{ formatter: (v, { dataPointIndex }) => {
-        const orig = vals[dataPointIndex];
-        const a    = filtered[dataPointIndex];
+        const orig = plottedVals[dataPointIndex];
+        const a    = plottedCodes[dataPointIndex];
         const rank = rankMap[a];
         const tier = rank ? ` — ${tierLabel(rank)}` : "";
         return orig != null ? `${orig}${ind.unit}${tier}` : "Donnée non disponible";
@@ -237,7 +411,7 @@ export default function AnalyseComparative() {
   return (
     <div
       style={{ height:"calc(100vh - 92px)", background:"#EEEEF4", fontFamily:"Barlow,system-ui,sans-serif", display:"flex", flexDirection:"column", overflow:"hidden" }}
-      onClick={() => { if (showIndDD) setShowIndDD(false); if (showAssDD) setShowAssDD(false); }}
+      onClick={() => { if (showIndDD) setShowIndDD(false); }}
     >
 
       {/* ── Header ── */}
@@ -250,9 +424,12 @@ export default function AnalyseComparative() {
             </div>
             <div style={{ display:"flex", gap:10, alignItems:"center" }}>
 
+              <FamilleFilter value={famille} onChange={applyFamilleFilter}/>
+              <span style={{ width:1, height:24, background:"#E5E7EB" }}/>
+
               {/* Indicateur */}
               <div style={{ position:"relative" }} onClick={e => e.stopPropagation()}>
-                <button onClick={() => { setShowIndDD(!showIndDD); setShowAssDD(false); }}
+                <button onClick={() => setShowIndDD(!showIndDD)}
                   style={{ display:"flex", alignItems:"center", gap:8, background:Y, color:D, border:"none", cursor:"pointer", padding:"7px 14px", borderRadius:9, fontSize:12, fontWeight:800, boxShadow:"0 2px 8px rgba(255,230,0,0.35)" }}>
                   <span style={{ color:"rgba(46,46,56,.45)", fontSize:8.5, fontWeight:700, letterSpacing:"1px", textTransform:"uppercase" }}>Indicateur</span>
                   <span style={{ width:1, height:12, background:"rgba(0,0,0,0.15)" }}/>
@@ -261,37 +438,10 @@ export default function AnalyseComparative() {
                 </button>
                 {showIndDD && (
                   <div style={{ position:"absolute", top:"calc(100% + 6px)", left:0, background:"#fff", border:"1px solid #E5E7EB", borderRadius:12, boxShadow:"0 8px 28px rgba(0,0,0,0.13)", zIndex:60, minWidth:210, overflow:"hidden" }}>
-                    {Object.keys(INDICATEURS).map(k => (
+                    {availableIndicateurs.map(k => (
                       <button key={k} onClick={() => { setIndicateur(k); setShowIndDD(false); }}
                         style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 16px", fontSize:12, border:"none", cursor:"pointer", fontWeight: indicateur===k ? 800 : 500, color: indicateur===k ? D : G, background: indicateur===k ? "rgba(255,230,0,.13)" : "#fff", borderBottom:"1px solid #F5F5F5" }}>
                         {k}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Sélection assureurs */}
-              <div style={{ position:"relative" }} onClick={e => e.stopPropagation()}>
-                <button onClick={() => { setShowAssDD(!showAssDD); setShowIndDD(false); }}
-                  style={{ display:"flex", alignItems:"center", gap:8, background:"#fff", color:D, border:"1.5px solid #E5E7EB", padding:"7px 14px", borderRadius:9, fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                  <span style={{ color:G, fontSize:8.5, fontWeight:700, letterSpacing:"1px", textTransform:"uppercase" }}>Assurance</span>
-                  <span style={{ width:1, height:12, background:"#E5E7EB" }}/>
-                  <span>{selected.size === ASSUREURS.length ? "Toutes" : `${selected.size} sél.`}</span>
-                  <ChevronDown color={G} size={12}/>
-                </button>
-                {showAssDD && (
-                  <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"#fff", border:"1px solid #E5E7EB", borderRadius:12, boxShadow:"0 8px 28px rgba(0,0,0,0.13)", zIndex:60, width:220, overflow:"hidden" }}>
-                    {ASSUREURS.map(a => (
-                      <button key={a} onClick={() => toggleAssureur(a)}
-                        style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"8px 14px", fontSize:12, border:"none", cursor:"pointer", background: selected.has(a) ? "#FAFAFA" : "#fff", borderBottom:"1px solid #F3F4F6" }}>
-                        <div style={{ width:16, height:16, borderRadius:4, flexShrink:0, border:`2px solid ${selected.has(a) ? D : "#D1D5DB"}`, background: selected.has(a) ? D : "#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                          {selected.has(a) && <span style={{ color:"#fff", fontSize:10, lineHeight:1 }}>✓</span>}
-                        </div>
-                        {getLogoSrc(a)
-                          ? <img src={getLogoSrc(a)} alt={ASSUREUR_LABELS[a]} style={{ width:70, height:22, objectFit:"contain" }}/>
-                          : <span style={{ fontSize:11, fontWeight:700, color:D }}>{ASSUREUR_LABELS[a]}</span>
-                        }
                       </button>
                     ))}
                   </div>
@@ -305,22 +455,31 @@ export default function AnalyseComparative() {
           </div>
         </div>
 
-        {/* Chips logos */}
-        <div style={{ display:"flex", flexWrap:"wrap", gap:5, alignItems:"center", padding:"5px 28px 8px" }}>
-          <span style={{ fontSize:9, fontWeight:800, color:G, letterSpacing:"1.5px", textTransform:"uppercase", marginRight:2 }}>Comparaison active :</span>
-          {ASSUREURS.map(a => {
-            const active = selected.has(a);
-            return (
-              <button key={a} onClick={() => toggleAssureur(a)}
-                title={active ? `Retirer ${ASSUREUR_LABELS[a]}` : `Ajouter ${ASSUREUR_LABELS[a]}`}
-                style={{ display:"flex", alignItems:"center", padding:"3px 8px", background: active ? "white" : "transparent", border: active ? "1.5px solid #D1D5DB" : "1.5px solid transparent", borderRadius:8, cursor:"pointer", opacity: active ? 1 : 0.35, filter: active ? "none" : "grayscale(60%)", transition:"all .15s", boxShadow: active ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }}>
-                {getLogoSrc(a)
-                  ? <img src={getLogoSrc(a)} alt={ASSUREUR_LABELS[a]} style={{ width:64, height:24, objectFit:"contain" }}/>
-                  : <span style={{ fontSize:9, fontWeight:800, color: active ? D : G }}>{ASSUREUR_LABELS[a]}</span>
-                }
-              </button>
-            );
-          })}
+        {/* Chips logos — grille (colonnes de largeur égale) plutôt qu'un flex-
+            wrap : les pastilles ont des largeurs très variables selon la
+            longueur du nom (ex: "GAT" vs "Assurances BIAT"), donc un simple
+            flex-wrap produit des lignes en escalier dès que ça retombe à la
+            ligne (repéré par l'utilisateur le 2026-08-19, capture à l'appui :
+            "Tunis Re"/"Attijari Assurance" en 2e ligne, pas alignés sous les
+            colonnes du dessus). La grille à colonnes égales aligne chaque
+            pastille wrapée exactement sous celle du dessus. */}
+        <div style={{ padding:"5px 28px 8px" }}>
+          <div style={{ fontSize:9, fontWeight:800, color:G, letterSpacing:"1.5px", textTransform:"uppercase", marginBottom:5 }}>Comparaison active :</div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(112px, 1fr))", gap:5 }}>
+            {assureursFamille.map(a => {
+              const active = selected.has(a);
+              return (
+                <button key={a} onClick={() => toggleAssureur(a)}
+                  title={active ? `Retirer ${ASSUREUR_LABELS[a]}` : `Ajouter ${ASSUREUR_LABELS[a]}`}
+                  style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"3px 8px", background: active ? "white" : "transparent", border: active ? "1.5px solid #D1D5DB" : "1.5px solid transparent", borderRadius:8, cursor:"pointer", opacity: active ? 1 : 0.35, filter: active ? "none" : "grayscale(60%)", transition:"all .15s", boxShadow: active ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }}>
+                  {getLogoSrc(a)
+                    ? <img src={getLogoSrc(a)} alt={ASSUREUR_LABELS[a]} style={{ height:36, width:"auto", maxWidth:110, objectFit:"contain" }}/>
+                    : <span style={{ fontSize:9, fontWeight:800, color: active ? D : G }}>{ASSUREUR_LABELS[a]}</span>
+                  }
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -331,7 +490,7 @@ export default function AnalyseComparative() {
         <DarkKpiBanner items={[
           { label:"Indicateur analysé",  value: indicateur,                                        sub:`${ind.unit} · données CMF` },
           { label:"Année d'analyse",     value: String(annee),                                     sub:"données certifiées CMF" },
-          { label:"Assureurs comparés",  value: String(selected.size),                             sub:`sur ${ASSUREURS.length} disponibles` },
+          { label:"Assureurs comparés",  value: String(selected.size),                             sub:`sur ${assureursFamille.length} disponibles` },
           { label:"Leader",              value: leader ? (ASSUREUR_LABELS[leader.a] ?? leader.a) : "—", sub: leader ? `${leader.v}${ind.unit}` : "" },
         ]}/>
 
@@ -343,8 +502,15 @@ export default function AnalyseComparative() {
 
             {/* Titre + légende tiers */}
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10, flexShrink:0 }}>
-              <div style={{ fontSize:10, fontWeight:800, letterSpacing:"1.5px", textTransform:"uppercase", color:D }}>
-                {indicateur} par assurance — {annee}
+              <div>
+                <div style={{ fontSize:10, fontWeight:800, letterSpacing:"1.5px", textTransform:"uppercase", color:D }}>
+                  {indicateur} par assurance — {annee}
+                </div>
+                {famille === "takaful" && TAKAFUL_INDICATOR_NOTE[indicateur] && (
+                  <div style={{ fontSize:9, color:G, marginTop:2, fontWeight:600 }}>
+                    ☾ {TAKAFUL_INDICATOR_NOTE[indicateur]}
+                  </div>
+                )}
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:14 }}>
                 {[
@@ -360,33 +526,85 @@ export default function AnalyseComparative() {
               </div>
             </div>
 
-            <div style={{ flex:1, position:"relative" }}>
-              <ReactApexChart
-                key={`bar-${annee}-${indicateur}-${selected.size}`}
-                options={chartOpts}
-                series={[{ name:indicateur, data: vals.map(v => v ?? 0) }]}
-                type="bar"
-                height={chartH}
-              />
+            <div style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column" }}>
+              {validVals.length === 0 ? (
+                <div style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8, color:G }}>
+                  <div style={{ fontSize:12, fontWeight:700 }}>
+                    {indicateur === "Part de marché"
+                      ? `Total sectoriel FTUSA ${annee} pas encore publié`
+                      : `Aucune donnée fiable pour « ${indicateur} »${famille==="takaful" ? " côté Takaful" : ""}`}
+                  </div>
+                  <div style={{ fontSize:10.5, textAlign:"center", maxWidth:360 }}>
+                    {indicateur === "Part de marché"
+                      ? "La Part de marché se calcule contre le total sectoriel publié par la FTUSA, qui paraît avec un décalage par rapport aux rapports individuels des compagnies — pas un problème d'extraction, juste une donnée pas encore disponible pour cette année."
+                      : "Essayez un autre indicateur ou une autre année."}
+                  </div>
+                </div>
+              ) : (<>
+              {/* Le graphique prend tout l'espace flexible restant (flex:1 +
+                  minHeight:0 — le piège classique flexbox/ApexCharts) ; la
+                  ligne de logos garde sa PROPRE place fixe juste en dessous
+                  au lieu d'un chevauchement par marge négative, qui pouvait
+                  dépasser la hauteur de la carte (overflow:hidden) et
+                  couper à la fois le bas du graphique et les logos
+                  (retour utilisateur du 2026-08-09). */}
+              <div style={{ flex:1, minHeight:0 }}>
+                <ReactApexChart
+                  key={`bar-${annee}-${indicateur}-${selected.size}`}
+                  options={chartOpts}
+                  series={[{ name:indicateur, data: plottedVals }]}
+                  type="bar"
+                  height="100%"
+                />
+              </div>
 
               {/* Logos sous le graphique */}
-              <div style={{ display:"flex", alignItems:"center", paddingLeft:Y_AXIS_W, paddingRight:6, height:36, marginTop:-14 }}>
-                {filtered.map(a => (
+              <div style={{ display:"flex", alignItems:"center", paddingLeft:Y_AXIS_W, paddingRight:6, height:42, flexShrink:0 }}>
+                {plottedCodes.map(a => (
                   <div key={a} style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
                     {getLogoSrc(a)
-                      ? <img src={getLogoSrc(a)} alt={ASSUREUR_LABELS[a]} style={{ width:52, height:22, objectFit:"contain" }}/>
+                      ? <img src={getLogoSrc(a)} alt={ASSUREUR_LABELS[a]} style={{ height:32, width:"auto", maxWidth:82, objectFit:"contain" }}/>
                       : <span style={{ fontSize:8, fontWeight:700, color:D, textAlign:"center" }}>{ASSUREUR_LABELS[a]}</span>
                     }
                   </div>
                 ))}
               </div>
+              </>)}
             </div>
 
-            {/* Note compagnies sans données */}
-            <div style={{ marginTop:8, padding:"7px 10px", background:"#FAFAFA", borderRadius:8, border:"1px solid #F0F0F0", flexShrink:0 }}>
-              <span style={{ fontSize:9, fontWeight:700, color:G, letterSpacing:"0.8px", textTransform:"uppercase" }}>Données non disponibles : </span>
-              <span style={{ fontSize:9, color:G }}>{SANS_DONNEES.join(" · ")}</span>
-            </div>
+            {/* Compagnies sélectionnées mais sans donnée pour CET indicateur/
+                CETTE année (dynamique) — distinct de sansDonnees ci-dessous
+                (compagnies structurellement absentes de tout le comparatif,
+                quel que soit l'indicateur/l'année). Logos plutôt qu'un simple
+                texte : cohérent avec le reste de la page, et identifie la
+                compagnie plus vite qu'un code (retour utilisateur du
+                2026-08-16). */}
+            {missingForSelection.length > 0 && (
+              <div style={{ marginTop:10, padding:"10px 14px", background:"#FFFBEB", borderRadius:10, border:"1.5px solid #FDE68A", flexShrink:0, display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+                <span style={{ fontSize:11, fontWeight:800, color:"#92400E", letterSpacing:"0.4px", whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:5 }}>
+                  <span style={{ fontSize:13 }}>⚠</span>
+                  Sans donnée « {indicateur} » {annee} ({missingForSelection.length}) :
+                </span>
+                {missingForSelection.map(a => (
+                  <div key={a} title={`${ASSUREUR_LABELS[a]} — pas de donnée pour « ${indicateur} » en ${annee}`}
+                    style={{ display:"flex", alignItems:"center", padding:"3px 8px", background:"#FFFFFF", borderRadius:7, border:"1px solid #FDE68A" }}>
+                    {getLogoSrc(a)
+                      ? <img src={getLogoSrc(a)} alt={ASSUREUR_LABELS[a]} style={{ height:30, width:"auto", maxWidth:78, objectFit:"contain" }}/>
+                      : <span style={{ fontSize:10.5, fontWeight:700, color:"#92400E" }}>{ASSUREUR_LABELS[a]}</span>
+                    }
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Compagnies absentes du comparatif quels que soient l'année/
+                l'indicateur (voir SANS_DONNEES_CONVENTIONNELLE/TAKAFUL) */}
+            {sansDonnees.length > 0 && (
+              <div style={{ marginTop:6, padding:"7px 10px", background:"#FAFAFA", borderRadius:8, border:"1px solid #F0F0F0", flexShrink:0 }}>
+                <span style={{ fontSize:9, fontWeight:700, color:G, letterSpacing:"0.8px", textTransform:"uppercase" }}>Non incluses dans ce comparatif : </span>
+                <span style={{ fontSize:9, color:G }}>{sansDonnees.join(" · ")}</span>
+              </div>
+            )}
           </div>
 
           {/* ── Panel classement ── */}
@@ -402,7 +620,7 @@ export default function AnalyseComparative() {
               {rankingList.map((row, i) => {
                 const isLeader = row.rank === 1;
                 return (
-                  <div key={row.a} style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", borderBottom:"1px solid #F8F8F8", background: isLeader ? "#FEFCE8" : "white" }}>
+                  <div key={row.a} className="kpi-hover-card" style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", borderBottom:"1px solid #F8F8F8", background: isLeader ? "#FEFCE8" : "white" }}>
                     {/* Rang */}
                     <div style={{
                       width:26, height:26, borderRadius:7, flexShrink:0,
@@ -413,16 +631,25 @@ export default function AnalyseComparative() {
                     }}>{row.rank}</div>
 
                     {/* Logo */}
-                    <div style={{ width:72, height:32, flexShrink:0, background:"#FAFAFA", borderRadius:7, border:"1px solid #E5E7EB", display:"flex", alignItems:"center", justifyContent:"center", padding:"3px 6px" }}>
+                    <div style={{ width:100, height:44, flexShrink:0, background:"#FAFAFA", borderRadius:7, border:"1px solid #E5E7EB", display:"flex", alignItems:"center", justifyContent:"center", padding:"3px 6px" }}>
                       {getLogoSrc(row.a)
-                        ? <img src={getLogoSrc(row.a)} alt={ASSUREUR_LABELS[row.a]} style={{ width:60, height:26, objectFit:"contain" }}/>
+                        ? <img src={getLogoSrc(row.a)} alt={ASSUREUR_LABELS[row.a]} style={{ height:38, width:"auto", maxWidth:90, objectFit:"contain" }}/>
                         : <span style={{ fontSize:10, fontWeight:800, color:D }}>{ASSUREUR_LABELS[row.a]}</span>
                       }
                     </div>
 
                     {/* Valeur + tier */}
                     <div style={{ flex:1, textAlign:"right" }}>
-                      <div style={{ fontSize:16, fontWeight:700, color:D, lineHeight:1 }}>{row.v}{ind.unit}</div>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:4 }}>
+                        <div style={{ fontSize:16, fontWeight:700, color:D, lineHeight:1 }}>{row.v}{ind.unit}</div>
+                        <KpiOptionsMenu
+                          code={row.a}
+                          kpi={INDICATEUR_STORAGE_KEY[indicateur]}
+                          annee={annee}
+                          label={indicateur}
+                          value={`${row.v}${ind.unit}`}
+                        />
+                      </div>
                       <div style={{ marginTop:4 }}><TierBadge rank={row.rank}/></div>
                     </div>
                   </div>

@@ -101,12 +101,20 @@ FAILURE_REPORT_PATH = os.path.join(OUTPUT_DIR, "echecs_extraction.xlsx")
 # Sociétés Takaful : le Bilan y est structuré différemment (colonnes "Fonds
 # des Adhérents" / "Entreprise" séparées) et les motifs de recherche
 # conventionnels ne s'y appliquent pas. AT_TAKAFULIA/ZITOUNA_TAKAFUL ont un
-# extracteur dédié (extraction/takaful_kpi_extractor.py) qui récupère 4 KPI
-# (Total actif, Capitaux propres, Résultat Net, Primes émises). AL_AMANAH_TAKAFUL
-# reste exclue : ses états financiers sont publiés en arabe (RTL), voir
-# docs/travaux_futurs.md.
-TAKAFUL_COMPANIES = {"AL_AMANAH_TAKAFUL", "AT_TAKAFULIA", "ZITOUNA_TAKAFUL"}
-TAKAFUL_EXTRACTABLE_COMPANIES = {"AT_TAKAFULIA", "ZITOUNA_TAKAFUL"}
+# extracteur dédié (extraction/takaful_kpi_extractor.py) qui récupère les 4 KPI
+# communs au conventionnel (Total actif, Capitaux propres, Résultat Net,
+# Primes émises) + depuis août 2026, pour les exercices en format "nouveau"
+# (NCT 43, ~2020+), 6 indicateurs propres au Fonds des Participants (Surplus
+# Familial/Général, Total actifs nets des adhérents, Provisions techniques du
+# fonds, Commissions Wakala/Moudharaba — voir TAKAFUL_FONDS_PARTICIPANTS_KPI
+# ci-dessous et extraction/CAS_PARTICULIERS_TAKAFUL.md).
+# AL_AMANAH_TAKAFUL : états financiers en arabe (pas français comme les deux
+# autres) — extracteur dédié également (takaful_kpi_extractor.extract_al_amanah_takaful_kpis,
+# voir extraction/arabic_ocr_extractor.py pour la technique). Ne récupère QUE
+# les 4 KPI communs (pas de Fonds des Participants pour cette société), et
+# de façon incomplète sur certains exercices scannés en image — voir le
+# détail par exercice dans extraction/CAS_PARTICULIERS_TAKAFUL.md.
+TAKAFUL_EXTRACTABLE_COMPANIES = {"AL_AMANAH_TAKAFUL", "AT_TAKAFULIA", "ZITOUNA_TAKAFUL"}
 ARABIC_RE = re.compile(r"[؀-ۿ]")
 
 BILAN_KPI_NAMES = [definition[0] for definition in BILAN_KPI_DEFINITIONS]
@@ -121,6 +129,41 @@ ANNEXE12_KPI_NAMES = list(ANNEXE12_KPI_PATTERNS.keys())
 # n'itère que sur cette liste) la sauvegarde en base pour les compagnies
 # Takaful ; sans effet pour les assureurs conventionnels (jamais présente
 # dans leur dict `kpis` à ce stade, donc simplement ignorée comme avant).
+# Même raisonnement pour les 6 indicateurs du Fonds des Participants
+# (extract_fonds_participants_kpis) : sans existence propre dans les
+# extracteurs conventionnels, il faut les lister explicitement ici pour
+# qu'ils soient persistés.
+TAKAFUL_FONDS_PARTICIPANTS_KPI = [
+    "Surplus du Fonds Takaful Familial (TND)",
+    "Surplus du Fonds Takaful Général (TND)",
+    "Total actifs nets des adhérents (TND)",
+    "Provisions techniques du Fonds des Adhérents (TND)",
+    "Commission Wakala (TND)",
+    "Commission Moudharaba (TND)",
+    # Répartition Familial/Général de "Primes émises par assurance" (déjà
+    # dans KPI_NAMES) - ajoutée 2026-08-11 pour permettre l'agrégation
+    # sectorielle Family/General Takaful côté Aperçu Marché (auparavant
+    # affichée "Données non publiées", faute d'une ventilation persistée -
+    # voir api/routes/apercu_marche.py::_takaful_sector_snapshot).
+    "Primes émises Familial (TND)",
+    "Primes émises Général (TND)",
+]
+
+# Charges de prestations / Charges d'acquisition et de gestion nettes
+# (Annexes 14/15 - Ventilation par catégorie d'assurance) : mêmes NOMS
+# canoniques que les assureurs conventionnels (calculated_kpi_extractor.
+# _CMF_COMPUTED_KPI_NAMES), mais extraites DIRECTEMENT ici pour les
+# compagnies Takaful plutôt que recalculées comme somme Vie+Non-Vie
+# (structure inexistante côté Takaful, ces 2 KPI y restent donc toujours
+# None et invalidées par compute_cmf_derived_kpis - sans effet ici car cette
+# invalidation cible exclusivement le tableau "Calcul interne", voir
+# KPI_TABLE_LABEL ci-dessous, distinct de celui utilisé pour ces 2 KPI côté
+# Takaful). Listées séparément de TAKAFUL_FONDS_PARTICIPANTS_KPI car leur
+# tableau source (Annexes 14/15) diffère des Annexes 3/4/5.1.
+TAKAFUL_VENTILATION_KPI = [
+    "Charges de prestations",
+    "Charges d'acquisition et de gestion nettes",
+]
 KPI_NAMES = (
     BILAN_KPI_NAMES
     + ANNEXE13_KPI_NAMES
@@ -128,6 +171,8 @@ KPI_NAMES = (
     + RESULTAT_KPI_NAMES
     + PRESENTATION_KPI_NAMES
     + ["Primes émises par assurance"]
+    + TAKAFUL_FONDS_PARTICIPANTS_KPI
+    + TAKAFUL_VENTILATION_KPI
 )
 
 # Nom du tableau source enregistré avec chaque KPI.
@@ -145,6 +190,18 @@ KPI_TABLE_LABEL.update(
     {name: "Presentation de la societe" for name in PRESENTATION_KPI_NAMES}
 )
 KPI_TABLE_LABEL["Primes émises par assurance"] = "Etat de resultat (technique / global)"
+KPI_TABLE_LABEL.update(
+    {name: "Annexes 3/4/5.1 - Fonds des Participants (Takaful)" for name in TAKAFUL_FONDS_PARTICIPANTS_KPI}
+)
+# Tableau distinct de "Calcul interne" (utilisé par calculated_kpi_extractor
+# pour les assureurs conventionnels) : delete_kpi_value y est scopé par
+# tableau, donc l'invalidation "__delete__" que compute_cmf_derived_kpis
+# émet pour ces 2 KPI sur chaque document Takaful (Vie/Non-Vie inexistant
+# côté Takaful, somme toujours None) ne peut pas supprimer ces valeurs,
+# enregistrées ici sous un tableau différent.
+KPI_TABLE_LABEL.update(
+    {name: "Annexes 14/15 - Ventilation par categorie d'assurance (Takaful)" for name in TAKAFUL_VENTILATION_KPI}
+)
 
 
 def _get_with_retries(url, timeout, retries=3):
@@ -207,6 +264,9 @@ def _check_balance(pdf, kpis):
 
 
 def _extract_all_kpis(pdf, company_code=None):
+    if company_code == "AL_AMANAH_TAKAFUL":
+        from extraction.takaful_kpi_extractor import extract_al_amanah_takaful_kpis
+        return extract_al_amanah_takaful_kpis(pdf)
     if company_code in TAKAFUL_EXTRACTABLE_COMPANIES:
         from extraction.takaful_kpi_extractor import extract_all_takaful_kpis
         kpis = extract_all_takaful_kpis(pdf)
@@ -223,10 +283,10 @@ def _extract_all_kpis(pdf, company_code=None):
 def _classify_cause(pdf, company_code):
     """Diagnostic best-effort de la cause d'échec, pour orienter un
     traitement manuel ultérieur."""
+    if company_code == "AL_AMANAH_TAKAFUL":
+        return "Compagnie Takaful (etats financiers en arabe) : seuls Total actif/Capitaux propres/Resultat Net/Primes emises sont vises, et de facon incomplete sur certains exercices scannes en image - voir extraction/CAS_PARTICULIERS_TAKAFUL.md"
     if company_code in TAKAFUL_EXTRACTABLE_COMPANIES:
-        return "Compagnie Takaful : seuls Total actif/Capitaux propres/Resultat Net/Primes emises sont extraits (structure comptable Fonds des Adherents/Entreprise, pas de detail par poste)"
-    if company_code in TAKAFUL_COMPANIES:
-        return "Document en arabe (RTL), structure Takaful non extractible avec l'approche actuelle"
+        return "Compagnie Takaful : seuls Total actif/Capitaux propres/Resultat Net/Primes emises (+ Fonds des Participants en format nouveau) sont extraits (structure comptable Fonds des Adherents/Entreprise, pas de detail par poste)"
     sample_text = ""
     for page in pdf.pages[:3]:
         sample_text += page.extract_text() or ""
@@ -448,7 +508,9 @@ def _run_cga(conn):
         found_count = 0
         for name, value in kpis.items():
             if value is not None:
-                tableau = "CGA - Annexe 1 - Structure du marche" if name == "Nombre d'assureurs" else "CGA - Annexe 2 - Distribution geographique des agents"
+                tableau = ("CGA - Annexe 1 - Structure du marche"
+                           if name in ("Nombre d'assureurs", "Nombre d'assureurs Takaful", "Nombre d'assureurs Conventionnelle")
+                           else "CGA - Annexe 2 - Distribution geographique des agents")
                 save_kpi_value(conn, document_id, tableau, name, valeur_nombre=value)
                 kpi_values_saved += 1
                 found_count += 1

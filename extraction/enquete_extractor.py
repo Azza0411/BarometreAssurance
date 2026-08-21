@@ -146,6 +146,28 @@ def _norm_company(raw):
     return COMPANY_ALIASES.get(key, key.upper() if key else None)
 
 
+# Colonnes identifiant les assureurs RÉELS du répondant (pas une question
+# d'opinion comme "Top of Mind"/"Meilleure"/"Pire") - une même personne peut
+# citer jusqu'à 5 compagnies (multi-équipée). C'est sur CES colonnes que doit
+# se faire le filtrage "Fiche client entreprise" (retour utilisateur
+# 2026-08-21 : le sélecteur de compagnie ne changeait jusqu'ici RIEN aux
+# chiffres affichés - compute_stats() ignorait totalement `company_code` et
+# renvoyait toujours les stats du marché entier, quelle que soit la
+# compagnie choisie dans le menu).
+_COMPANIE_COLS = [f"Assurance - Compagnie {i}" for i in range(1, 6)]
+
+
+def _is_client_of(df, company_code):
+    """Masque booléen : lignes de `df` où le répondant cite `company_code`
+    parmi ses assureurs actuels (une des colonnes Compagnie 1 à 5)."""
+    mask = pd.Series(False, index=df.index)
+    for col in _COMPANIE_COLS:
+        if col not in df.columns:
+            continue
+        mask = mask | df[col].apply(lambda v: _norm_company(v) == company_code)
+    return mask
+
+
 # ─── Helpers stats ───────────────────────────────────────────────────────────
 
 def _pct(n, total):
@@ -303,12 +325,28 @@ def _normalize_revenu(v):
 
 # ─── Calcul principal ────────────────────────────────────────────────────────
 
-@lru_cache(maxsize=4)
+@lru_cache(maxsize=32)
 def compute_stats(company_code="STAR"):
     """
     Calcule et retourne toutes les statistiques de l'enquête.
-    Le `company_code` est gardé pour compatibilité API mais le fichier
-    est une seule enquête globale — les stats sont les mêmes pour tous.
+
+    Deux périmètres différents selon la section (corrigé 2026-08-21 - avant
+    ce fix, `company_code` était accepté par l'API mais totalement ignoré ici :
+    les mêmes chiffres, ceux du marché entier, étaient renvoyés quelle que
+    soit la compagnie sélectionnée dans le menu) :
+    - `segments`/`entreprises`/`geo` (onglet "Analyse de l'échantillon") :
+      décrivent l'ÉCHANTILLON de l'enquête dans son ensemble - restent
+      volontairement globaux, non filtrés par compagnie (une compagnie n'a
+      pas son propre "échantillon", elle est une découpe DANS l'échantillon).
+    - `fiche` (onglet "Fiche client entreprise") : doit décrire les clients
+      RÉELS de la compagnie sélectionnée. Filtré sur les colonnes "Assurance
+      - Compagnie 1" à "5" (voir _is_client_of) pour modeleIdeal/perception/
+      confiance/canal/satisfaction. topOfMind/meilleureCompagnie/pireCompagnie
+      restent volontairement calculés sur le marché ENTIER (question
+      d'image/notoriété posée à tous les répondants, pas seulement aux
+      clients de la compagnie) - le frontend y met en évidence la compagnie
+      sélectionnée au sein de ce classement global, il n'a pas besoin d'un
+      classement recalculé par compagnie.
     """
     path = _find_xlsx()
     if not path:
@@ -325,6 +363,23 @@ def compute_stats(company_code="STAR"):
     seg_counts = {}
     for seg_key in SEG_MAP.values():
         seg_counts[seg_key] = int((retail["_seg"] == seg_key).sum())
+
+    # Sous-ensembles "clients réels de company_code" - utilisés uniquement
+    # pour la fiche par compagnie (voir docstring). Pas de repli sur
+    # l'échantillon entier si vide/faible : afficher un vrai petit
+    # échantillon (voire 0) est plus honnête qu'y substituer en silence les
+    # chiffres du marché entier sous l'étiquette de la compagnie -
+    # `nbRepondants`/`clientCounts` (renvoyés dans `fiche`) permettent au
+    # frontend de signaler un échantillon trop faible plutôt que de le
+    # masquer. Créés APRÈS le calcul de "_seg" ci-dessus (colonne portée par
+    # la vue filtrée) pour permettre la ventilation Particuliers/Pros.
+    retail_client = retail[_is_client_of(retail, company_code)]
+    corp_client   = corp[_is_client_of(corp, company_code)]
+    client_counts = {
+        "particuliers":   int((retail_client["_seg"] == "particuliers").sum()),
+        "professionnels": int((retail_client["_seg"] == "professionnels").sum()),
+        "entreprises":    int(len(corp_client)),
+    }
 
     def build_segment(df_seg):
         n = len(df_seg)
@@ -532,12 +587,12 @@ def compute_stats(company_code="STAR"):
 
     entreprises = {"secteurs": secteurs, "employes": employes, "ca": ca}
 
-    # ── Fiche (données combinées retail + corporate pour la fiche client) ─────
-    # Modèle idéal (retail uniquement pour fiche Grand Public)
+    # ── Fiche (filtrée sur les clients réels de company_code — voir docstring) ─
+    # Modèle idéal
     modele_col = "Assurance - Modèle idéal"
     modele_counts = {"Digital": 0, "Mixte": 0, "Physique": 0}
     modele_total = 0
-    for df in (retail,):
+    for df in (retail_client,):
         for v in df[modele_col].dropna():
             nm = _normalize_modele(v)
             if nm:
@@ -549,13 +604,13 @@ def compute_stats(company_code="STAR"):
                  for k in ["Digital", "Mixte", "Physique"]],
     } if modele_total else {"labs": ["Digital", "Mixte", "Physique"], "vals": []}
 
-    # Perception générale (retail)
+    # Perception générale
     perc_col = "Assurance - Perception générale"
     perc_order = ["Très positive", "Plutôt positive", "Neutre", "Plutôt négative", "Très négative"]
     perc_colors = ["#00B86B", "#7BC67A", "#FFE600", "#FF8C42", "#B80C26"]
     perc_counts = {k: 0 for k in perc_order}
     perc_total = 0
-    for v in retail[perc_col].dropna():
+    for v in retail_client[perc_col].dropna():
         nm = _normalize_perception(v)
         if nm and nm in perc_counts:
             perc_counts[nm] += 1
@@ -564,12 +619,12 @@ def compute_stats(company_code="STAR"):
     perc_vals = [_pct(perc_counts[k], perc_total) for k in perc_labs]
     perception = {"labs": perc_labs, "vals": perc_vals}
 
-    # Degré de confiance (retail)
+    # Degré de confiance
     conf_col = "Assurance - Degré de confiance"
     conf_order = ["Très faible", "Faible", "Moyen", "Fort", "Très fort"]
     conf_counts = {k: 0 for k in conf_order}
     conf_total = 0
-    for v in retail[conf_col].dropna():
+    for v in retail_client[conf_col].dropna():
         nm = _normalize_confiance(v)
         if nm and nm in conf_counts:
             conf_counts[nm] += 1
@@ -578,7 +633,10 @@ def compute_stats(company_code="STAR"):
     conf_vals = [_pct(conf_counts[k], conf_total) for k in conf_labs]
     confiance = {"labs": conf_labs, "vals": conf_vals}
 
-    # Top of Mind, Meilleure, Pire (retail)
+    # Top of Mind, Meilleure, Pire — volontairement calculés sur le marché
+    # ENTIER (retail, pas retail_client) : question de notoriété/image posée
+    # à tous les répondants, pas seulement aux clients de la compagnie - voir
+    # docstring de compute_stats.
     tom  = _top_companies(retail["Assurance - Top of Mind"])
     meil = _top_companies(retail["Assurance - Meilleure compagnie"])
     pire_col = "Assurance - Pire Compagnie "
@@ -586,7 +644,7 @@ def compute_stats(company_code="STAR"):
     # Exclure NSP du classement pire (déjà filtré dans _top_companies)
     pire = pire_raw
 
-    # Canal (retail)
+    # Canal (filtré clients de la compagnie)
     canal_ops = [
         "Souscrire à un contrat",
         "Déclarer un sinistre",
@@ -603,8 +661,8 @@ def compute_stats(company_code="STAR"):
     ]
     canal_rows_data = {"Digital": [], "Mixte": [], "Physique": []}
     for ccol in canal_cols:
-        if ccol in retail.columns:
-            counts, total_c = _canal_row(retail, ccol)
+        if ccol in retail_client.columns:
+            counts, total_c = _canal_row(retail_client, ccol)
             for mode in ["Digital", "Mixte", "Physique"]:
                 canal_rows_data[mode].append(_pct(counts[mode], total_c) if total_c else 0)
         else:
@@ -618,7 +676,7 @@ def compute_stats(company_code="STAR"):
         ],
     }
 
-    # Satisfaction (retail)
+    # Satisfaction (filtrée clients de la compagnie)
     sat_ops = [
         "Souscription",
         "Couverture",
@@ -640,8 +698,8 @@ def compute_stats(company_code="STAR"):
     sat_levels = ["Pas du tout satisfait", "Peu satisfait", "Neutre", "Satisfait", "Très satisfait"]
     sat_matrix = {lv: [] for lv in sat_levels}
     for scol in sat_cols:
-        if scol in retail.columns:
-            row = _satisfaction_row(retail[scol])
+        if scol in retail_client.columns:
+            row = _satisfaction_row(retail_client[scol])
         else:
             row = [0, 0, 0, 0, 0]
         for i, lv in enumerate(sat_levels):
@@ -661,6 +719,8 @@ def compute_stats(company_code="STAR"):
         "entreprises": entreprises,
         "geo":        geo,
         "fiche": {
+            "nbRepondants":       int(len(retail_client)) + int(len(corp_client)),
+            "clientCounts":       client_counts,
             "modeleIdeal":        modele_ideal,
             "perception":         perception,
             "confiance":          confiance,

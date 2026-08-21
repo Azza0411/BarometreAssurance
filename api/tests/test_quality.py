@@ -61,9 +61,12 @@ def test_peer_comparison_ignores_missing_values():
 def test_problematic_codes_have_individual_reasons():
     # Chaque societe exclue doit avoir sa propre raison (pas un texte
     # generique partage par toutes, corrige en juillet 2026). Etait 8 avant
-    # aout 2026 : AT_TAKAFULIA et ZITOUNA_TAKAFUL en sont sorties (extracteur
-    # dedie, voir extraction/takaful_kpi_extractor.py) ; AL_AMANAH_TAKAFUL
-    # (arabe/RTL) reste seule des 3 Takaful encore exclue.
-    assert len(PROBLEMATIC_CODES) == 6
-    assert len({reason for reason in PROBLEMATIC_CODES.values()}) >= 3
+    # aout 2026 : AT_TAKAFULIA, ZITOUNA_TAKAFUL et AL_AMANAH_TAKAFUL en sont
+    # sorties (extracteurs dedies, voir extraction/takaful_kpi_extractor.py) ;
+    # AMI/CARTE_VIE/UIB/HAYETT en sont sorties le 2026-08-17 (le motif "aucun
+    # texte extractible" etait devenu faux pour la majorite de leurs annees,
+    # voir extraction/CAS_PARTICULIERS.md et le commentaire au-dessus de
+    # PROBLEMATIC_CODES). Seul COTUNACE reste exclu (OCR source corrompu,
+    # touche la quasi-totalite de ses annees, pas un cas ponctuel).
+    assert len(PROBLEMATIC_CODES) == 1
     assert all(isinstance(reason, str) and reason for reason in PROBLEMATIC_CODES.values())

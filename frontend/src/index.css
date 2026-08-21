@@ -85,3 +85,17 @@ body {
   box-shadow: 0 4px 20px rgba(0,0,0,.12) !important;
   border: 1px solid #E8E8ED !important;
 }
+
+/* Icône "i" (info) — KpiOptionsMenu : toujours pleinement visible (pas de
+   fondu au repos), sur choix explicite de l'utilisateur le 2026-08-19 parmi
+   3 pistes visuelles présentées ("icône info permanente" plutôt que
+   "points discrets révélés au survol") — un survol de carte n'est pas un
+   signal fiable sur toutes les pages. Seul un léger agrandissement marque
+   le survol du bouton lui-même. */
+.kpi-opts-btn {
+  opacity: 1;
+  transition: transform .12s ease;
+}
+.kpi-opts-btn:hover {
+  transform: scale(1.15);
+}

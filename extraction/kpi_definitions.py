@@ -42,13 +42,15 @@ COMPANY_CONTEXT: dict[str, str] = {
     "BIAT":          "vie",
     "BNA":           "vie",
     "UIB":           "vie",
+    "HAYETT":        "vie",
     # Réassurance / caution
     "COTUNACE":  "reassurance",
     "TUNIS_RE":  "reassurance",
-    # Takaful participatif
-    "AL_AMANAH_TAKAFUL": "takaful",
+    # Takaful participatif (AL_AMANAH_TAKAFUL exclue : PDF en arabe, hors
+    # périmètre pipeline — voir extraction/takaful_kpi_extractor.py.
+    # HAYETT retirée d'ici : c'est une compagnie Vie conventionnelle, pas
+    # Takaful — présence ici avant août 2026 était une erreur de classement.)
     "AT_TAKAFULIA":      "takaful",
-    "HAYETT":            "takaful",
     "ZITOUNA_TAKAFUL":   "takaful",
     # Mixte (défaut) : ASTREE, BH, CARTE, COMAR, GAT, LLOYD_TUNISIEN, MAGHREBIA, STAR
 }
@@ -167,23 +169,101 @@ SOURCE_PAR_KPI: dict[str, dict] = {
         "reference": "Ligne « Résultat technique » / Colonne « Total »",
     },
     # ── Bilan ────────────────────────────────────────────────────────────────
+    # Corrigé le 2026-08-17 : les 3 entrées ci-dessous portaient "Bilan/État
+    # de résultat au 30/06" — copié par erreur d'un autre gabarit. Les Bilans
+    # CMF de ce périmètre sont TOUS arrêtés au 31/12 (année pleine), jamais
+    # au 30/06 (vérifié sur les 186 PDF exploités cette session). "Capitaux
+    # propres" pointait aussi vers "avant résultat" comme référence PRINCIPALE,
+    # alors que `_find_capitaux_propres` (bilan_kpi_extractor.py) cherche en
+    # PRIORITÉ "avant affectation" (le vrai total final, incluant le résultat
+    # de l'exercice en cours) et ne se rabat sur "avant résultat" que si cette
+    # ligne est absente du document — voir bilan_kpi_extractor.py:874-880.
     "Résultat Net": {
         "doc": "État de résultat",
         "section": "etat_resultat",
-        "tableau": "État de résultat arrêté au 30/06",
-        "reference": "Ligne « Résultat net de l'exercice » / Colonne « 30/06/{annee} »",
+        "tableau": "État de résultat arrêté au 31/12",
+        "reference": "Ligne « Résultat net de l'exercice » / Colonne « 31/12/{annee} »",
     },
     "Capitaux propres": {
         "doc": "Bilan",
         "section": "bilan",
-        "tableau": "Bilan au 30/06",
-        "reference": "Ligne « Total capitaux propres avant résultat de l'exercice » / Colonne « 30/06/{annee} »",
+        "tableau": "Bilan (Capitaux propres et Passif) au 31/12",
+        "reference": "Ligne « Total capitaux propres avant affectation » (repli : « ...avant résultat de l'exercice » si absente) / Colonne « 31/12/{annee} »",
     },
     "Total actif": {
         "doc": "Bilan",
         "section": "bilan",
-        "tableau": "Bilan au 30/06",
-        "reference": "Ligne « Total de l'actif » / Colonne « 30/06/{annee} » / Sous-colonne « Net »",
+        "tableau": "Bilan (Actif) au 31/12",
+        "reference": "Ligne « Total de l'actif » / Colonne « 31/12/{annee} » / Sous-colonne « Net »",
+    },
+    "Placements": {
+        "doc": "Bilan",
+        "section": "bilan",
+        "tableau": "Bilan (Actif) au 31/12",
+        "reference": "Section AC3 « Placements » / Colonne « 31/12/{annee} » / Sous-colonne « Net » (dernière ligne à chiffres de la section avant AC4)",
+    },
+    "Actions et titres de participation": {
+        "doc": "Bilan",
+        "section": "bilan",
+        "tableau": "Bilan (Actif) au 31/12",
+        "reference": "Ligne « Actions, autres titres à revenu variable » / Colonne « 31/12/{annee} » / Sous-colonne « Net »",
+    },
+    "Cours de l'action": {
+        "doc": "BVMT — Bulletin officiel de la cote",
+        "section": "bvmt_bulletin",
+        "tableau": "COTE DE LA BOURSE : MARCHÉ PRINCIPAL DES TITRES DE CAPITAL",
+        "reference": "Colonne « CLÔTURE » — bulletin quotidien BVMT de l'année en cours (pas le PDF CMF de la compagnie)",
+    },
+    "Capitalisation Boursière": {
+        "doc": "Calcul interne",
+        "section": "bvmt_bulletin",
+        "tableau": "Calcul interne",
+        "reference": "Cours de l'action (BVMT) × Nombre d'actions (CMF « Capital social », repli : nombre de titres émis BVMT actuel appliqué par approximation à toutes les années — voir CAS_PARTICULIERS_BVMT.md)",
+    },
+    "Siège social": {
+        "doc": "PRESENTATION DE LA SOCIETE",
+        "section": "presentation",
+        "tableau": "Paragraphe narratif « PRESENTATION DE LA SOCIETE » (notes aux états financiers)",
+        "reference": "Ligne à puce « Siège social : {valeur} »",
+    },
+    # ── Takaful — Fonds des Participants / Compte de l'Opérateur ────────────
+    # Sourcé lors de la reconstruction du tableau DVRB Takaful (2026-08-17,
+    # voir extraction/takaful_kpi_extractor.py::extract_fonds_participants_kpis).
+    "Commission Wakala (TND)": {
+        "doc": "État de résultat de l'entreprise Takaful",
+        "section": "annexe_takaful_resultat",
+        "tableau": "État de résultat de l'entreprise Takaful (Annexe 5.1)",
+        "reference": "Ligne « Commission Wakala »",
+    },
+    "Commission Moudharaba (TND)": {
+        "doc": "État de résultat de l'entreprise Takaful",
+        "section": "annexe_takaful_resultat",
+        "tableau": "État de résultat de l'entreprise Takaful (Annexe 5.1)",
+        "reference": "Ligne « Commission Moudharaba »",
+    },
+    "Surplus du Fonds Takaful Familial (TND)": {
+        "doc": "Etat de Surplus ou Déficit du Fonds Takaful Familial",
+        "section": "annexe_takaful_familial",
+        "tableau": "Annexe 3 – Etat de Surplus ou Déficit du Fonds Takaful Familial",
+        "reference": "Ligne « Surplus ou déficit de l'assurance » / Colonne « Opérations nettes »",
+    },
+    "Surplus du Fonds Takaful Général (TND)": {
+        "doc": "Etat de Surplus ou Déficit du Fonds Takaful Général",
+        "section": "annexe_takaful_general",
+        "tableau": "Annexe 4 – Etat de Surplus ou Déficit du Fonds Takaful Général",
+        "reference": "Ligne « Surplus ou déficit de l'assurance » / Colonne « Opérations nettes »",
+    },
+    "Total actifs nets des adhérents (TND)": {
+        "doc": "Bilan Combiné",
+        "section": "bilan_combine_adherents",
+        "tableau": "Bilan Combiné (Capitaux propres et Passif) au 31/12",
+        "reference": "Ligne « Total des actifs nets des adhérents » / Colonne « Fonds des Adhérents »",
+    },
+    "Provisions techniques du Fonds des Adhérents (TND)": {
+        "doc": "Bilan Combiné",
+        "section": "bilan_combine_adherents",
+        "tableau": "Bilan Combiné (Capitaux propres et Passif) au 31/12",
+        "reference": "Ligne « Provisions techniques brutes » / Colonne « Fonds des Adhérents »",
     },
 }
 
@@ -283,7 +363,7 @@ FORMULES_PAR_CONTEXTE: dict[str, dict] = {
         },
         "takaful": {
             "expr": "(Charges de prestations + Charges d'acq. et gestion nettes) / Cotisations émises × 100",
-            "note": "Structure similaire au ratio combiné conventionnel, appliqué aux cotisations Takaful.",
+            "note": "Structure similaire au ratio combiné conventionnel, appliqué aux cotisations Takaful — mais la profitabilité qu'il reflète est celle du Fonds des Participants (PRF), pas celle de l'actionnaire : un ratio combiné favorable ne se traduit pas mécaniquement en profit pour l'Opérateur, contrairement au conventionnel (IFSB, Compilation Guide on PSIFIs, ratio TP17, p.95).",
             "chercher": "Charges de prestations",
             "composantes": [
                 "Charges de prestations",
@@ -342,7 +422,7 @@ FORMULES_PAR_CONTEXTE: dict[str, dict] = {
         },
         "takaful": {
             "expr": "Charge de sinistres (prestations Takaful) / Cotisations acquises × 100",
-            "note": "Appliqué aux cotisations et prestations Takaful.",
+            "note": "Appliqué aux cotisations et prestations Takaful. Contrairement au conventionnel, la cotisation est un don mutuel (Tabarru') et non une prime d'échange commercial : ce ratio mesure l'équilibre du Fonds des Participants (PRF), pas la rentabilité de l'Opérateur (IFSB, Compilation Guide on PSIFIs, ratio TP12, p.94).",
             "chercher": "Charge de sinistres",
             "composantes": [
                 "Charge de sinistres",
@@ -365,18 +445,30 @@ FORMULES_PAR_CONTEXTE: dict[str, dict] = {
     },
 
     "ROE (%)": {
-        "_all": {
+        "mixte": {
             "expr": "Résultat net / Capitaux propres × 100",
             "note": "Rentabilité des fonds propres. Capitaux propres en fin d'exercice. Comparaison avec le coût du capital de la compagnie.",
+            "chercher": "Résultat net de l'exercice",
+            "composantes": ["Résultat Net", "Capitaux propres"],
+        },
+        "takaful": {
+            "expr": "Résultat net de l'Opérateur Takaful / Capitaux propres de l'Opérateur × 100",
+            "note": "Le numérateur ne couvre que le résultat de l'Opérateur Takaful (commissions Wakala + part Moudharaba), pas le surplus/déficit technique du Fonds des Participants — qui appartient collectivement aux participants, pas aux actionnaires. Ce ROE mesure donc la rémunération de gestion de l'Opérateur, pas la performance de souscription globale (IFSB, Compilation Guide on PSIFIs, ratio TP18, p.95-96).",
             "chercher": "Résultat net de l'exercice",
             "composantes": ["Résultat Net", "Capitaux propres"],
         },
     },
 
     "ROA (%)": {
-        "_all": {
+        "mixte": {
             "expr": "Résultat net / Total actif × 100",
             "note": "Rendement de l'ensemble des actifs déployés par la compagnie en fin d'exercice.",
+            "chercher": "Total de l'actif",
+            "composantes": ["Résultat Net", "Total actif"],
+        },
+        "takaful": {
+            "expr": "Résultat net de l'Opérateur Takaful / Total actif de l'Opérateur × 100",
+            "note": "Même réserve que le ROE Takaful : le résultat net ne couvre que l'Opérateur (Wakala + Moudharaba), pas le résultat technique du Fonds des Participants (IFSB, Compilation Guide on PSIFIs, ratio TP19, p.96).",
             "chercher": "Total de l'actif",
             "composantes": ["Résultat Net", "Total actif"],
         },
@@ -412,7 +504,7 @@ FORMULES_PAR_CONTEXTE: dict[str, dict] = {
     "Capitaux propres": {
         "_all": {
             "expr": "Extrait directement du Bilan (aucun recalcul)",
-            "note": "Total des capitaux propres avant résultat de l'exercice, tel que publié au passif du bilan.",
+            "note": "Total des capitaux propres avant affectation (résultat de l'exercice inclus), tel que publié au passif du bilan ; repli sur « avant résultat » seulement si la ligne « avant affectation » est absente du document.",
             "chercher": "Total capitaux propres",
             "composantes": [],
         },
@@ -424,6 +516,55 @@ FORMULES_PAR_CONTEXTE: dict[str, dict] = {
             "note": "Calculée par rapport au total des primes émises déclarées à la FTUSA (Fédération Tunisienne des Sociétés d'Assurance).",
             "chercher": None,
             "composantes": [],
+        },
+    },
+
+    # ── Ratios ajoutés août 2026 (chantier séparation conventionnel/Takaful) :
+    # dérivés de KPI déjà extraits (Total actif, Capitaux propres, Placements,
+    # Actions et titres de participation) — aucune extraction PDF nouvelle.
+    # Sourcés docs/ratios_takaful_ifsb_aaoifi.md, fiches S4/S5/I1/I2.
+    "Dettes/Capitaux propres (%)": {
+        "_all": {
+            "expr": "(Total actif − Capitaux propres) / Capitaux propres × 100",
+            "note": "Mesure la proportion de dettes portée par la compagnie relativement à ses fonds propres. Plus faible = meilleur. Identique conventionnel/Takaful (IFSB, Compilation Guide on PSIFIs, ratio TS12, p.100).",
+            "chercher": None,
+            "composantes": ["Total actif", "Capitaux propres"],
+        },
+    },
+    "Dettes/Actif (%)": {
+        "_all": {
+            "expr": "(Total actif − Capitaux propres) / Total actif × 100",
+            "note": "Proportion de l'actif financée par des dettes plutôt que par des fonds propres. >100% = alerte. Identique conventionnel/Takaful (IFSB, Compilation Guide on PSIFIs, ratio TS13, p.100-101).",
+            "chercher": None,
+            "composantes": ["Total actif", "Capitaux propres"],
+        },
+    },
+    "Actions/Actif (%)": {
+        "mixte": {
+            "expr": "Actions et titres de participation / Total actif × 100",
+            "note": "Part de l'actif financée par les investisseurs plutôt que par de l'endettement.",
+            "chercher": None,
+            "composantes": ["Actions et titres de participation", "Total actif"],
+        },
+        "takaful": {
+            "expr": "Actions et titres de participation / Total actif × 100",
+            "note": "Même formule que le conventionnel, mais les actions détenues doivent être Sharia-compliant (filtrage sectoriel et d'endettement des sociétés éligibles) — voir Bilan Combiné, ligne « Actions, autres titres à revenu variable et part dans des FCP islamiques » (IFSB, Compilation Guide on PSIFIs, ratio TP05, p.92).",
+            "chercher": None,
+            "composantes": ["Actions et titres de participation", "Total actif"],
+        },
+    },
+    "Placements/Capitaux propres (%)": {
+        "mixte": {
+            "expr": "Placements / Capitaux propres × 100",
+            "note": "Mesure du levier financier lié à l'activité de placement.",
+            "chercher": None,
+            "composantes": ["Placements", "Capitaux propres"],
+        },
+        "takaful": {
+            "expr": "Placements / Capitaux propres × 100",
+            "note": "Même formule que le conventionnel, mais l'univers de placement est Sharia-compliant (Sukuk, dépôts islamiques plutôt qu'obligations et dépôts classiques) — voir Bilan Combiné, colonne Entreprise, poste AC3 Placements (IFSB, Compilation Guide on PSIFIs, ratio TP20, p.96).",
+            "chercher": None,
+            "composantes": ["Placements", "Capitaux propres"],
         },
     },
 }
@@ -464,6 +605,23 @@ KPI_PLAGES_PLAUSIBLES: dict[str, tuple[float, float]] = {
     "Part de marché (%)":            (0.01, 50),
     "ROE (%)":                       (-200, 200),
     "ROA (%)":                       (-50, 50),
+    # Plage large et volontairement asymétrique par rapport aux autres lignes
+    # ci-dessus : contrairement à ROE/ROA/ratios techniques (bornes resserrées
+    # sur la base de 186 PDF réels), ces 4 ratios sont neufs (août 2026) et
+    # n'ont pas encore d'historique de validation propre. Le plafond n'est PAS
+    # une estimation de plage "normale" — un assureur Vie porte légitimement
+    # des réserves actuarielles représentant plusieurs fois ses capitaux
+    # propres (dette_cp/placements_cp observés jusqu'à ~2 500 % chez
+    # ATTIJARI/HAYETT/GAT_VIE/LLOYD_VIE, valeurs réelles, pas des erreurs).
+    # Le seuil de 5 000 % ne sert qu'à intercepter les erreurs d'extraction
+    # d'un ou deux ordres de grandeur (ex: CTAMA 2018, Capitaux propres
+    # extrait à 25 707 TND au lieu de plusieurs dizaines de millions ->
+    # dette_cp calculé à plus d'un million de %), pas à juger de la
+    # plausibilité économique — voir audit du 2026-08-05.
+    "Dettes/Capitaux propres (%)":     (-5_000, 5_000),
+    "Dettes/Actif (%)":                (-5_000, 5_000),
+    "Actions/Actif (%)":               (-5_000, 5_000),
+    "Placements/Capitaux propres (%)": (-5_000, 5_000),
 }
 
 # KPI en valeur absolue qui ne peuvent structurellement jamais être 0 pour

@@ -20,6 +20,7 @@ import requests
 
 from extraction.bilan_kpi_extractor import (
     NUMERIC_TOKEN_RE,
+    ROW_CODE_PREFIX_RE,
     USER_AGENT,
     _cluster_lines,
     _extract_numeric_clusters,
@@ -42,10 +43,34 @@ MAX_PAGES_SCANNED = 120
 # contiennent directement le total agrégé (une seule valeur par ligne),
 # contrairement aux tableaux multi-colonnes où `clusters[-1]` peut être
 # une colonne de branche plutôt que le Total.
-PAGE_TITLE_RE = re.compile(r"resultat technique par categorie|raccordement du resultat technique")
+# "(?:non.?vie |vie )?" : même variante d'ordre des mots que côté Annexe 12
+# (voir annexe12_kpi_extractor.PAGE_TITLE_RE) — chez BIAT par exemple, le
+# titre est "RESULTAT TECHNIQUE NON VIE PAR CATEGORIE D'ASSURANCE" (le mot
+# "Non Vie" intercalé entre "technique" et "par"), pas seulement en fin de
+# titre comme documenté plus haut pour STAR/COMAR/ASTREE/GAT/MAGHREBIA —
+# vérifié sur BIAT_2024.pdf, page Annexe 13.
+# Variante de gabarit "État de résultat technique (Non-)Vie DE <société>"
+# (nom de la société, pas "par catégorie") - voir la même note dans
+# annexe12_kpi_extractor.PAGE_TITLE_RE (découverte 2026-08-16 sur GAT_VIE).
+# Même motif "ETAT DE RESULTAT TECHNIQUE DE L'ASSURANCE..." que
+# annexe12_kpi_extractor.py (cas CTAMA, découvert le 2026-08-17) — voir son
+# commentaire détaillé pour le contexte.
+PAGE_TITLE_RE = re.compile(
+    r"resultat technique (?:non.?vie |vie )?par categorie"
+    r"|resultat technique (?:non.?vie|vie) de\b"
+    r"|raccordement du resultat technique"
+    r"|etat de resultat technique de l.?assurance"
+)
 RACCORDEMENT_RE = re.compile(r"raccordement")
 NON_VIE_RE = re.compile(r"non.?vie")
 VIE_RE = re.compile(r"\bvie\b")
+
+# Même piège que annexe12_kpi_extractor.NOTES_SECTION_RE (cf. son commentaire
+# détaillé, cas ATTIJARI) : une page de "NOTES" narrative en prose peut
+# mentionner "résultat technique par catégorie" en passant sans être la table
+# elle-même — exclue par précaution ici aussi, même si non encore observée
+# côté Non-Vie spécifiquement.
+NOTES_SECTION_RE = re.compile(r"\bnotes sur\b")
 
 # Dans la section "Informations complémentaires", certaines lignes existent en
 # double : année en cours (ex: "clôture", "Année N") et année précédente (ex:
@@ -77,11 +102,32 @@ KPI_PATTERNS = {
 }
 
 
+_LEADING_BULLET_RE = re.compile(r"^-\s*")
+
+
 def _label_text(line):
     label_words = [w for w in line if not NUMERIC_TOKEN_RE.match(w["text"])]
     if not label_words:
         return None
-    return _normalizer.clean(" ".join(w["text"] for w in label_words))
+    label = _normalizer.clean(" ".join(w["text"] for w in label_words))
+    # Certaines pages "raccordement" (ex: HAYETT) présentent chaque poste
+    # comme un item de liste à puces ("-primes", "-charges de prestation"),
+    # le "-" étant collé au mot suivant dans le PDF source (un seul "mot"
+    # pdfplumber, donc pas filtrable comme token numérique). Sans ce
+    # nettoyage, `^primes\b` etc. ne matchaient jamais "-primes" - découvert
+    # le 2026-08-16 sur HAYETT_2024.pdf (Annexe 12, "Primes émises Vie par
+    # assurance" restait introuvable alors que la ligne existe bien).
+    label = _LEADING_BULLET_RE.sub("", label)
+    # Code de ligne (PRV11, CHV1...) collé au libellé, jamais retiré ici
+    # avant le 2026-08-17 : cette fonction est une COPIE de
+    # bilan_kpi_extractor._label_text (pas un appel partagé) et n'avait
+    # jamais reçu le même traitement de préfixe. Chez CTAMA (et
+    # probablement d'autres), le code de ligne EST détaché du libellé par
+    # pdfplumber ("PRV11 Primes émises et acceptées" -> un seul mot
+    # "PRV11" + le reste) — sans ce retrait, aucun motif "^primes\b" ne
+    # matchait jamais, laissant 100 % des documents CTAMA sans Primes
+    # émises/Charges ni aucun ratio dérivé.
+    return ROW_CODE_PREFIX_RE.sub("", label, count=1)
 
 
 def _page_lines(page):
@@ -96,6 +142,8 @@ def _is_target_page(page, lines_checked=4):
     if not text:
         return False
     normalized = _normalizer.clean(" ".join(text.split("\n")[:lines_checked]))
+    if NOTES_SECTION_RE.search(normalized):
+        return False
     if not PAGE_TITLE_RE.search(normalized):
         return False
     # Accepter : explicitement "Non Vie", OU pas de mention "Vie" du tout
@@ -155,28 +203,61 @@ def _find_total_value(pdf, pattern, max_pages=MAX_PAGES_SCANNED):
             # (ex: COTUNACE "Charges de prestations" = 20.0) est rejeté par
             # _is_plausible : on retombe alors sur le forward scan des
             # sous-lignes plutôt que de renvoyer ce chiffre tel quel.
-            if clusters and _is_plausible(clusters[-1][0]):
-                return clusters[-1][0]
+            value = _pick_current_year_value(clusters)
+            if value is not None and _is_plausible(value):
+                return value
             # Ligne sans valeur inline (ou valeur inline implausible) :
             # forward scan des sous-lignes. Gère deux cas :
             #   1. Label seul + nombre sur la ligne suivante sans label (STAR 2023)
             #   2. En-tête de section + sous-lignes labelées (COMAR/CARTE)
+            # `last_seen` évite un double-comptage quand le PDF source
+            # affiche deux fois la même rangée de chiffres sans libellé sur
+            # la 2e occurrence (voir annexe12_kpi_extractor._find_total_value
+            # pour le détail complet — même garde ici, cas CARTE_VIE/COMAR).
             total = None
+            last_seen = None
             for j in range(idx + 1, min(idx + 1 + _FORWARD_SCAN_WINDOW, len(lines))):
                 nxt_label = _label_text(lines[j])
                 if nxt_label and _SECTION_STOP_RE.search(nxt_label):
                     break
                 nxt_clusters = _extract_numeric_clusters(lines[j])
-                if nxt_clusters and _is_plausible(nxt_clusters[-1][0]):
-                    total = (total or 0) + nxt_clusters[-1][0]
+                nxt_value = _pick_current_year_value(nxt_clusters)
+                if nxt_value is not None and _is_plausible(nxt_value):
+                    if last_seen is not None and abs(nxt_value - last_seen) < 0.01:
+                        continue
+                    total = (total or 0) + nxt_value
+                    last_seen = nxt_value
             if total is not None:
                 return total
     return None
 
 
+def _pick_current_year_value(clusters):
+    """Même ambiguïté que côté Annexe 12 (voir
+    annexe12_kpi_extractor._pick_current_year_value pour le détail) : sur
+    les pages "par catégorie" à 4 colonnes (Brut/Cessions/Net-N/Net-N-1),
+    `clusters[-1]` est l'année précédente, pas l'année en cours."""
+    if not clusters:
+        return None
+    if len(clusters) == 4:
+        return clusters[-2][0]
+    return clusters[-1][0]
+
+
+def _apply_primes_emises_fallback(kpis):
+    """Repli symétrique de annexe12_kpi_extractor._apply_primes_emises_fallback
+    (voir sa note pour le détail du cas GAT_VIE) - même risque côté Non-Vie
+    si une société étiquette sa page raccordement "Primes Acquises" plutôt
+    que "Primes émises"."""
+    if kpis.get("Primes émises Non-Vie par assurance") is None and kpis.get("Primes acquises") is not None:
+        kpis["Primes émises Non-Vie par assurance"] = kpis["Primes acquises"]
+    return kpis
+
+
 def extract_annexe13_kpis(pdf):
     """Renvoie {nom_kpi: valeur|None} pour les 7 KPI de l'Annexe N°13."""
-    return {name: _find_total_value(pdf, pattern) for name, pattern in KPI_PATTERNS.items()}
+    kpis = {name: _find_total_value(pdf, pattern) for name, pattern in KPI_PATTERNS.items()}
+    return _apply_primes_emises_fallback(kpis)
 
 
 def extract_annexe13_kpis_from_url(pdf_url, timeout=30):

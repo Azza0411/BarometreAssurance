@@ -55,8 +55,16 @@ function findMissingComponent(node, kpisRaw) {
  *     rootCause: string|null,     // uniquement si !available && nature==="calcule"
  *     aberrant: bool,
  *     aberrantReasons: string[] } // raisons textuelles, depuis data.anomalies
+ *
+ * `raw` (optionnel) : fusion sectorRaw + kpis_raw société (voir KpiDetail.jsx)
+ * — nécessaire pour les KPI sectoriels (code="MARCHE", pas une société CMF
+ * réelle) : data.kpi_detail["MARCHE"] est TOUJOURS absent (ce n'est pas une
+ * ligne de la table qualité, propre au périmètre CMF), donc sans ce
+ * paramètre tout KPI sectoriel retombait sur le cas "!detail" ci-dessous et
+ * s'affichait "Non extrait"/"Non calculé" même quand sa valeur était bien
+ * présente et affichée par ailleurs (repéré par l'utilisateur 2026-08-19).
  */
-export function classifyCell(code, storageKey, data) {
+export function classifyCell(code, storageKey, data, raw) {
   const meta   = KPI_META[storageKey];
   const nature = meta?.type === "calcule" ? "calcule" : "extrait";
   const detail = data?.kpi_detail?.[code];
@@ -68,6 +76,14 @@ export function classifyCell(code, storageKey, data) {
     .filter(Boolean);
 
   if (!detail) {
+    // Le backend précalcule aussi les KPI sectoriels "calculés" (ex. "Taux
+    // de pénétration", pas seulement les valeurs brutes "extraites" comme
+    // le PIB) sous leur `rawKey` — un seul lookup couvre donc les deux
+    // natures, pas besoin de reproduire la formule ici.
+    const val = meta?.rawKey ? raw?.[meta.rawKey] : undefined;
+    if (val !== undefined && val !== null) {
+      return { nature, available: true, value: val, rootCause: null, aberrant: false, aberrantReasons };
+    }
     return { nature, available: false, value: null, rootCause: null, aberrant: false, aberrantReasons: [] };
   }
 

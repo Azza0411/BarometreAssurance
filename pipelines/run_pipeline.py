@@ -180,11 +180,27 @@ def _check_quality():
         return None
 
 
-def _save_notifications(results, failed_sources, quality):
+def _run_veille():
+    """Scrape actualités + veille réglementaire et détecte les nouveautés
+    depuis le dernier passage (voir api.routes.veille.sync_new_items /
+    database.repository.diff_and_mark_*). Wrapper séparé du reste du
+    pipeline (pas dans SOURCES) : ce n'est pas une source de données KPI,
+    juste un déclencheur de notification - une erreur ici ne doit jamais
+    faire échouer le pipeline principal."""
+    try:
+        from api.routes.veille import sync_new_items
+        return sync_new_items()
+    except Exception as exc:
+        _log_json("veille_sync_failed", error=str(exc))
+        return {"actualites": [], "reglementation": []}
+
+
+def _save_notifications(results, failed_sources, quality, veille=None):
     """Persiste des notifications in-app (cloche de la barre de navigation)
-    pour les trois événements jugés dignes d'attention utilisateur : nouveau
-    document CMF, anomalie qualité critique (extraction KPI totalement
-    vide sur une source), échec d'une source après tous les essais.
+    pour les événements jugés dignes d'attention utilisateur : nouveau
+    document (toutes sources), anomalie qualité critique (extraction KPI
+    totalement vide sur une source), échec d'une source après tous les
+    essais, nouvelle(s) actualité(s)/texte(s) réglementaire(s).
     N'interrompt jamais le pipeline : une erreur ici est journalisée et
     ignorée, comme _check_quality()."""
     try:
@@ -192,11 +208,11 @@ def _save_notifications(results, failed_sources, quality):
         conn = get_connection()
         try:
             for name, ok, _duration, doc_count, kpi_count in results:
-                if name == "CMF" and ok and doc_count:
+                if ok and doc_count:
                     save_notification(
                         conn, "nouveau_document",
-                        f"{doc_count} nouveau(x) document(s) CMF",
-                        f"Le pipeline a détecté {doc_count} nouveau(x) rapport(s) CMF non encore en base.",
+                        f"{doc_count} nouveau(x) document(s) {name}",
+                        f"Le pipeline a détecté {doc_count} nouveau(x) document(s) {name} non encore en base.",
                         gravite="info", lien="/rapport-pipeline",
                     )
                 if name == "CMF" and ok and kpi_count == 0:
@@ -220,6 +236,29 @@ def _save_notifications(results, failed_sources, quality):
                     f"{quality.get('nb_anomalies')} anomalie(s) détectée(s) pour l'exercice {quality.get('annee')}.",
                     gravite="avertissement", lien="/qualite-donnees",
                 )
+            if veille:
+                nouvelles_actus = veille.get("actualites") or []
+                if nouvelles_actus:
+                    titres = "; ".join(a["titre"] for a in nouvelles_actus[:3])
+                    suffixe = f" (dont : {titres}…)" if len(nouvelles_actus) > 3 else f" : {titres}"
+                    save_notification(
+                        conn, "nouvelle_actualite",
+                        f"{len(nouvelles_actus)} nouvelle(s) actualité(s)",
+                        f"{len(nouvelles_actus)} nouvel(les) article(s) détecté(s) depuis le dernier passage"
+                        f"{suffixe}",
+                        gravite="info", lien="/actualites-seminaires",
+                    )
+                nouveaux_regls = veille.get("reglementation") or []
+                if nouveaux_regls:
+                    titres = "; ".join(r["titre"] for r in nouveaux_regls[:3])
+                    suffixe = f" (dont : {titres}…)" if len(nouveaux_regls) > 3 else f" : {titres}"
+                    save_notification(
+                        conn, "nouvelle_reglementation",
+                        f"{len(nouveaux_regls)} nouveau(x) texte(s) réglementaire(s)",
+                        f"{len(nouveaux_regls)} nouveau(x) document(s) détecté(s) depuis le dernier passage"
+                        f"{suffixe}",
+                        gravite="info", lien="/veille-reglementaire",
+                    )
         finally:
             conn.close()
     except Exception as exc:
@@ -321,7 +360,8 @@ def main():
             _log_json("kpi_extraction_totally_empty", source=name)
 
     quality = _check_quality()
-    _save_notifications(results, failed_sources, quality)
+    veille = _run_veille()
+    _save_notifications(results, failed_sources, quality, veille)
     ended_at = datetime.now()
     report_path = _write_html_report(results, quality, started_at, ended_at)
 

@@ -11,9 +11,21 @@ Enrichit les données du pipeline_audit avec :
 """
 
 import os
+import re
 import datetime
+from collections import Counter
+
+from dotenv import load_dotenv
+
 from database.repository import get_connection, get_quality_score_history, list_documents_by_source
 from api.services.pipeline_audit import build_pipeline_audit
+
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env"))
+
+# "llama-3.3-70b-versatile" retire du catalogue Groq (verifie le
+# 2026-08-18, reponse API 404 model_not_found) -- voir meme constante dans
+# chatbot_portable/app.py::GROQ_MODEL pour le detail de la decouverte.
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
 _DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -257,8 +269,11 @@ def build_anomalies_systeme(conn, annee: int) -> dict:
     }
 
 
-def generate_rapport_ia(conn, annee: int) -> str:
-    """Génère un rapport structuré markdown à partir des données d'audit."""
+def _generate_rapport_template(conn, annee: int) -> str:
+    """Génère un rapport structuré markdown à partir des données d'audit —
+    entièrement à base de texte statique (aucun appel IA). Utilisé comme
+    repli si le rapport généré par IA générative (voir generate_rapport_ia
+    ci-dessous) échoue ou si Groq est indisponible."""
     audit   = build_pipeline_audit(conn, annee)
     probs   = audit.get("problemes", [])
     enriched = [_enrich(p) for p in probs]
@@ -427,3 +442,214 @@ Les valeurs hors plage métier sont généralement dues à :
 *Données sources : CMF · FTUSA · {annee}*
 """
     return rapport
+
+
+# ── Nombres autorisés à apparaître dans une phrase générée par le LLM ──────────
+# Un chiffre "autorisé" est soit un des faits fournis en entrée (comptages,
+# score, pourcentages dérivés), soit un petit entier générique (numérotation
+# de liste, année, pourcentage rond) qui n'a pas besoin d'être sourcé.
+_NUMBER_RE = re.compile(r"-?\d+(?:[.,]\d+)?")
+
+
+def _allowed_numbers(stats: dict) -> set[str]:
+    """Construit l'ensemble des valeurs numériques que le LLM a le droit de
+    citer, à partir des faits qu'on lui a réellement fournis dans le prompt
+    (voir _build_llm_facts). Comparé en tant que chaînes normalisées
+    (virgule/point, pas de zéro inutile) pour tolérer les reformulations
+    superficielles ("12 %" vs "12,0 %")."""
+    allowed = set()
+    for v in stats.values():
+        if isinstance(v, (int, float)):
+            allowed.add(_normalize_number(v))
+        elif isinstance(v, str):
+            for match in _NUMBER_RE.finditer(v):
+                allowed.add(_normalize_number(float(match.group())))
+        elif isinstance(v, list):
+            for item in v:
+                if isinstance(item, tuple) and len(item) == 2 and isinstance(item[1], (int, float)):
+                    allowed.add(_normalize_number(item[1]))
+                elif isinstance(item, str):
+                    for match in _NUMBER_RE.finditer(item):
+                        allowed.add(_normalize_number(float(match.group())))
+    # Nombres génériques toujours tolérés : années plausibles, petits entiers
+    # de mise en forme (numérotation "1.", "2.", pourcentages ronds usuels),
+    # et "100" (dénominateur systématique du score de qualité "X/100").
+    for y in range(2013, 2031):
+        allowed.add(str(y))
+    for n in range(0, 10):
+        allowed.add(str(n))
+    allowed.add("100")
+    return allowed
+
+
+def _normalize_number(value) -> str:
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return str(value).replace(",", ".")
+
+
+def _check_grounding(text: str, stats: dict) -> list[str]:
+    """Renvoie la liste des nombres cités dans `text` qui ne correspondent à
+    AUCUN chiffre fourni en entrée au LLM (voir _allowed_numbers) — un
+    nombre "orphelin" est un signal fort d'invention (hallucination), le
+    LLM n'ayant reçu aucune autre source de chiffres. Garde-fou ajouté le
+    2026-08-18 après avoir constaté, sur la fonctionnalité de prévision de
+    KPI, que le modèle invente des faits plausibles (une fusion de sociétés,
+    un cadre réglementaire fictif) quand on lui demande d'être "concret"
+    sans lui fournir la donnée correspondante — même risque ici pour un
+    rapport destiné à un consultant."""
+    allowed = _allowed_numbers(stats)
+    orphans = []
+    for match in _NUMBER_RE.finditer(text):
+        token = match.group().replace(",", ".")
+        try:
+            normalized = _normalize_number(float(token))
+        except ValueError:
+            continue
+        if normalized not in allowed and token not in allowed:
+            orphans.append(match.group())
+    return orphans
+
+
+def _build_llm_facts(annee: int, enriched: list, score: int, n_comp: int) -> dict:
+    """Chiffres et échantillons de texte RÉELS (déjà calculés/extraits, pas
+    inventés) mis à disposition du LLM pour rédiger le rapport — c'est
+    l'unique matière première autorisée (voir _check_grounding)."""
+    n_crit = sum(1 for p in enriched if p["dq_gravite"] == "Critique")
+    n_elev = sum(1 for p in enriched if p["dq_gravite"] == "Élevée")
+    n_moy = sum(1 for p in enriched if p["dq_gravite"] == "Moyenne")
+    n_faib = sum(1 for p in enriched if p["dq_gravite"] == "Faible")
+    type_counts = Counter(p["type"] for p in enriched)
+    kpi_counts = Counter(p["kpi"] for p in enriched)
+    code_counts = Counter(p["code"] for p in enriched)
+    # Échantillon de causes RÉELLEMENT détectées (texte déjà généré
+    # déterministement par _recommandation()/pipeline_audit.py, jamais par
+    # le LLM) — matière première pour la section "causes", pas une source
+    # que le LLM doit compléter de son cru.
+    sample_causes = [
+        f"{p['code']} {p['annee']} — {p['kpi']} : {p['raison']}"
+        for p in enriched[:8]
+    ]
+    return {
+        "annee": annee,
+        "n_anomalies": len(enriched),
+        "n_compagnies_affectees": n_comp,
+        "score_qualite": score,
+        "n_critique": n_crit,
+        "n_elevee": n_elev,
+        "n_moyenne": n_moy,
+        "n_faible": n_faib,
+        "par_type": list(type_counts.most_common()),
+        "top5_kpis": kpi_counts.most_common(5),
+        "top5_codes": code_counts.most_common(5),
+        "echantillon_causes": sample_causes,
+    }
+
+
+def _call_groq_report(facts: dict) -> str | None:
+    try:
+        from groq import Groq
+    except ImportError:
+        return None
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        return None
+
+    facts_text = (
+        f"Exercice : {facts['annee']}\n"
+        f"Nombre total d'anomalies : {facts['n_anomalies']}\n"
+        f"Compagnies affectées : {facts['n_compagnies_affectees']}\n"
+        f"Score de qualité global : {facts['score_qualite']}/100\n"
+        f"Répartition par gravité : Critique={facts['n_critique']}, "
+        f"Élevée={facts['n_elevee']}, Moyenne={facts['n_moyenne']}, "
+        f"Faible={facts['n_faible']}\n"
+        f"Répartition par type : {facts['par_type']}\n"
+        f"Top 5 KPI les plus touchés : {facts['top5_kpis']}\n"
+        f"Top 5 compagnies les plus touchées : {facts['top5_codes']}\n"
+        f"Échantillon de causes réellement détectées (à résumer, pas à "
+        f"compléter) :\n" + "\n".join(f"- {c}" for c in facts["echantillon_causes"])
+    )
+
+    system_prompt = (
+        "Tu es un analyste qualité de données senior chez EY Tunisie. "
+        "Rédige un rapport d'anomalies en 3 parties courtes, en français, "
+        "ton professionnel de conseil :\n"
+        "1. ## Résumé exécutif (3-4 phrases)\n"
+        "2. ## Tendances et causes principales (résume l'échantillon de "
+        "causes fourni, ne l'invente pas — 4-6 phrases)\n"
+        "3. ## Recommandations (3 recommandations concrètes et actionnables, "
+        "priorisées selon la répartition par gravité fournie)\n\n"
+        "RÈGLES STRICTES :\n"
+        "- N'utilise QUE les chiffres fournis ci-dessous. N'invente aucun "
+        "chiffre, pourcentage, date ou statistique supplémentaire.\n"
+        "- N'invente aucune cause technique, aucun nom de société, aucun "
+        "événement ou texte réglementaire absent des données fournies.\n"
+        "- Si l'échantillon de causes ne permet pas d'identifier un motif "
+        "clair, dis-le explicitement plutôt que d'en inventer un.\n"
+        "- Format Markdown, maximum 300 mots au total."
+    )
+    try:
+        client = Groq(api_key=api_key)
+        resp = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": facts_text},
+            ],
+            max_tokens=800,
+            temperature=0.1,
+        )
+        return resp.choices[0].message.content
+    except Exception:
+        return None
+
+
+def generate_rapport_ia(conn, annee: int) -> str:
+    """Génère le rapport d'anomalies : les tableaux de chiffres sont
+    calculés directement (jamais reformulés par le LLM, donc jamais
+    faussés), le récit (résumé/tendances/recommandations) est rédigé par
+    Groq à partir de ces mêmes chiffres puis vérifié (_check_grounding)
+    avant d'être inséré — tout nombre cité par le LLM qui ne provient pas
+    des données fournies fait basculer sur le rapport 100% statique
+    (_generate_rapport_template) plutôt que de risquer un chiffre inventé
+    dans un rapport destiné à un consultant."""
+    audit = build_pipeline_audit(conn, annee)
+    probs = audit.get("problemes", [])
+    enriched = [_enrich(p) for p in probs]
+    score = _quality_score(probs)
+    n_comp = audit.get("n_compagnies_affectees", 0)
+
+    facts = _build_llm_facts(annee, enriched, score, n_comp)
+    llm_text = _call_groq_report(facts)
+
+    if llm_text:
+        orphans = _check_grounding(llm_text, facts)
+        if orphans:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Rapport IA rejeté (nombres non sourcés détectés: {orphans}) "
+                f"— repli sur le rapport statique."
+            )
+            llm_text = None
+
+    if not llm_text:
+        return _generate_rapport_template(conn, annee)
+
+    today = datetime.date.today().strftime("%d/%m/%Y")
+    return (
+        f"# Rapport d'anomalies Système — Exercice {annee}\n\n"
+        f"**Généré le** : {today} · **IA générative (Groq/{GROQ_MODEL})**\n"
+        f"**Source** : Pipeline d'extraction EY · FS Market Intelligence · Tunisie\n"
+        f"**Confidentiel** — Usage interne EY uniquement\n\n---\n\n"
+        f"{llm_text}\n\n---\n\n"
+        f"## Détail chiffré\n\n"
+        f"| Niveau de gravité | Anomalies |\n|---|---|\n"
+        f"| Critique | {facts['n_critique']} |\n"
+        f"| Élevée | {facts['n_elevee']} |\n"
+        f"| Moyenne | {facts['n_moyenne']} |\n"
+        f"| Faible | {facts['n_faible']} |\n\n"
+        f"**Score de qualité global** : {score}/100 · "
+        f"**{len(probs)} anomalies** sur **{n_comp} compagnies**\n\n"
+        f"*Rapport généré automatiquement par EY FS Market Intelligence — "
+        f"Pipeline d'extraction v2.0*\n*Données sources : CMF · FTUSA · {annee}*\n"
+    )
