@@ -265,6 +265,30 @@ def _save_notifications(results, failed_sources, quality, veille=None):
         _log_json("notifications_save_failed", error=str(exc))
 
 
+def check_and_notify_veille():
+    """Point d'entrée léger réutilisable par l'API elle-même (voir
+    api/app.py::_start_veille_watcher), indépendant de la tâche planifiée
+    Windows du pipeline complet. Constaté 2026-08-22 (retour utilisateur) :
+    la tâche planifiée (mode "Interactive uniquement", voir limite déjà
+    documentée dans docs/pfe_phase_documentation.md) n'avait tout simplement
+    JAMAIS tourné une seule fois depuis son enregistrement
+    (`Get-ScheduledTaskInfo` -> LastRunTime = date par défaut Windows,
+    signifiant "jamais exécutée") - de vraies actualités publiées le jour
+    même ne généraient donc aucune notification, quelle que soit la
+    fiabilité du code de détection lui-même (déjà vérifié à 5 niveaux lors
+    de la construction de la fonctionnalité).
+
+    Ne fait QUE la veille (actualités/réglementation), pas la collecte CMF
+    complète (téléchargement de PDF, plus lourde, réservée au pipeline
+    planifié via schtasks) - couvre spécifiquement le symptôme signalé.
+    Le cache 1h de sync_new_items()/_scrape_ilboursa (_CACHE_TTL) borne déjà
+    la fréquence réelle des vraies requêtes réseau, donc un appel plus
+    fréquent que 1h ici ne re-scrape pas inutilement."""
+    veille = _run_veille()
+    _save_notifications([], [], None, veille)
+    return veille
+
+
 def _notify_failure(failed_sources):
     webhook = os.environ.get("PIPELINE_ALERT_WEBHOOK")
     if not webhook:

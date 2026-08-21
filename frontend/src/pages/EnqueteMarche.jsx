@@ -651,17 +651,17 @@ function StackedBar({ labs=[], vals=[], colors=[] }) {
   if (!vals.length) return <div style={{ color:G, fontSize:10 }}>N/D</div>;
   return (
     <div>
-      <div style={{ display:"flex", height:18, borderRadius:4, overflow:"hidden", marginBottom:5 }}>
+      <div style={{ display:"flex", height:18, borderRadius:4, overflow:"hidden", marginBottom:6 }}>
         {vals.map((v,i) => (
           <div key={i} style={{ flex:v, background:colors[i]||G, transition:"flex .3s" }}/>
         ))}
       </div>
-      <div style={{ display:"flex", flexWrap:"wrap", gap:"4px 10px" }}>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:"5px 11px" }}>
         {labs.map((lab,i) => (
           <div key={i} style={{ display:"flex", alignItems:"center", gap:4 }}>
             <div style={{ width:7, height:7, borderRadius:2, background:colors[i]||G, flexShrink:0 }}/>
-            <span style={{ fontSize:8, color:G, fontWeight:600 }}>{lab}</span>
-            <span style={{ fontSize:8.5, fontWeight:900, color:D }}>{vals[i]}%</span>
+            <span style={{ fontSize:9.5, color:G, fontWeight:600 }}>{lab}</span>
+            <span style={{ fontSize:10, fontWeight:900, color:D }}>{vals[i]}%</span>
           </div>
         ))}
       </div>
@@ -674,8 +674,10 @@ function StackedBar({ labs=[], vals=[], colors=[] }) {
    accentFg     : couleur texte sur le winner
    icon         : SVG path JSX affiché dans le winner banner
 ──────────────────────────────────────────────────────────────────────────────*/
-/* podium column helpers */
-const PODIUM_H  = { 0:30, 1:46, 2:20 };
+/* podium column helpers — agrandi (retour utilisateur 2026-08-22 : logos et
+   textes trop petits pour être lus confortablement) après suppression de la
+   liste #4-5 (voir RankingCard), qui libère la hauteur nécessaire. */
+const PODIUM_H  = { 0:40, 1:62, 2:28 };
 const PODIUM_OP = { 0:.82, 1:1, 2:.6  };
 const PODIUM_ORD= [1, 0, 2];
 
@@ -728,10 +730,13 @@ function PodiumCol({ item, pos, accent, accentFg }) {
 
   const crownColor = accent===Y ? "#8B6A00" : accN==="DB" ? Y : "#FFD700";
 
-  /* logo box dimensions — logo is the visual hero */
-  const LW = isTop ? 52 : pos===0 ? 38 : 30;
-  const LH = isTop ? 34 : pos===0 ? 24 : 18;
-  const LI = isTop ? 20 : pos===0 ? 14 : 10;
+  /* logo box dimensions — logo is the visual hero. Agrandi (retour
+     utilisateur : logos trop petits pour être identifiés clairement),
+     rendu possible par la suppression de la liste #4-5 qui libère de la
+     hauteur dans la carte (voir RankingCard). */
+  const LW = isTop ? 66 : pos===0 ? 50 : 40;
+  const LH = isTop ? 44 : pos===0 ? 32 : 24;
+  const LI = isTop ? 28 : pos===0 ? 20 : 15;
 
   const accentBorder = accent===Y ? Y : accN==="DB" ? Y : isCustom ? accent : "#B80C26";
 
@@ -769,7 +774,7 @@ function PodiumCol({ item, pos, accent, accentFg }) {
           {logo
             ? <img src={logo} alt={item.code}
                 style={{ height:LI, maxWidth:LW-10, objectFit:"contain" }}/>
-            : <span style={{ fontSize: isTop?10:8, fontWeight:900, color:D,
+            : <span style={{ fontSize: isTop?12:9.5, fontWeight:900, color:D,
                 textAlign:"center", padding:"2px 3px",
                 overflow:"hidden", display:"-webkit-box",
                 WebkitLineClamp:2, WebkitBoxOrient:"vertical" }}>
@@ -778,14 +783,14 @@ function PodiumCol({ item, pos, accent, accentFg }) {
           }
           {/* rank badge — top-right corner of logo */}
           <div style={{
-            position:"absolute", top:-5, right:-5,
-            width: isTop?13:11, height: isTop?13:11,
+            position:"absolute", top:-6, right:-6,
+            width: isTop?17:14, height: isTop?17:14,
             borderRadius:"50%",
             background: isTop
               ? (accent===Y ? "#D4A900" : accent==="DB" ? Y : "#B80C26")
               : "#E8E8F0",
             display:"flex", alignItems:"center", justifyContent:"center",
-            fontSize: isTop?9:8, fontWeight:900,
+            fontSize: isTop?10.5:9.5, fontWeight:900,
             color: isTop ? (accent===Y?D:"black") : G,
             boxShadow:"0 1px 4px rgba(0,0,0,.18)",
             border:"1.5px solid white",
@@ -794,7 +799,7 @@ function PodiumCol({ item, pos, accent, accentFg }) {
 
         {/* pct — bold accent for #1 */}
         <div style={{
-          fontSize: isTop?14:9.5,
+          fontSize: isTop?17:11.5,
           fontWeight:900,
           color: pctColor,
           letterSpacing: isTop?"-0.5px":"-0.1px",
@@ -803,7 +808,7 @@ function PodiumCol({ item, pos, accent, accentFg }) {
 
         {/* name */}
         <div style={{
-          fontSize: isTop?8.5:7.5, fontWeight: isTop?700:500,
+          fontSize: isTop?10.5:9, fontWeight: isTop?700:600,
           color: isTop?"#333340":"#888898",
           textAlign:"center", lineHeight:1.2,
           overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
@@ -832,22 +837,25 @@ function RankingCard({ title, items=[], accent=Y, accentFg=D }) {
     );
   }
 
-  const list  = items.slice(0, 5);
-  const tail  = list.slice(3);               // #4 and #5
-  const max1  = list[0]?.pct || 1;
-  const barColor = accent === "#B80C26" ? "#B80C26" : accent === Y ? "#C8A000" : accent === D ? D : accent;
+  // Seul le podium (#1-3) est affiché - la liste #4-5 a été retirée (retour
+  // utilisateur 2026-08-22 : la carte était trop chargée, logos et texte
+  // illisibles). L'espace ainsi libéré est réinvesti dans un podium
+  // nettement plus grand (voir PODIUM_H et les dimensions de logo dans
+  // PodiumCol) plutôt que de laisser du vide - un podium clair sur les 3
+  // premiers vaut mieux qu'un classement complet à 5 illisible.
+  const list = items.slice(0, 3);
 
   /* normalise accent alias */
   const acc = accent === D ? "DB" : accent;
 
   return (
     <Card title={title} style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column" }}>
-      <div style={{ flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", minHeight:0 }}>
 
         {/* ── Podium ── */}
         <div style={{ flexShrink:0 }}>
           {/* columns */}
-          <div style={{ display:"flex", alignItems:"flex-end", gap:2 }}>
+          <div style={{ display:"flex", alignItems:"flex-end", gap:4 }}>
             {PODIUM_ORD.map((idx, pos) => {
               const item = list[idx];
               if (!item) return <div key={pos} style={{ flex:1 }}/>;
@@ -856,42 +864,8 @@ function RankingCard({ title, items=[], accent=Y, accentFg=D }) {
           </div>
           {/* base bar */}
           <div style={{ height:3, background:acc==="DB"?D:acc===Y?Y:accent,
-            borderRadius:"0 0 4px 4px", marginBottom:6 }}/>
+            borderRadius:"0 0 4px 4px" }}/>
         </div>
-
-        {/* ── Tail #4-5 ── */}
-        {tail.length > 0 && (
-          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-            {tail.map((item, i) => {
-              const logo = getLogoSrc(item.code);
-              const bw   = Math.round((item.pct / max1) * 100);
-              return (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:5 }}>
-                  <div style={{ width:15, height:15, borderRadius:3, flexShrink:0,
-                    background:"#F0F0F4", display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:8.5, fontWeight:900, color:G }}>{i+4}</div>
-                  {logo
-                    ? <img src={logo} alt={item.code} style={{ height:12, maxWidth:28, objectFit:"contain", flexShrink:0 }}/>
-                    : <div style={{ width:28, fontSize:8, fontWeight:700, color:D, flexShrink:0,
-                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                        {(LABEL[item.code]||item.label||"").split(" ")[0]}
-                      </div>
-                  }
-                  <div style={{ flex:1, fontSize:8.5, fontWeight:600, color:D,
-                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    {LABEL[item.code]||item.label||item.code}
-                  </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:3, flexShrink:0, width:60 }}>
-                    <div style={{ flex:1, height:4, background:"#EBEBEB", borderRadius:3, overflow:"hidden" }}>
-                      <div style={{ height:"100%", width:`${bw}%`, background:barColor, borderRadius:3 }}/>
-                    </div>
-                    <span style={{ fontSize:9, fontWeight:800, color:D, width:20, textAlign:"right" }}>{item.pct}%</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
     </Card>
   );
@@ -1094,7 +1068,7 @@ function FicheClientEntreprise({ data, code }) {
 
         {/* Perception générale + Degré de confiance */}
         <div style={{
-          flex:"0 0 27%", background:"white", borderRadius:12, border:"1px solid #EBEBEB",
+          flex:"0 0 23%", background:"white", borderRadius:12, border:"1px solid #EBEBEB",
           boxShadow:"0 2px 8px rgba(0,0,0,0.05)", padding:"10px 12px",
           display:"flex", flexDirection:"column", gap:8, overflow:"hidden",
         }}>
@@ -1120,7 +1094,7 @@ function FicheClientEntreprise({ data, code }) {
         </div>
 
         {/* Pire compagnie */}
-        <div style={{ flex:"0 0 24%", minHeight:0, display:"flex", flexDirection:"column" }}>
+        <div style={{ flex:"0 0 25.5%", minHeight:0, display:"flex", flexDirection:"column" }}>
           <RankingCard
             title="Pire compagnie"
             items={f.pireCompagnie||[]}
@@ -1130,7 +1104,7 @@ function FicheClientEntreprise({ data, code }) {
         </div>
 
         {/* Top of Mind */}
-        <div style={{ flex:"0 0 24%", minHeight:0, display:"flex", flexDirection:"column" }}>
+        <div style={{ flex:"0 0 25.5%", minHeight:0, display:"flex", flexDirection:"column" }}>
           <RankingCard
             title="Top of Mind"
             items={f.topOfMind||[]}
