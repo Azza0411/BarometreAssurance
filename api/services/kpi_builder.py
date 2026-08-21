@@ -30,6 +30,17 @@ def build_company_row(kpis, primes_prev_year, total_ftusa, code):
     primes_raw_is_bad = primes_raw is None or primes_raw < 1_000
     if primes_raw_is_bad:
         primes_raw = kpis.get("Primes acquises") or kpis.get("Total Primes émises")
+        # Repli implausible si les charges de sinistres dépasseraient de loin
+        # les primes qu'il propose (ex. ATTIJARI 2024 : "Primes acquises" a
+        # capté 3,46 MDT — en réalité la colonne "variation" de la ligne
+        # "Primes émises" lue par erreur au lieu de la colonne 2024, qui
+        # vaut 139,8 MDT — face à des charges de sinistres à 89,2 MDT, un
+        # ratio S/P de 2580 %). Mieux vaut remonter N/D qu'un chiffre ~40x
+        # trop petit (retour utilisateur du 2026-08-09).
+        if primes_raw:
+            _charge_check = kpis.get("Charge de sinistres") or kpis.get("Charges de prestations")
+            if _charge_check is not None and abs(_charge_check) > primes_raw * 5:
+                primes_raw = None
 
     # ── PDM ────────────────────────────────────────────────────────────────────
     if primes_raw and not primes_raw_is_bad and total_ftusa and total_ftusa > 0:
@@ -61,10 +72,14 @@ def build_company_row(kpis, primes_prev_year, total_ftusa, code):
         primes_acquises = None
         rsp_extracted_unreliable = True
 
-    denom_rsp = (
-        primes_acquises if (primes_acquises and primes_acquises > 1_000)
-        else primes_for_rc_rf
-    )
+    # Aligné sur le dénominateur de RC/RF (primes_for_rc_rf, Primes émises
+    # Vie+Non-Vie) plutôt que "Primes acquises" (tableau distinct, Etat de
+    # résultat) : RSP mélangeait un numérateur Annexe 12/13 avec un
+    # dénominateur d'un autre tableau, source du même bug que ci-dessus
+    # (ex. COMAR 2022 : 161 M / 88,7 M (Primes acquises, incohérente avec
+    # les 253 M de Primes émises Vie+Non-Vie de la même annexe) = 182 % au
+    # lieu de ~64 % avec primes_for_rc_rf).
+    denom_rsp = primes_for_rc_rf
 
     nv_only = (
         primes_nv is not None and primes_nv > 1_000 and primes_for_rc_rf is not None and
@@ -88,22 +103,26 @@ def build_company_row(kpis, primes_prev_year, total_ftusa, code):
 
     if primes_for_rc_rf and primes_for_rc_rf > 0:
         if rsp is None and denom_rsp and denom_rsp > 0:
+            # "Charges de prestations" (Annexe 12/13) prime sur "Charge de
+            # sinistres" (résultat_kpi_extractor, ligne CHV1/CHNV1) : cette
+            # dernière est ponctuellement mal extraite (ligne trop étroite,
+            # ex. BH 2024 où "Charge de sinistres Non-Vie" = -2,45 MDT contre
+            # "Charges de prestations Non-Vie" = -89,5 MDT pour les mêmes
+            # primes → RSP à 2,3 % au lieu de ~56 %) — même priorité que
+            # _prest_total ci-dessous, déjà utilisée pour RC. "Charge de
+            # sinistres" ne sert plus que de dernier recours si "Charges de
+            # prestations" est totalement absente.
             if nv_only:
-                if charge_sin_nv is not None:
+                if charge_prest_nv is not None:
+                    rsp = abs(charge_prest_nv) / denom_rsp * 100
+                elif charge_sin_nv is not None:
                     candidate = abs(charge_sin_nv) / denom_rsp * 100
                     rsp = candidate if candidate >= 2 else None
-                if rsp is None and charge_prest_nv is not None:
-                    rsp = abs(charge_prest_nv) / denom_rsp * 100
             else:
-                sin_total = None
-                if charge_sin_vie is not None and charge_sin_nv is not None:
-                    sin_total = abs(charge_sin_vie) + abs(charge_sin_nv)
-                elif charge_sin is not None:
-                    sin_total = abs(charge_sin)
-                if sin_total is not None:
-                    rsp = sin_total / denom_rsp * 100
-                elif charge_prest is not None:
-                    rsp = abs(charge_prest) / denom_rsp * 100
+                prest_total = _prest_total(charge_prest_vie, charge_prest_nv, charge_prest,
+                                            charge_sin_vie, charge_sin_nv, charge_sin)
+                if prest_total is not None:
+                    rsp = prest_total / denom_rsp * 100
 
         if rf is None and charge_frais is not None:
             rf = abs(charge_frais) / primes_for_rc_rf * 100
@@ -143,6 +162,17 @@ def build_company_row(kpis, primes_prev_year, total_ftusa, code):
     rt_raw = kpis.get("Résultat technique (TND)")
     rt_mdt = round1(rt_raw / PRIMES_UNIT_DIVISOR) if rt_raw is not None else None
 
+    # ── Surplus du Fonds des Participants (Takaful uniquement) ─────────────────
+    # Absent pour les compagnies conventionnelles (les 2 KPI n'existent pas dans
+    # leurs documents) : reste None, filtré côté frontend via INDICATEURS_
+    # CONVENTIONNELLE qui n'expose pas cet indicateur. Somme Familial+Général,
+    # même logique que "primes"/"resultat_technique" ci-dessus (MDT).
+    surplus_fam = kpis.get("Surplus du Fonds Takaful Familial (TND)")
+    surplus_gen = kpis.get("Surplus du Fonds Takaful Général (TND)")
+    surplus_fonds = None
+    if surplus_fam is not None or surplus_gen is not None:
+        surplus_fonds = round1((surplus_fam or 0) / PRIMES_UNIT_DIVISOR + (surplus_gen or 0) / PRIMES_UNIT_DIVISOR)
+
     # ── Croissance primes YoY ──────────────────────────────────────────────────
     p_prev = primes_prev_year.get(code)
     if primes_raw and p_prev and p_prev > 0:
@@ -165,10 +195,66 @@ def build_company_row(kpis, primes_prev_year, total_ftusa, code):
         "roa":               round1(kpis.get("ROA (%)")),
         "resultat_technique": rt_mdt,
         "croissance_primes":  croissance,
+        "surplus_fonds":      surplus_fonds,
+        **compute_solvabilite_investissement(kpis),
         # champs de diagnostic (non exposés au frontend)
         "_rc_vie_nv_mismatch":     _rc_vie_nv_mismatch,
         "_rsp_unreliable":         rsp_extracted_unreliable,
         "_primes_bad":             primes_raw_is_bad,
+    }
+
+
+# Un total actif d'assurance réel se compte en dizaines/centaines de
+# millions de TND au minimum — en-dessous, c'est une valeur d'extraction
+# corrompue (ex. TUNIS_RE 2024 : "Total actif" = 2, provenant d'un artefact
+# de découpage pdfplumber sur la ligne "TOTAL DE L'ACTIF" — un token "2"
+# collé au début d'un nombre voisin s'est retrouvé seul dans le cluster).
+# Sans ce garde-fou, dette_cp/dette_actif/actions_actif dérivés explosaient
+# silencieusement (ex. dette_cp = -100 %) au lieu de remonter N/D (retour
+# utilisateur du 2026-08-09). Un vrai correctif de l'extraction demande de
+# revoir le découpage de cette ligne dans bilan_kpi_extractor.py — ce
+# garde-fou empêche seulement la valeur aberrante déjà en base de s'afficher
+# en attendant une ré-extraction.
+_MIN_TOTAL_ACTIF_PLAUSIBLE = 1_000_000
+
+
+def compute_solvabilite_investissement(kpis):
+    """Ratios S4/S5/I1/I2 (docs/ratios_takaful_ifsb_aaoifi.md) — dérivés de
+    KPI déjà extraits (Total actif, Capitaux propres, Placements, Actions et
+    titres de participation), sans extraction PDF supplémentaire. Partagé
+    entre comparative.py (via build_company_row) et vue_assurance.py pour
+    éviter de dupliquer la même formule dans les deux routes."""
+    total_actif = kpis.get("Total actif")
+    if total_actif is not None and total_actif < _MIN_TOTAL_ACTIF_PLAUSIBLE:
+        total_actif = None
+    capitaux    = kpis.get("Capitaux propres")
+    # Identité de bilan : Capitaux propres est une composante du Passif, qui
+    # égale toujours le Total actif — il ne peut donc jamais l'excéder.
+    # Découvert le 2026-08-18 sur AMI 2023 : Total actif = 3 537 810 TND
+    # (passe le garde-fou ci-dessus) alors que Capitaux propres = 84 605 794
+    # TND (24× plus grand) -> dette_cp/dette_actif ressortaient négatifs
+    # (-95,8 %/-2291,5 %) au lieu de N/D.
+    if total_actif is not None and capitaux is not None and total_actif < capitaux:
+        total_actif = None
+    placements  = kpis.get("Placements")
+    actions     = kpis.get("Actions et titres de participation")
+
+    dettes = (
+        total_actif - capitaux
+        if total_actif is not None and capitaux is not None
+        else None
+    )
+
+    def _pct(numerateur, denominateur):
+        if numerateur is None or denominateur is None or denominateur <= 0:
+            return None
+        return round1(numerateur / denominateur * 100)
+
+    return {
+        "dette_cp":       _pct(dettes, capitaux),
+        "dette_actif":    _pct(dettes, total_actif),
+        "actions_actif":  _pct(actions, total_actif),
+        "placements_cp":  _pct(placements, capitaux),
     }
 
 

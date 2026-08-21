@@ -134,7 +134,17 @@ class DataLoader:
         )
 
     def _load_company_kpi(self, kpi: str, company: str) -> tuple[pd.DataFrame, str]:
-        """Charge un KPI pour une compagnie spécifique (source CMF)."""
+        """Charge un KPI pour une compagnie spécifique (source CMF).
+
+        Exclut le tableau "Calcul interne" : un même nom de KPI peut exister
+        à la fois comme valeur brute extraite (ex: "Primes acquises" issu de
+        l'Annexe 13 Non-Vie seule) et comme valeur recalculée sous ce
+        tableau (ex: somme Vie+Non-Vie) — voir database/repository.py::
+        get_kpi_values_for_document pour l'incident déjà rencontré (ASTREE
+        2025, "Primes acquises" lu à 2,86 Md TND au lieu de ~148M via ce
+        mélange). Sans ce filtre, une série temporelle pourrait mélanger
+        silencieusement des années en valeur brute et d'autres en valeur
+        recalculée, faussant toute prévision."""
         rows = self._conn.execute(
             """
             SELECT d.annee, k.valeur_nombre
@@ -145,6 +155,7 @@ class DataLoader:
             WHERE c.code = ?
               AND k.kpi = ?
               AND k.valeur_nombre IS NOT NULL
+              AND k.tableau != 'Calcul interne'
               AND d.annee BETWEEN 2000 AND 2025
             ORDER BY d.annee
             """,
@@ -172,6 +183,7 @@ class DataLoader:
                 WHERE s.nom = ?
                   AND k.kpi = ?
                   AND k.valeur_nombre IS NOT NULL
+                  AND k.tableau != 'Calcul interne'
                   AND d.cmf_id IS NULL
                   AND d.annee BETWEEN 2000 AND 2025
                 ORDER BY d.annee

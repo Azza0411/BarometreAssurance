@@ -41,6 +41,15 @@ INSURANCE_COMPANIES = [
     {"name": "Attijari Assurance", "ticker": "ATT",   "keys": ["attijari"]},
     {"name": "Tunis Re",           "ticker": "TUNRE", "keys": ["tunis re", "tunis-re", "tunisre"]},
     {"name": "CGA",                "ticker": "CGA",   "keys": ["comité général des assur", " cga "]},
+    # Compagnies Takaful — absentes jusqu'ici (constaté 2026-08-21, retour
+    # utilisateur : le filtre par compagnie d'Actualités & Séminaires ne les
+    # proposait pas). Non cotées à la BVMT (voir _scrape_ilboursa ci-dessous),
+    # donc jamais un compagnie_default de ticker, mais un article Atlas
+    # Magazine/IlBoursa les mentionnant nommément doit être tagué comme tel
+    # plutôt que de rester "—" ou hérité à tort du ticker de la page.
+    {"name": "AT-Takafulia",       "ticker": None,    "keys": ["takafulia", "at-takafulia"]},
+    {"name": "Zitouna Takaful",    "ticker": None,    "keys": ["zitouna takaful", "zitouna assur"]},
+    {"name": "El Amana Takaful",   "ticker": None,    "keys": ["el amana takaful", "al amana takaful", "amana takaful"]},
 ]
 
 MOIS_FR = {
@@ -511,6 +520,29 @@ def _build_veille():
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
+
+def sync_new_items():
+    """Scrape actualités + veille réglementaire et diffe contre les tables
+    *_vues (database.repository) pour détecter ce qui est réellement
+    nouveau depuis le dernier passage. Appelé UNIQUEMENT par
+    pipelines/run_pipeline.py (jamais par une route HTTP) : /api/actualites
+    et /api/veille-reglementaire restent des scrapes live à cache 1h,
+    inchangés - cette fonction alimente seulement la cloche de notification.
+    Renvoie {"actualites": [...nouvelles...], "reglementation": [...nouveaux...]}."""
+    from database.repository import get_connection, diff_and_mark_actualites, diff_and_mark_reglementation
+
+    conn = get_connection()
+    try:
+        actus = _scrape_ilboursa() + _scrape_atlas()
+        nouvelles_actus = diff_and_mark_actualites(conn, actus)
+
+        regls = _build_veille()
+        nouveaux_regls = diff_and_mark_reglementation(conn, regls)
+
+        return {"actualites": nouvelles_actus, "reglementation": nouveaux_regls}
+    finally:
+        conn.close()
+
 
 @bp.route("/api/actualites", methods=["GET"])
 def get_actualites():

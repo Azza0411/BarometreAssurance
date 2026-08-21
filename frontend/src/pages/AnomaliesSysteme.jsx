@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { getLayer } from "../utils/anomalyLayers";
 import { GravBadge, LayerBadge } from "../components/AnomalyDetail";
 import { kpiLabel } from "../utils/kpiCatalog";
+import { getLogoSrc } from "../utils/logos";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
 
@@ -42,6 +45,33 @@ export default function AnomaliesSysteme() {
     const kpi  = urlParams.get("kpi");
     return code && kpi ? { code, kpi } : null;
   });
+
+  // Rapport IA générative (Groq, voir api/services/anomalies_service.py::
+  // generate_rapport_ia) — backend construit depuis le début de la session
+  // mais jamais branché au frontend jusqu'ici (étape 4 du plan explicite de
+  // l'utilisateur, 2026-08-19). Généré à la demande (bouton), pas au
+  // chargement de la page : l'appel LLM a un coût et une latence, pas
+  // question de le déclencher à chaque visite/changement d'année.
+  const [rapportIa, setRapportIa] = useState(null);
+  const [rapportLoading, setRapportLoading] = useState(false);
+  const [rapportError, setRapportError] = useState(null);
+  const [rapportOpen, setRapportOpen] = useState(false);
+
+  const genererRapportIa = () => {
+    if (!annee) return;
+    setRapportOpen(true);
+    setRapportLoading(true);
+    setRapportError(null);
+    fetch(`${API}/api/rapport-ia?annee=${annee}`)
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(d => { setRapportIa(d.rapport); setRapportLoading(false); })
+      .catch(e => { setRapportError(e.message); setRapportLoading(false); });
+  };
+
+  // Un rapport déjà généré ne concerne qu'une année précise — on l'efface
+  // au changement d'année plutôt que d'afficher un rapport périmé sous un
+  // nouveau contexte sans que l'utilisateur s'en aperçoive.
+  useEffect(() => { setRapportIa(null); setRapportError(null); setRapportOpen(false); }, [annee]);
 
   useEffect(() => {
     fetch(`${API}/api/annees-disponibles?source=CMF`)
@@ -97,19 +127,76 @@ export default function AnomaliesSysteme() {
           </div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "white" }}>Anomalies Système</h1>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", maxWidth: 480 }}>
-          {years.map(y => (
-            <button key={y} onClick={() => setAnnee(y)} style={{
-              padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
-              border: y === annee ? "2px solid #FFE600" : "1px solid rgba(255,255,255,.2)",
-              background: y === annee ? "#FFE600" : "rgba(255,255,255,.08)",
-              color: y === annee ? "#2E2E38" : "rgba(255,255,255,.6)",
-            }}>{y}</button>
-          ))}
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", maxWidth: 480 }}>
+            {years.map(y => (
+              <button key={y} onClick={() => setAnnee(y)} style={{
+                padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                border: y === annee ? "2px solid #FFE600" : "1px solid rgba(255,255,255,.2)",
+                background: y === annee ? "#FFE600" : "rgba(255,255,255,.08)",
+                color: y === annee ? "#2E2E38" : "rgba(255,255,255,.6)",
+              }}>{y}</button>
+            ))}
+          </div>
+          <button onClick={genererRapportIa} disabled={rapportLoading} style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "8px 16px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+            cursor: rapportLoading ? "default" : "pointer", border: "none",
+            background: "#FFE600", color: "#2E2E38", opacity: rapportLoading ? 0.7 : 1,
+          }}>
+            ✦ {rapportLoading ? "Génération…" : "Rapport IA"}
+          </button>
         </div>
       </div>
 
       <div style={{ padding: "24px 32px" }}>
+        {rapportOpen && (
+          <div style={{ maxWidth: 1100, margin: "0 auto 18px" }}>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "10px 16px", background: "#2E2E38",
+              }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#FFE600" }}>✦ Rapport IA générative — {annee}</span>
+                <button onClick={() => setRapportOpen(false)} title="Fermer" style={{
+                  background: "none", border: "none", color: "rgba(255,255,255,.6)",
+                  fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 4,
+                }}>×</button>
+              </div>
+              <div style={{ padding: "18px 22px", maxHeight: 520, overflowY: "auto" }}>
+                {rapportLoading && (
+                  <div style={{ textAlign: "center", padding: 30, color: C.muted }}>
+                    <div style={{ width: 26, height: 26, border: "3px solid #E5E7EB", borderTopColor: C.navy,
+                      borderRadius: "50%", animation: "spin .8s linear infinite", margin: "0 auto 12px" }} />
+                    Génération du rapport en cours…
+                  </div>
+                )}
+                {rapportError && (
+                  <div style={{ color: "#DC2626", fontSize: 13 }}>Erreur : {rapportError}</div>
+                )}
+                {!rapportLoading && !rapportError && rapportIa && (
+                  <div className="rapport-ia-markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{rapportIa}</ReactMarkdown>
+                  </div>
+                )}
+              </div>
+            </div>
+            <style>{`
+              .rapport-ia-markdown { font-size: 13px; line-height: 1.65; color: ${C.mid}; }
+              .rapport-ia-markdown h1 { font-size: 18px; font-weight: 800; color: ${C.navy}; margin: 0 0 10px; }
+              .rapport-ia-markdown h2 { font-size: 15px; font-weight: 800; color: ${C.navy}; margin: 20px 0 8px; }
+              .rapport-ia-markdown h3 { font-size: 13px; font-weight: 700; color: ${C.navy}; margin: 14px 0 6px; }
+              .rapport-ia-markdown p { margin: 0 0 10px; }
+              .rapport-ia-markdown strong { color: ${C.navy}; }
+              .rapport-ia-markdown ul, .rapport-ia-markdown ol { margin: 0 0 10px; padding-left: 20px; }
+              .rapport-ia-markdown li { margin-bottom: 4px; }
+              .rapport-ia-markdown hr { border: none; border-top: 1px solid ${C.border}; margin: 16px 0; }
+              .rapport-ia-markdown table { width: 100%; border-collapse: collapse; margin: 0 0 14px; font-size: 12px; }
+              .rapport-ia-markdown th, .rapport-ia-markdown td { border: 1px solid ${C.border}; padding: 6px 10px; text-align: left; }
+              .rapport-ia-markdown th { background: #F8FAFC; font-weight: 700; color: ${C.navy}; }
+            `}</style>
+          </div>
+        )}
         {loading && (
           <div style={{ textAlign: "center", padding: 60, color: C.muted }}>
             <div style={{ width: 32, height: 32, border: "3px solid #E5E7EB", borderTopColor: C.navy,
@@ -195,7 +282,12 @@ export default function AnomaliesSysteme() {
                       onMouseEnter={e => { e.currentTarget.style.background = "#F8FAFC"; }}
                       onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
                     >
-                      <td style={{ padding: "9px 14px", fontSize: 12, fontWeight: 700, color: C.navy }}>{a.code}</td>
+                      <td style={{ padding: "9px 14px", fontSize: 12, fontWeight: 700, color: C.navy }} title={a.code}>
+                        {getLogoSrc(a.code)
+                          ? <img src={getLogoSrc(a.code)} alt={a.code} style={{ height: 24, maxWidth: 64, objectFit: "contain", display: "block" }} />
+                          : a.code
+                        }
+                      </td>
                       <td style={{ padding: "9px 14px", fontSize: 12, color: C.mid }}>{kpiLabel(a.kpi)}</td>
                       <td style={{ padding: "9px 14px" }}><LayerBadge layer={getLayer(a.etape, a.kpi)} /></td>
                       <td style={{ padding: "9px 14px" }}><GravBadge g={a.dq_gravite} /></td>

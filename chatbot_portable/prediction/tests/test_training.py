@@ -39,7 +39,7 @@ def make_sqlite_db() -> sqlite3.Connection:
         );
         CREATE TABLE kpi_values (
             id INTEGER PRIMARY KEY, document_id INTEGER,
-            kpi TEXT, valeur_nombre REAL
+            tableau TEXT, kpi TEXT, valeur_nombre REAL
         );
 
         INSERT INTO sources VALUES (1, 'CMF'), (2, 'FTUSA');
@@ -53,8 +53,8 @@ def make_sqlite_db() -> sqlite3.Connection:
             "INSERT INTO documents VALUES (?, ?, 1, 1)", (i + 1, year)
         )
         conn.execute(
-            "INSERT INTO kpi_values VALUES (?, ?, ?, ?)",
-            (i + 1, i + 1, "Primes émises par assurance", val),
+            "INSERT INTO kpi_values VALUES (?, ?, ?, ?, ?)",
+            (i + 1, i + 1, "Bilan", "Primes émises par assurance", val),
         )
 
     conn.commit()

@@ -41,6 +41,7 @@ class ForecastResult:
     unit: str
     n_history_points: int
     was_fallback: bool
+    model_comparison: str = ""   # comparatif lisible des candidats évalués (MAPE/RMSE/score)
     warnings: list[str] = field(default_factory=list)
     computed_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
@@ -163,6 +164,7 @@ class ForecastService:
             unit=ts_result.unit,
             n_history_points=prep_report.final_n,
             was_fallback=selection.was_fallback,
+            model_comparison=selection.reason,
             warnings=warnings,
         )
 

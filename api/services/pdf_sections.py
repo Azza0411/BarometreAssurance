@@ -14,8 +14,56 @@ Stratégie robuste :
 
 import os
 import re
+import sys
 import unicodedata
 import pdfplumber
+
+from extraction.bilan_kpi_extractor import _is_actif_page, _is_passif_page, _OcrFallbackPage, _page_lines, _label_text
+from extraction.resultat_kpi_extractor import CHARGES_SINISTRES_RE, TECH_TITLE_PREFIX_RE, _page_title, _line_code
+
+
+def _find_sinistres_page(pdf, code_prefix, max_pages=15):
+    """Renvoie la page (1-indexed) où se trouve la ligne "Charges de
+    sinistres" CHV1 (Vie, code_prefix="chv") ou CHNV1 (Non-Vie,
+    code_prefix="chnv") — même algorithme de détection que
+    resultat_kpi_extractor._find_sinistres_value (signal PRIORITAIRE = code
+    de ligne CHV/CHNV, repli sur le titre de page), mais renvoie le numéro
+    de page plutôt que la valeur.
+
+    Découvert le 2026-08-18 : `kpiMeta.js` pointait ces sous-composantes
+    vers les sections "annexe12"/"annexe13" (le tableau "par catégorie de
+    contrat" — Mixte/UC/Épargne/Décès/TDI), qui n'ont NI code de ligne CHV1
+    NI colonne "Opérations nettes" dans aucun document échantillonné (STAR,
+    GAT, COMAR, ASTREE, BIAT, LLOYD_TUNISIEN, BH) — la vraie ligne CHV1/
+    CHNV1 vit dans une table Résumée distincte ("Annexe n°3/n°4" chez GAT,
+    numérotée différemment ailleurs), jamais indexée par ce module. Résultat
+    : "Non surligné : Ligne introuvable" systématique sur ce sous-composant,
+    alors que la valeur elle-même s'extrait correctement (depuis cette
+    bonne page, via resultat_kpi_extractor.py) — seul l'affichage pointait
+    au mauvais endroit."""
+    for i, page in enumerate(pdf.pages[:max_pages]):
+        lines = _page_lines(page)
+        if not lines:
+            continue
+        page_title_match = None
+        for line in lines:
+            label = _label_text(line)
+            if label is None or not CHARGES_SINISTRES_RE.search(label):
+                continue
+            target_code = _line_code(label)
+            if target_code:
+                if not target_code.startswith(code_prefix):
+                    continue
+            else:
+                if page_title_match is None:
+                    page_title_match = TECH_TITLE_PREFIX_RE.search(_page_title(page)) or False
+                if not page_title_match:
+                    continue
+                is_vie_page = "non" not in page_title_match.group(2)
+                if is_vie_page != (code_prefix == "chv"):
+                    continue
+            return i + 1
+    return None
 
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -162,11 +210,58 @@ def get_pdf_sections(code: str, annee: int) -> dict:
             return True
         return any(re.search(p, text_norm) for p in reqs)
 
+    # Nombre de pages où chercher le Bilan (toujours en tête de document) —
+    # même borne que bilan_kpi_extractor.MAX_PAGES_SCANNED.
+    _MAX_PAGES_BILAN = 12
+
     try:
         with pdfplumber.open(path) as pdf:
-            # Passe 1 : extraire le texte de toutes les pages
+            # "bilan"/"bilan_passif" : réutilise _is_actif_page/_is_passif_page
+            # de bilan_kpi_extractor.py — la détection déjà fiabilisée toute
+            # cette session (fenêtre de titre élargie, repli OCR pour les
+            # pages scannées via _OcrFallbackPage) — plutôt que les motifs
+            # pondérés ci-dessus, plus étroits et qui avaient dérivé de cette
+            # logique éprouvée. Découvert le 2026-08-18 : sur STAR 2025 (page
+            # Actif scannée, aucun repli OCR ici) ce module affichait la
+            # page 15 (une page de notes narratives) au lieu de la vraie page
+            # Actif (page 2, scannée) ; sur GAT 2025, la section "Capitaux
+            # propres et Passif" n'était trouvée sur AUCUNE page (motif exigé
+            # "capitaux propres et LE passif", absent du libellé réel "...et
+            # passifs"), alors que _is_passif_page (motif générique \bpassifs?\b)
+            # la détecte correctement.
+            for i, raw_page in enumerate(pdf.pages[:_MAX_PAGES_BILAN]):
+                wrapped = _OcrFallbackPage(raw_page)
+                if "bilan" not in best and _is_actif_page(wrapped):
+                    best["bilan"] = (999, 999, i + 1)
+                if "bilan_passif" not in best and _is_passif_page(wrapped):
+                    best["bilan_passif"] = (999, 999, i + 1)
+
+            # "resultat_sinistres_vie"/"resultat_sinistres_non_vie" : table
+            # résumée CHV1/CHNV1 réellement utilisée par l'extraction, voir
+            # _find_sinistres_page ci-dessus — distincte d'annexe12/annexe13.
+            sin_vie_page = _find_sinistres_page(pdf, "chv")
+            if sin_vie_page:
+                best["resultat_sinistres_vie"] = (999, 999, sin_vie_page)
+            sin_non_vie_page = _find_sinistres_page(pdf, "chnv")
+            if sin_non_vie_page:
+                best["resultat_sinistres_non_vie"] = (999, 999, sin_non_vie_page)
+
+            # Passe 1 : extraire le texte de toutes les pages, avec repli
+            # OCR (_OcrFallbackPage, coût nul sauf page réellement scannée)
+            # pour annexe12/annexe13/etat_resultat aussi — pas seulement
+            # bilan/bilan_passif ci-dessus. Découvert le 2026-08-18 sur
+            # STAR 2025 : la vraie page "Annexe N°13" (page 45) est une
+            # image scannée (0 caractère natif) ; sans repli OCR ici, son
+            # score tombait à 0 pour TOUTES les sections et l'algorithme
+            # élisait à tort la page 48 ("Annexe n°16 : Tableau de
+            # raccordement du Résultat technique Non-Vie", qui mentionne
+            # aussi "primes émises"/"non-vie" et obtenait donc un score non
+            # nul) comme "annexe13" — la valeur du KPI restait correcte
+            # (l'extraction elle-même, extraction/annexe13_kpi_extractor.py,
+            # a son propre repli), mais la page affichée par /kpi-detail
+            # était la mauvaise.
             for page in pdf.pages:
-                raw = page.extract_text() or ""
+                raw = _OcrFallbackPage(page).extract_text() or ""
                 pages_text.append(_normalize(raw))
 
         # Passe 2 : scorer chaque page pour chaque section

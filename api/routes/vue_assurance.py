@@ -5,7 +5,8 @@ from database.repository import (
     get_connection, get_kpi_values_for_document, list_documents_by_source
 )
 from api.utils.formatters import PRIMES_UNIT_DIVISOR, round1
-from api.routes.comparative import PROBLEMATIC_COMPANIES
+from api.routes.comparative import PROBLEMATIC_COMPANIES, _ROW_KEY_TO_KPI
+from api.services.kpi_builder import build_company_row, compute_solvabilite_investissement
 from extraction.kpi_definitions import filter_reliable
 
 bp = Blueprint("vue_assurance", __name__)
@@ -126,6 +127,52 @@ def vue_assurance_profil():
         def rel(kpi_name):
             return filter_reliable(kpi_name, kpis.get(kpi_name))
 
+        # Ratio combiné/sinistralité/frais : passer par build_company_row
+        # (même repli de calcul qu'Analyse Comparative — reconstruction à
+        # partir des Charges de prestations/Charges d'acquisition/Primes
+        # émises brutes quand le KPI direct n'a pas été extrait) plutôt que
+        # `rel()` seul, qui ne fait qu'une lecture brute sans repli. Avant ce
+        # correctif, les deux pages pouvaient afficher des valeurs
+        # différentes pour la même société/année (ex: UIB 2024, AMI 2018 —
+        # Analyse Comparative retrouvait une valeur qu'ici on affichait N/D)
+        # — signalé par l'utilisateur le 2026-08-17.
+        annee_prev = (annee_cmf - 1) if annee_cmf else None
+        primes_prev_year = {}
+        if annee_prev is not None:
+            for doc_id, _, c_p, doc_annee_p in list_documents_by_source(conn, "CMF"):
+                if c_p != code or doc_annee_p != annee_prev:
+                    continue
+                kpis_p = get_kpi_values_for_document(conn, doc_id)
+                pnv_p, pv_p, pr_p = (kpis_p.get("Primes émises Non-Vie par assurance"),
+                                      kpis_p.get("Primes émises Vie par assurance"),
+                                      kpis_p.get("Primes émises par assurance"))
+                if pv_p and pv_p > 1_000 and pnv_p and pnv_p > 1_000:
+                    primes_prev_year[code] = pv_p + pnv_p
+                elif pr_p and pr_p > 1_000:
+                    primes_prev_year[code] = pr_p
+                break
+
+        total_ftusa = None
+        for doc_id, _, _, doc_annee in sorted(
+                list_documents_by_source(conn, "FTUSA"), key=lambda x: x[3], reverse=True):
+            if annee_cmf is not None and doc_annee != annee_cmf:
+                continue
+            total_ftusa = get_kpi_values_for_document(conn, doc_id).get("Total Primes émises")
+            break
+
+        built_row = build_company_row(kpis, primes_prev_year, total_ftusa, code)
+        ratio_combine = filter_reliable("Ratio combiné (%)", built_row["ratio_combine"])
+        ratio_sp      = filter_reliable("Ratio de sinistralité (%)", built_row["ratio_sp"])
+        ratio_frais   = filter_reliable("Ratio de frais de gestion (%)", built_row["ratio_frais"])
+
+        # S4/S5/I1/I2 (dette_cp, dette_actif, actions_actif, placements_cp) :
+        # même filtre de fiabilité que sur Analyse Comparative — voir
+        # api/services/kpi_builder.py::compute_solvabilite_investissement.
+        solvab = {
+            k: filter_reliable(_ROW_KEY_TO_KPI[k], v)
+            for k, v in compute_solvabilite_investissement(kpis).items()
+        }
+
         return jsonify({
             "code":      code,
             "annee":     annee_cmf,
@@ -140,11 +187,25 @@ def vue_assurance_profil():
             "cours_action":         fmt(kpis.get("Cours de l'action")),
             "capitalisation":       fmt(kpis.get("Capitalisation Boursière")),
             "pdm":           round1(pdm),
-            "ratio_combine": round1(rel("Ratio combiné (%)")),
-            "ratio_frais":   round1(rel("Ratio de frais de gestion (%)")),
-            "ratio_sp":      round1(rel("Ratio de sinistralité (%)")),
+            "ratio_combine": round1(ratio_combine),
+            "ratio_frais":   round1(ratio_frais),
+            "ratio_sp":      round1(ratio_sp),
             "roa":           round1(rel("ROA (%)")),
             "roe":           round1(rel("ROE (%)")),
+            "dette_cp":       solvab["dette_cp"],
+            "dette_actif":    solvab["dette_actif"],
+            "actions_actif":  solvab["actions_actif"],
+            "placements_cp":  solvab["placements_cp"],
+            # Fonds des Participants (Takaful uniquement — voir
+            # extraction/takaful_kpi_extractor.py::extract_fonds_participants_kpis) :
+            # None pour toute compagnie conventionnelle, ces KPI n'étant
+            # jamais extraits pour elle.
+            "surplus_familial":      fmt(kpis.get("Surplus du Fonds Takaful Familial (TND)"), 1_000_000),
+            "surplus_general":       fmt(kpis.get("Surplus du Fonds Takaful Général (TND)"),  1_000_000),
+            "actifs_nets_adherents": fmt(kpis.get("Total actifs nets des adhérents (TND)"),    1_000_000),
+            "provisions_adherents":  fmt(kpis.get("Provisions techniques du Fonds des Adhérents (TND)"), 1_000_000),
+            "commission_wakala":     fmt(kpis.get("Commission Wakala (TND)"),     1_000_000),
+            "commission_moudharaba": fmt(kpis.get("Commission Moudharaba (TND)"), 1_000_000),
             "agences_region": agences_region,
             "total_agences":  total_agences,
             "sinistres_payes": fmt(kpis.get("Charge de sinistres"), 1_000_000),
@@ -241,10 +302,27 @@ def vue_assurance_evolution():
                 return None
             return round1(v / 1_000_000)
 
+        # Docs de la société, triés par année — nécessaire pour reconstruire
+        # les primes de l'année N-1 (même repli de calcul qu'Analyse
+        # Comparative pour Ratio combiné/sinistralité/frais, voir profil()
+        # ci-dessus).
+        company_docs = sorted(
+            (d for d in list_documents_by_source(conn, "CMF") if d[2] == code and d[3]),
+            key=lambda d: d[3],
+        )
+        primes_by_year = {}
+        for doc_id, _, _, annee in company_docs:
+            k = get_kpi_values_for_document(conn, doc_id)
+            pnv, pv, pr = (k.get("Primes émises Non-Vie par assurance"),
+                           k.get("Primes émises Vie par assurance"),
+                           k.get("Primes émises par assurance"))
+            if pv and pv > 1_000 and pnv and pnv > 1_000:
+                primes_by_year[annee] = pv + pnv
+            elif pr and pr > 1_000:
+                primes_by_year[annee] = pr
+
         series = {}
-        for doc_id, _, c, annee in list_documents_by_source(conn, "CMF"):
-            if c != code or not annee:
-                continue
+        for doc_id, _, c, annee in company_docs:
             kpis = get_kpi_values_for_document(conn, doc_id)
             pdm  = round1(filter_reliable("Part de marché (%)", kpis.get("Part de marché (%)")))
             if pdm is None:
@@ -255,14 +333,17 @@ def vue_assurance_evolution():
             def rel(kpi_name, _kpis=kpis):
                 return filter_reliable(kpi_name, _kpis.get(kpi_name))
 
+            built_row = build_company_row(
+                kpis, {code: primes_by_year.get(annee - 1)}, ftusa_total_by_year.get(annee), code)
+
             series[annee] = {
                 "primes_emises": _fmtM(rel("Primes émises par assurance")),
                 "resultat_net":  _fmtM(rel("Résultat Net")),
                 "total_actif":   _fmtM(rel("Total actif")),
                 "roa":           round1(rel("ROA (%)")),
                 "roe":           round1(rel("ROE (%)")),
-                "ratio_combine": round1(rel("Ratio combiné (%)")),
-                "ratio_frais":   round1(rel("Ratio de frais de gestion (%)")),
+                "ratio_combine": round1(filter_reliable("Ratio combiné (%)", built_row["ratio_combine"])),
+                "ratio_frais":   round1(filter_reliable("Ratio de frais de gestion (%)", built_row["ratio_frais"])),
                 "pdm":           pdm,
             }
         return jsonify(dict(sorted(series.items())))

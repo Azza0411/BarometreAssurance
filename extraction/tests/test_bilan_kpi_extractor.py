@@ -185,13 +185,40 @@ def test_find_section_total_takes_last_numeric_line_before_next_section():
     sub2 = [W("AC32", 0, top=120), W("Actions", 30, top=120),
             W("50000", 200, top=120), W("10000", 250, top=120),
             W("40000", 300, top=120), W("38000", 350, top=120)]
+    total = [W("150000", 200, top=130), W("30000", 250, top=130),
+             W("120000", 300, top=130), W("113000", 350, top=130)]
+    next_section = [W("AC4", 0, top=140), W("Placements", 30, top=140),
+                     W("representant", 100, top=140)]
+    page = _actif_page([header, sub1, sub2, total, next_section])
+    pdf = FakePDF(pages=[page])
+
+    value = _find_section_total(pdf, "ac", "3", "net")
+    assert value == 120000.0  # ligne de total (derniere ligne a chiffres avant AC4), avant-derniere colonne
+
+
+def test_find_section_total_ignores_trailing_subitem_with_no_total_line():
+    # Decouvert le 2026-08-18 sur MAGHREBIA_VIE 2025 : certains documents ne
+    # portent AUCUNE ligne de total pour la section, juste une liste plate
+    # de sous-elements. Prendre "la derniere ligne a chiffres" retournait
+    # alors un sous-element quelconque (souvent petit) au lieu du plus
+    # proche de la vraie grandeur. On retient desormais le MAXIMUM des
+    # candidats de la plage : un vrai total (s'il existe) est toujours le
+    # plus grand par construction, et a defaut, le plus grand sous-element
+    # reste une valeur bien moins trompeuse que le dernier de la liste.
+    header = [W("AC3", 0, top=100), W("Placements", 30, top=100)]
+    sub1 = [W("AC31", 0, top=110), W("Obligations", 30, top=110),
+            W("100000", 200, top=110), W("20000", 250, top=110),
+            W("80000", 300, top=110), W("75000", 350, top=110)]
+    sub2 = [W("AC32", 0, top=120), W("Actions", 30, top=120),
+            W("50000", 200, top=120), W("10000", 250, top=120),
+            W("40000", 300, top=120), W("38000", 350, top=120)]
     next_section = [W("AC4", 0, top=130), W("Placements", 30, top=130),
                      W("representant", 100, top=130)]
     page = _actif_page([header, sub1, sub2, next_section])
     pdf = FakePDF(pages=[page])
 
     value = _find_section_total(pdf, "ac", "3", "net")
-    assert value == 40000.0  # dernière ligne (AC32) avant AC4, avant-dernière colonne
+    assert value == 80000.0  # plus grand sous-element (AC31), pas le dernier liste (AC32=40000)
 
 
 # ─── _is_actif_page ─────────────────────────────────────────────────────────
@@ -213,9 +240,13 @@ def test_is_actif_page_detects_marker_beyond_default_5_line_window():
 
 
 def test_is_actif_page_still_bounded_past_widened_window():
-    # La fenêtre elargie (10) reste une fenetre : un marqueur trop tardif
-    # (ligne 11) ne doit toujours pas etre detecte comme page Actif.
-    text = "\n".join([f"ligne bruit {i}" for i in range(10)] + ["ACTIFS Brut Amort. Net Net"])
+    # La fenetre elargie (20, cf. bilan_kpi_extractor.py) reste une fenetre :
+    # un marqueur trop tardif (ligne 21) ne doit toujours pas etre detecte
+    # comme page Actif. Seuil mis a jour le 2026-08-17 (10->20, motif STAR/
+    # BIAT/ASTREE/MAGHREBIA_VIE/GAT_VIE 2015) ; ce test verifiait encore
+    # l'ancien seuil 10 et echouait donc a tort (ligne 11 est desormais dans
+    # la fenetre valide).
+    text = "\n".join([f"ligne bruit {i}" for i in range(20)] + ["ACTIFS Brut Amort. Net Net"])
     page = FakePage(text=text, words=[])
     assert _is_actif_page(page) is False
 

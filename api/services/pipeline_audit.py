@@ -37,6 +37,7 @@ from database.repository import (
 from api.services.kpi_builder import build_company_row
 from api.services.quality import build_quality_report
 from api.utils.formatters import kpis_by_year
+from config.company_registry import get_famille
 from extraction.kpi_definitions import (
     KPI_PLAGES_PLAUSIBLES, ZERO_SUSPECT_KPIS, SOURCE_PAR_KPI, get_context, get_formule,
 )
@@ -69,6 +70,16 @@ _KPI_PAR_SECTION: dict[str, list[str]] = {
     "etat_resultat": [
         "Résultat Net",
     ],
+    # Takaful uniquement (voir _KPIS_TAKAFUL) — chaque section n'a qu'un seul
+    # KPI ancre connu à ce jour, mais le mécanisme d'inférence (_sections_inferees)
+    # exige une liste même à un seul élément.
+    "annexe_takaful_resultat": ["Commission Wakala (TND)", "Commission Moudharaba (TND)"],
+    "annexe_takaful_familial": ["Surplus du Fonds Takaful Familial (TND)"],
+    "annexe_takaful_general":  ["Surplus du Fonds Takaful Général (TND)"],
+    "bilan_combine_adherents": [
+        "Total actifs nets des adhérents (TND)",
+        "Provisions techniques du Fonds des Adhérents (TND)",
+    ],
 }
 
 # ── KPIs finaux attendus par contexte ─────────────────────────────────────────
@@ -88,6 +99,39 @@ _KPIS_MIXTE = [
 _KPIS_VIE = [
     "Primes émises Vie par assurance",
     "ROE (%)", "ROA (%)", "Résultat Net", "Total actif", "Capitaux propres",
+]
+
+# Takaful (AT_TAKAFULIA, ZITOUNA_TAKAFUL, AL_AMANAH_TAKAFUL) : "Résultat
+# technique (TND)" retiré (structurellement inexistant côté Opérateur — voir
+# FichesEntreprises.jsx::ProfilTakafulBody, mutualisé au niveau du Fonds des
+# Participants, pas un échec d'extraction) ; ajout des champs propres au
+# modèle Takaful (Commission Wakala/Moudharaba, Fonds des Participants,
+# ratios de solvabilité) — auparavant jamais vérifiés ici, donc jamais
+# remontés dans Anomalies Système même quand réellement absents. Ajouté le
+# 2026-08-18 suite au retour utilisateur sur la fiche Takaful (El Amana).
+_KPIS_TAKAFUL = [
+    "Primes émises par assurance",
+    "Ratio combiné (%)",
+    "Ratio de sinistralité (%)",
+    "Ratio de frais de gestion (%)",
+    "Part de marché (%)",
+    "ROE (%)",
+    "ROA (%)",
+    "Résultat Net",
+    "Total actif",
+    "Capitaux propres",
+    "Commission Wakala (TND)",
+    "Commission Moudharaba (TND)",
+    "Surplus du Fonds Takaful Familial (TND)",
+    "Surplus du Fonds Takaful Général (TND)",
+    "Total actifs nets des adhérents (TND)",
+    "Provisions techniques du Fonds des Adhérents (TND)",
+    "Placements",
+    "Actions et titres de participation",
+    "Dettes/Capitaux propres (%)",
+    "Dettes/Actif (%)",
+    "Actions/Actif (%)",
+    "Placements/Capitaux propres (%)",
 ]
 
 # ── Plages métier ─────────────────────────────────────────────────────────────
@@ -130,7 +174,17 @@ def _audit_one(conn, doc_id: int, code: str, annee: int,
 
     row_calc = build_company_row(kpis, {}, total_ftusa, code)
 
-    kpis_attendus = _KPIS_VIE if ctx == "vie" else _KPIS_MIXTE
+    # get_famille (pas get_context) : ctx == "takaful" ne couvre que
+    # AT_TAKAFULIA/ZITOUNA_TAKAFUL (COMPANY_CONTEXT exclut délibérément
+    # AL_AMANAH_TAKAFUL, hors périmètre du pipeline français — voir
+    # extraction/kpi_definitions.py) alors que get_famille couvre les 3.
+    # Sans cette distinction, AL_AMANAH_TAKAFUL tombait dans _KPIS_MIXTE et
+    # se voyait signalée à tort "Résultat technique manquant" (structurellement
+    # inexistant côté Opérateur Takaful, pas un échec d'extraction).
+    if get_famille(code) == "takaful":
+        kpis_attendus = _KPIS_TAKAFUL
+    else:
+        kpis_attendus = _KPIS_VIE if ctx == "vie" else _KPIS_MIXTE
     problemes = []
 
     def _add(kpi, etape, etape_label, raison, details="",

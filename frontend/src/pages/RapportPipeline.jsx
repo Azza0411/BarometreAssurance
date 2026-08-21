@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { kpiLabel } from "../utils/kpiCatalog";
+import { getLogoSrc } from "../utils/logos";
+import KpiOptionsMenu from "../components/KpiOptionsMenu";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
 
@@ -82,7 +84,7 @@ function AnomalieRow({ p, navigate }) {
 
   return (
     <div style={{ borderBottom:"1px solid #F3F4F6", background: open ? "#FAFAFA" : "#fff" }}>
-      <div onClick={() => setOpen(o => !o)}
+      <div onClick={() => setOpen(o => !o)} className="kpi-hover-card"
         style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 16px", cursor:"pointer" }}>
         <span style={{
           width:20, height:20, borderRadius:"50%", background: ETAPE_DOT[p.etape] || "#94A3B8",
@@ -93,6 +95,9 @@ function AnomalieRow({ p, navigate }) {
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontSize:12, fontWeight:700, color:"#111827", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{kpiLabel(p.kpi)}</div>
           <div style={{ fontSize:11, color:"#6B7280", marginTop:1, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{p.raison}</div>
+        </div>
+        <div onClick={e => e.stopPropagation()}>
+          <KpiOptionsMenu code={p.code} kpi={p.kpi} annee={p.annee} label={kpiLabel(p.kpi)} value={p.valeur != null ? String(p.valeur) : undefined} />
         </div>
         <span style={{ color:"#9CA3AF", fontSize:11 }}>{open ? "▲" : "▼"}</span>
       </div>
@@ -209,8 +214,14 @@ function CompanyCard({ code, problemes, annee, navigate }) {
         background: open ? wg.bg : "#fff",
         borderBottom: open ? `1px solid ${wg.border}` : "none",
       }}>
-        <span style={{ fontFamily:"ui-monospace,monospace", fontWeight:800, fontSize:13, color:"#111827", background:"#F3F4F6", padding:"3px 10px", borderRadius:5, whiteSpace:"nowrap" }}>
-          {code}
+        <span style={{
+          display:"flex", alignItems:"center", justifyContent:"center", minWidth:64, height:32,
+          background:"#F3F4F6", padding:"3px 10px", borderRadius:5, whiteSpace:"nowrap",
+        }} title={code}>
+          {getLogoSrc(code)
+            ? <img src={getLogoSrc(code)} alt={code} style={{ height:26, maxWidth:80, objectFit:"contain" }}/>
+            : <span style={{ fontFamily:"ui-monospace,monospace", fontWeight:800, fontSize:13, color:"#111827" }}>{code}</span>
+          }
         </span>
 
         <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>

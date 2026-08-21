@@ -10,6 +10,7 @@
  * données (colonne VARCHAR sans FK, aucune table de référence) qui casse
  * silencieusement tout consommateur oublié. Seul le libellé affiché change.
  */
+import { isTakaful } from "./famille";
 
 export const KPI_CATALOG = [
   {
@@ -80,6 +81,24 @@ export const KPI_CATALOG = [
   },
 ];
 
+// S4/S5/I1/I2 (Dettes/CP, Dettes/Actif, Actions/Actif, Placements/CP) sont
+// VOLONTAIREMENT absents de KPI_CATALOG ci-dessus : ce catalogue est partagé
+// avec QualiteDonnees/KpiDetail/RapportPipeline/AnomaliesSysteme, qui
+// l'utilisent pour lister les KPI EXTRAITS/CALCULÉS et PERSISTÉS en base
+// (kpi_values). Ces 4 ratios sont calculés à la volée à la lecture
+// (api/services/kpi_builder.py::compute_solvabilite_investissement), jamais
+// écrits en base — les y ajouter faisait afficher "✗ Non extrait" sur ces
+// 4 colonnes pour TOUTES les compagnies dans Qualité Données (faux
+// positif : rien n'est réellement manquant, juste jamais persisté).
+// N'existent donc que dans LABELS_HORS_CATALOGUE, consommé uniquement par
+// AnalyseComparative.jsx (le seul endroit qui en a besoin).
+export const LABELS_HORS_CATALOGUE = {
+  "Dettes/Capitaux propres (%)":    { label: "Dettes / Capitaux propres",    unit: "%", lowerBetter: true  },
+  "Dettes/Actif (%)":               { label: "Dettes / Actif",               unit: "%", lowerBetter: true  },
+  "Actions/Actif (%)":              { label: "Actions / Actif",              unit: "%", lowerBetter: false },
+  "Placements/Capitaux propres (%)":{ label: "Placements / Capitaux propres", unit: "%", lowerBetter: false },
+};
+
 const _byStorageKey = new Map(KPI_CATALOG.map(k => [k.storageKey, k]));
 
 /** {storageKey, label, unit, lowerBetter} ou repli minimal si KPI inconnu. */
@@ -87,7 +106,22 @@ export function getKpiInfo(storageKey) {
   return _byStorageKey.get(storageKey) ?? { storageKey, label: storageKey, unit: "", lowerBetter: false };
 }
 
-/** Nom canonique à afficher pour une clé de stockage donnée. */
-export function kpiLabel(storageKey) {
+// Terminologie propre au Takaful : "Contribution" (cotisation mutualiste)
+// est le terme technique exact, "Primes émises" étant un terme d'assurance
+// conventionnelle qui ne s'applique pas au principe Takaful — signalé par
+// l'utilisateur le 2026-08-19 ("au lieu d'écrire prime émise on doit écrire
+// contribution").
+const _TAKAFUL_LABEL_OVERRIDES = {
+  "Primes émises par assurance": "Contribution",
+};
+
+/** Nom canonique à afficher pour une clé de stockage donnée. `code` (optionnel) :
+ * société courante — permet d'adapter le libellé pour le Takaful (ex.
+ * "Contribution" au lieu de "Primes émises"). Sans `code`, comportement
+ * inchangé (utilisé par les colonnes/menus statiques non liés à une société). */
+export function kpiLabel(storageKey, code) {
+  if (code && _TAKAFUL_LABEL_OVERRIDES[storageKey] && isTakaful(code)) {
+    return _TAKAFUL_LABEL_OVERRIDES[storageKey];
+  }
   return getKpiInfo(storageKey).label;
 }

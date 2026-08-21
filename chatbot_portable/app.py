@@ -75,8 +75,15 @@ def _db():
 
 
 def get_kpi_values_for_document(conn, document_id: int) -> dict:
+    # Exclut "Calcul interne" : un meme nom de KPI peut coexister comme
+    # valeur brute et comme valeur recalculee sous ce tableau (ex: "Primes
+    # acquises" Non-Vie brut vs somme Vie+Non-Vie) -- voir
+    # database/repository.py::get_kpi_values_for_document (meme convention
+    # cote app principale) et prediction/data/data_loader.py pour
+    # l'incident deja rencontre (ASTREE 2025).
     rows = conn.execute(
-        "SELECT kpi, valeur_nombre, valeur_texte FROM kpi_values WHERE document_id = ?",
+        "SELECT kpi, valeur_nombre, valeur_texte FROM kpi_values "
+        "WHERE document_id = ? AND tableau != 'Calcul interne'",
         (document_id,)
     ).fetchall()
     result = {}
@@ -427,6 +434,7 @@ INTENT_DEFINITION     = "definition"
 INTENT_MARKET_OVERVIEW = "market_overview"
 INTENT_FORECAST       = "forecast"
 INTENT_REGULATORY     = "regulatory"
+INTENT_EXPLAIN        = "explain"
 INTENT_UNKNOWN        = "unknown"
 
 _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
@@ -495,6 +503,18 @@ _COMPILED_PATTERNS = [
 
 def detect_intent(text: str, entities: dict) -> str:
     norm = normalize(text)
+    # "Pourquoi X est à Z ?" / "Explique-moi X" avec compagnie+kpi+année déjà
+    # identifiés = demande d'explication GROUNDÉE d'un chiffre précis (voir
+    # KpiOptionsMenu::askChatbot côté frontend, action "Expliquer ce
+    # chiffre") — prioritaire sur les motifs génériques ci-dessous : sans ce
+    # cas, "Explique-moi..." ne matchait AUCUN pattern (INTENT_DEFINITION
+    # cherche "expliquer" avec un r, pas "explique") et retombait sur
+    # INTENT_KPI_QUERY ou le texte-à-SQL générique, qui se contentaient de
+    # RE-AFFICHER le chiffre déjà visible à l'écran sans jamais l'expliquer —
+    # constaté et corrigé le 2026-08-19.
+    if entities.get("company") and entities.get("kpis") and entities.get("years") and \
+       re.search(r"pourquoi|explique", norm):
+        return INTENT_EXPLAIN
     for intent, compiled in _COMPILED_PATTERNS:
         for pat in compiled:
             if pat.search(norm):
@@ -665,7 +685,7 @@ def fetch_kpi_for_market(conn, kpi_name: str, year: int | None) -> list[dict]:
     return results
 
 
-def fetch_kpi_for_company(conn, kpi_name: str, company_code: str, year: int | None) -> list[dict]:
+def _fetch_kpi_for_company_exact(conn, kpi_name: str, company_code: str, year: int | None) -> list[dict]:
     params = (company_code, kpi_name, year) if year else (company_code, kpi_name)
     year_clause = "AND d.annee=?" if year else ""
     rows = conn.execute(f"""
@@ -681,6 +701,92 @@ def fetch_kpi_for_company(conn, kpi_name: str, company_code: str, year: int | No
                          "display": fmt["display"], "unit": fmt["unit"], "source": source,
                          "kpi": kpi_name, "company": company_code})
     return results
+
+
+# Certains libellés libres ("primes émises" seul, sans "par assurance"/
+# "compagnie") sont mappés par KPI_SYNONYMS vers le KPI SECTORIEL (FTUSA),
+# car c'est l'usage le plus fréquent en question libre sur le marché entier
+# — mais quand une société précise est déjà visée (ex: bouton "Expliquer ce
+# chiffre" sur une carte KPI société, qui génère justement "Primes émises"
+# sans suffixe), il faut l'équivalent société. Bug réel constaté le
+# 2026-08-19 : "Pourquoi Primes émises de STAR est à ... ?" ne trouvait
+# aucune donnée car "Primes émises" résolvait vers "Total Primes émises"
+# (clé sectorielle), jamais stockée pour une société précise.
+_COMPANY_KPI_FALLBACK = {
+    "Total Primes émises": "Primes émises par assurance",
+}
+
+
+def fetch_kpi_for_company(conn, kpi_name: str, company_code: str, year: int | None) -> list[dict]:
+    results = _fetch_kpi_for_company_exact(conn, kpi_name, company_code, year)
+    if not results and "%" not in kpi_name:
+        # Écart de nommage réel entre le canonique KPI_SYNONYMS (ex: "Ratio
+        # combiné", qui suit la convention marché/FTUSA sans suffixe) et la
+        # clé effectivement stockée côté société CMF (ex: "Ratio combiné
+        # (%)") — repli sur la variante avec suffixe avant d'abandonner.
+        # Sans ce repli, TOUTE question sur un ratio société (ranking,
+        # évolution, prévision, "expliquer ce chiffre"...) via son nom
+        # canonique renvoyait silencieusement aucune donnée alors qu'elle
+        # existe bien en base — découvert le 2026-08-19 en testant
+        # INTENT_EXPLAIN sur "Ratio combiné" de BIAT.
+        results = _fetch_kpi_for_company_exact(conn, f"{kpi_name} (%)", company_code, year)
+    if not results and kpi_name in _COMPANY_KPI_FALLBACK:
+        results = _fetch_kpi_for_company_exact(conn, _COMPANY_KPI_FALLBACK[kpi_name], company_code, year)
+    return results
+
+
+def fetch_explain_context(conn, kpi_name: str, company_code: str, year: int) -> dict:
+    """Rassemble les faits comparatifs nécessaires pour EXPLIQUER un chiffre
+    précis (pas juste le répéter) : valeur courante, évolution vs année
+    précédente, position par rapport au secteur — même logique que
+    api/services/anomalies_service.py::generate_rapport_ia (uniquement des
+    chiffres réels fournis au LLM, jamais devinés), appliquée ici à une
+    seule cellule société × KPI × année plutôt qu'à un audit global.
+    Ajouté le 2026-08-19 : avant ça, "Expliquer ce chiffre" ne disposait
+    d'aucun comparatif, donc ne pouvait que répéter la valeur déjà affichée."""
+    current_rows = fetch_kpi_for_company(conn, kpi_name, company_code, year)
+    current = current_rows[0] if current_rows else None
+    # fetch_kpi_for_company peut résoudre en interne vers une variante du nom
+    # (ex: "Ratio combiné" -> "Ratio combiné (%)", "Total Primes émises" ->
+    # "Primes émises par assurance") — on réutilise la clé RÉELLEMENT trouvée
+    # pour les requêtes suivantes (année précédente, moyenne secteur), sinon
+    # elles chercheraient sous le mauvais nom et échoueraient silencieusement.
+    resolved_kpi = current.get("kpi") if current else kpi_name
+
+    prior_rows = fetch_kpi_for_company(conn, resolved_kpi, company_code, year - 1)
+    prior = prior_rows[0] if prior_rows else None
+
+    yoy_pct = None
+    if current and prior:
+        cv, pv = current.get("valeur"), prior.get("valeur")
+        if isinstance(cv, (int, float)) and isinstance(pv, (int, float)) and pv:
+            yoy_pct = round((cv - pv) / abs(pv) * 100, 1)
+
+    # INNER JOIN sur cmf exclut naturellement les sources sectorielles
+    # (FTUSA/CGA/INS, cmf_id NULL) — ne garde que les vraies compagnies.
+    sector_rows = conn.execute("""
+        SELECT c.code, k.valeur_nombre
+        FROM kpi_values k
+        JOIN documents d ON d.id = k.document_id
+        JOIN cmf c ON c.id = d.cmf_id
+        WHERE k.kpi = ? AND d.annee = ? AND k.valeur_nombre IS NOT NULL
+    """, (resolved_kpi, year)).fetchall()
+    values = [(code, v) for code, v in sector_rows if v is not None]
+    sector_avg = round(sum(v for _, v in values) / len(values), 2) if values else None
+    sector_n = len(values)
+    sector_rank = None
+    if sector_avg is not None and current and isinstance(current.get("valeur"), (int, float)):
+        ordered = sorted(values, key=lambda x: x[1], reverse=True)
+        for i, (code, _v) in enumerate(ordered, 1):
+            if code == company_code:
+                sector_rank = i
+                break
+
+    return {
+        "kpi": kpi_name, "company": company_code, "annee": year,
+        "current": current, "prior": prior, "yoy_pct": yoy_pct,
+        "sector_avg": sector_avg, "sector_n": sector_n, "sector_rank": sector_rank,
+    }
 
 
 def fetch_ranking(conn, kpi_name: str, year: int, limit: int = 10) -> list[dict]:
@@ -849,12 +955,22 @@ _SQL_SYSTEM_PROMPT = (
 )
 
 
+# "llama-3.3-70b-versatile" a ete retire du catalogue Groq (2026-08-18,
+# reponse API 404 model_not_found) -- toutes les reponses du chatbot
+# retombaient silencieusement sur le texte brut non reformule sans qu'aucune
+# erreur ne soit visible cote utilisateur. Verifie via GET
+# https://api.groq.com/openai/v1/models avec la cle en place : parmi les
+# modeles de chat generalistes actuellement exposes, "openai/gpt-oss-120b"
+# est le plus grand/capable disponible.
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+
+
 def _call_groq(messages: list[dict]) -> str | None:
     try:
         from groq import Groq
         client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
         resp = client.chat.completions.create(
-            model="llama-3.3-70b-versatile", messages=messages,
+            model=GROQ_MODEL, messages=messages,
             max_tokens=600, temperature=0.1,
         )
         return resp.choices[0].message.content
@@ -873,6 +989,131 @@ def _extract_json(text: str) -> dict | None:
         except json.JSONDecodeError:
             pass
     return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  GARDE-FOU ANTI-HALLUCINATION — "Expliquer ce chiffre"
+#  Même technique que api/services/anomalies_service.py::_check_grounding :
+#  un nombre cité par le LLM qui ne provient d'AUCUN des faits qu'on lui a
+#  fournis est un signal fort d'invention — on rejette la réponse plutôt que
+#  de risquer un chiffre halluciné dans une explication destinée à un
+#  consultant. Ajouté le 2026-08-19 en même temps que INTENT_EXPLAIN.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_EXPLAIN_NUMBER_RE = re.compile(r"-?\d+(?:[.,]\d+)?")
+# Nombres à séparateurs de milliers (ex: "16,061,637.34" ou "16 061 637,34")
+# — matché EN PREMIER et consommé comme un seul jeton, sinon la regex simple
+# ci-dessus le découpe en plusieurs faux "nombres orphelins" (16 / 061 /
+# 637.34) alors que le nombre complet correspond bien à un fait fourni.
+# Bug réel rencontré en test le 2026-08-19 : le LLM avait correctement cité
+# "16 061 637,34" (moyenne secteur fournie telle quelle) mais la réponse a
+# été rejetée à tort faute de ce cas.
+_GROUPED_NUMBER_RE = re.compile(r"-?\d{1,3}(?:[,\s]\d{3})+(?:[.,]\d+)?")
+
+
+def _normalize_explain_number(value) -> str:
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return str(value).replace(",", ".")
+
+
+def _add_explain_number(allowed: set[str], v) -> None:
+    """Ajoute `v` ET ses arrondis usuels (0/1/2 décimales) à l'ensemble
+    autorisé — le LLM reformule presque toujours une valeur en pleine
+    précision fournie (ex: 57.66444928622103) en une version arrondie
+    lisible ("57,66"), ce qui n'est PAS une invention mais était rejeté à
+    tort avant cet ajout (constaté le 2026-08-19 sur plusieurs KPI)."""
+    if not isinstance(v, (int, float)):
+        return
+    allowed.add(_normalize_explain_number(v))
+    for nd in (0, 1, 2):
+        allowed.add(_normalize_explain_number(round(v, nd)))
+
+
+def _allowed_explain_numbers(facts: dict) -> set[str]:
+    allowed = set()
+    for key in ("current", "prior"):
+        row = facts.get(key)
+        if row:
+            _add_explain_number(allowed, row.get("valeur"))
+    for key in ("sector_avg", "sector_rank", "sector_n", "annee"):
+        _add_explain_number(allowed, facts.get(key))
+    yoy = facts.get("yoy_pct")
+    if isinstance(yoy, (int, float)):
+        _add_explain_number(allowed, yoy)
+        _add_explain_number(allowed, abs(yoy))
+    # Années plausibles et petits entiers de mise en forme toujours tolérés.
+    for y in range(2013, 2031):
+        allowed.add(str(y))
+    for n in range(0, 10):
+        allowed.add(str(n))
+    return allowed
+
+
+def _check_explain_grounded(text: str, facts: dict) -> list[str]:
+    """Renvoie la liste des nombres cités dans `text` qui ne correspondent à
+    aucun fait fourni — non vide = réponse potentiellement hallucinée."""
+    allowed = _allowed_explain_numbers(facts)
+    orphans = []
+    consumed_spans = []
+    for m in _GROUPED_NUMBER_RE.finditer(text):
+        raw = m.group()
+        # La partie décimale (1-2 chiffres) doit être isolée AVANT de retirer
+        # les séparateurs de milliers, sinon un séparateur décimal "," (usage
+        # français, ex: "637,34") se fait retirer comme s'il s'agissait d'un
+        # simple séparateur de milliers et le résultat perd sa décimale —
+        # bug réel constaté le 2026-08-19 ("16 061 637,34" → "1606163734").
+        dec_match = re.search(r"[.,]\d{1,2}$", raw)
+        if dec_match:
+            int_part = raw[:dec_match.start()]
+            digits_only = re.sub(r"[,\s]", "", int_part) + "." + dec_match.group()[1:]
+        else:
+            digits_only = re.sub(r"[,\s]", "", raw)
+        try:
+            normalized = _normalize_explain_number(float(digits_only))
+        except ValueError:
+            continue
+        if normalized not in allowed and digits_only not in allowed:
+            orphans.append(raw)
+        consumed_spans.append(m.span())
+
+    def _in_consumed(pos: int) -> bool:
+        return any(s <= pos < e for s, e in consumed_spans)
+
+    for match in _EXPLAIN_NUMBER_RE.finditer(text):
+        if _in_consumed(match.start()):
+            continue
+        token = match.group().replace(",", ".")
+        try:
+            normalized = _normalize_explain_number(float(token))
+        except ValueError:
+            continue
+        if normalized not in allowed and token not in allowed:
+            orphans.append(match.group())
+    return orphans
+
+
+def _explain_fallback_text(facts: dict) -> str:
+    """Explication déterministe (sans LLM) construite directement à partir
+    des faits — utilisée si Groq est indisponible ou si sa réponse échoue le
+    contrôle de grounding ci-dessus. Toujours correcte puisque non générée,
+    juste moins fluide qu'une reformulation par le LLM."""
+    kpi, company, year = facts["kpi"], facts["company"], facts["annee"]
+    current = facts.get("current")
+    if not current or current.get("valeur") is None:
+        return f"Aucune valeur trouvée pour **{kpi}** de **{display_company(company)}** en {year}."
+    val_str = current.get("display") or str(current.get("valeur"))
+    lines = [f"**{kpi}** de **{display_company(company)}** en {year} : **{val_str}**"]
+    yoy = facts.get("yoy_pct")
+    if yoy is not None:
+        sens = "en hausse" if yoy > 0 else "en baisse" if yoy < 0 else "stable"
+        lines.append(f"Évolution : {sens} de {abs(yoy):.1f} % par rapport à {year - 1}.")
+    if facts.get("sector_avg") is not None:
+        avg = facts["sector_avg"]
+        rank, n = facts.get("sector_rank"), facts.get("sector_n")
+        rank_str = f", classée {rank}/{n}" if rank and n else ""
+        lines.append(f"Moyenne du secteur en {year} : {avg:,.2f}{rank_str}.")
+    return "\n".join(lines)
 
 
 def _safe_execute(conn: sqlite3.Connection, sql: str):
@@ -1182,6 +1423,14 @@ class Chatbot:
             if forecast_resp:
                 return forecast_resp
 
+        # ── Explication grondée d'un chiffre précis (avant le texte-à-SQL
+        # générique ci-dessous, qui ne fait que RE-AFFICHER la valeur sans
+        # jamais l'expliquer — voir détection dans detect_intent) ──────────────
+        if intent == INTENT_EXPLAIN:
+            explain_resp = self._handle_explain(entities, user_message, session)
+            if explain_resp:
+                return explain_resp
+
         # ── Text-to-SQL ───────────────────────────────────────────────────────
         query_results = self._fetch_with_sql(intent, entities, enriched, history, session_id)
         if not query_results.get("results") and query_results.get("error") is None:
@@ -1304,11 +1553,14 @@ class Chatbot:
         # ── Tentative Prophet/XGBoost ─────────────────────────────────────────
         narrative = None
         model_used = None
+        model_comparison = None
         try:
             from prediction.inference.forecast_service import ForecastService
             with _db() as conn:
-                narrative = ForecastService(conn).predict_text(company=company, kpi=kpi, horizon=horizon)
-            model_used = "Prophet/XGBoost"
+                forecast_result = ForecastService(conn).predict(company=company, kpi=kpi, horizon=horizon)
+            narrative = forecast_result.narrative_text
+            model_used = forecast_result.model_name
+            model_comparison = forecast_result.model_comparison
         except Exception as exc:
             logger.warning(f"ForecastService indisponible ({exc}), fallback régression linéaire")
 
@@ -1338,14 +1590,31 @@ class Chatbot:
             pass
 
         entity_label = display_company(company) if company else "le marché tunisien"
+        # Le prompt precedent demandait de "citer des elements concrets du
+        # marche tunisien" (dynamique concurrentielle/macro/reglementaire)
+        # sans jamais fournir de donnees reelles sur ces sujets -- verifie
+        # le 2026-08-18 : le LLM inventait systematiquement des evenements
+        # plausibles mais fictifs (une fusion de compagnies, un cadre
+        # reglementaire "Solvabilite II-TUN" qui n'existe pas) pour paraitre
+        # concret. Le prompt se limite desormais aux facteurs STATISTIQUES
+        # deja fournis (SHAP/decomposition de tendance) et interdit
+        # explicitement d'inventer un evenement, une reglementation ou un
+        # acteur non present dans les donnees.
         system_prompt = (
             "Tu es un analyste senior en assurances chez EY Tunisie. "
             "À partir des données de prévision, rédige une analyse en deux parties :\n"
             "1. **Prévision** : présente les chiffres avec l'intervalle de confiance\n"
-            "2. **Explication causale** : identifie les facteurs qui expliquent la tendance "
-            "(dynamique concurrentielle, macro-économique, réglementaire). "
-            "Cite des éléments concrets du marché tunisien.\n\n"
-            "RÈGLES : cite uniquement les chiffres fournis. Max 200 mots. "
+            "2. **Explication** : reformule en langage clair les facteurs "
+            "statistiques déjà identifiés par le modèle (fournis ci-dessous), "
+            "sans en ajouter d'autres.\n\n"
+            "RÈGLES STRICTES :\n"
+            "- Cite uniquement les chiffres et facteurs fournis dans les données ci-dessous.\n"
+            "- N'invente JAMAIS d'événement, de fusion, de texte réglementaire, de nom "
+            "de cadre légal, de statistique macro-économique ou de fait concret non "
+            "présent dans les données fournies — même à titre d'exemple plausible.\n"
+            "- Si tu n'as pas d'information sur le contexte concurrentiel/macro/réglementaire, "
+            "ne l'évoque pas du tout plutôt que de le deviner.\n"
+            "Max 200 mots. "
             f"Modèle utilisé : {model_used}."
         )
         llm_raw = _call_groq([
@@ -1361,7 +1630,8 @@ class Chatbot:
         ])
         answer_text = llm_raw if llm_raw else narrative
         response = {"text": answer_text, "render": RENDER_TEXT,
-                    "data": {"forecast": True, "kpi": kpi, "company": company, "horizon": horizon},
+                    "data": {"forecast": True, "kpi": kpi, "company": company, "horizon": horizon,
+                             "model_used": model_used, "model_comparison": model_comparison},
                     "suggestions": [
                         f"Évolution historique de {kpi} ?",
                         f"Comparer les prévisions avec les concurrents ?",
@@ -1421,6 +1691,85 @@ class Chatbot:
         except Exception as e:
             logger.error(f"Linear forecast error: {e}")
             return None
+
+    def _handle_explain(self, entities, raw_question, session) -> dict | None:
+        """"Expliquer ce chiffre" (voir KpiOptionsMenu côté frontend) —
+        explique le chiffre avec de vrais comparatifs (évolution vs année
+        précédente, position vs secteur) au lieu de le re-répéter tel
+        quel. Repli déterministe (_explain_fallback_text) si Groq est
+        indisponible ou si sa réponse échoue le contrôle de grounding."""
+        company = entities.get("company")
+        kpis = entities.get("kpis", [])
+        years = entities.get("years", [])
+        if not (company and kpis and years):
+            return None
+        kpi, year = kpis[0], years[0]
+
+        with _db() as conn:
+            facts = fetch_explain_context(conn, kpi, company, year)
+
+        if not facts.get("current") or facts["current"].get("valeur") is None:
+            text = f"Aucune valeur trouvée pour **{kpi}** de **{display_company(company)}** en {year}."
+            response = {"text": text, "render": RENDER_TEXT, "data": facts,
+                        "suggestions": _default_suggestions(), "error": None}
+            session.add_message("assistant", text)
+            return response
+
+        fallback_text = _explain_fallback_text(facts)
+
+        facts_lines = [
+            f"KPI : {kpi}",
+            f"Compagnie : {display_company(company)}",
+            f"Année : {year}",
+            f"Valeur {year} : {facts['current'].get('valeur')}",
+        ]
+        if facts.get("prior"):
+            facts_lines.append(f"Valeur {year - 1} : {facts['prior'].get('valeur')}")
+        if facts.get("yoy_pct") is not None:
+            facts_lines.append(f"Évolution vs {year - 1} : {facts['yoy_pct']:+.1f} %")
+        if facts.get("sector_avg") is not None:
+            facts_lines.append(f"Moyenne du secteur ({facts.get('sector_n')} compagnies, {year}) : {facts['sector_avg']}")
+        if facts.get("sector_rank"):
+            facts_lines.append(f"Classement dans le secteur : {facts['sector_rank']}/{facts.get('sector_n')}")
+        facts_summary = "\n".join(facts_lines)
+
+        system_prompt = (
+            "Tu es un analyste senior en assurances chez EY Tunisie. Explique CE "
+            "chiffre précis à un consultant, en t'appuyant UNIQUEMENT sur les faits "
+            "comparatifs fournis ci-dessous (évolution vs année précédente, position "
+            "par rapport à la moyenne du secteur).\n\n"
+            "RÈGLES STRICTES :\n"
+            "- Cite UNIQUEMENT les chiffres fournis ci-dessous. N'invente aucun "
+            "chiffre, pourcentage ou fait supplémentaire.\n"
+            "- Si un comparatif (évolution, moyenne secteur) manque dans les faits "
+            "fournis, ne l'évoque pas plutôt que de l'inventer.\n"
+            "- Ne dis pas qu'il y a un problème ou une anomalie si rien ne l'indique "
+            "dans les faits fournis — contente-toi de situer le chiffre.\n"
+            "- Réponds en français, 2 à 4 phrases, ton professionnel de conseil.\n\n"
+            f"FAITS :\n{facts_summary}"
+        )
+        llm_raw = _call_groq([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": raw_question},
+        ])
+
+        answer_text = fallback_text
+        if llm_raw and len(llm_raw.strip()) > 15:
+            orphans = _check_explain_grounded(llm_raw, facts)
+            if not orphans:
+                answer_text = llm_raw.strip()
+            else:
+                logger.warning(f"Explication chatbot rejetée (nombres non sourcés: {orphans}) — repli déterministe.")
+
+        response = {
+            "text": answer_text, "render": RENDER_TEXT, "data": facts,
+            "suggestions": [
+                f"Évolution de {kpi} pour {display_company(company)} ?",
+                f"Classement {kpi} en {year} ?",
+            ], "error": None,
+        }
+        session.add_message("assistant", answer_text)
+        return response
 
     def _handle_regulatory(self, question: str, history: list[dict], session) -> dict | None:
         """RAG sur corpus réglementaire tunisien."""

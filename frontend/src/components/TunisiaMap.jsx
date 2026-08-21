@@ -79,7 +79,7 @@ const DEFAULT_LEVELS = {
 const MAP_W = 155;
 const MAP_H = Math.round(MAP_W * 926 / 438); // ~328px
 
-export default function TunisiaMap({ data = {}, compact = false, noPanel = false, zones = null }) {
+export default function TunisiaMap({ data = {}, compact = false, noPanel = false, zones = null, fillHeight = false }) {
   const containerRef = useRef(null);
   const [hovered, setHovered]     = useState(null); // region id
   const [tooltip, setTooltip]     = useState({ x: 0, y: 0, visible: false });
@@ -173,10 +173,17 @@ export default function TunisiaMap({ data = {}, compact = false, noPanel = false
   }, [JSON.stringify(data)]);
 
   return (
-    <div ref={containerRef} style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+    <div ref={containerRef} style={{ display: "flex", gap: 8, alignItems: "stretch", height: fillHeight ? "100%" : undefined, minHeight: fillHeight ? 0 : undefined }}>
 
-      {/* ── Carte — dimensions fixes calculées depuis le vrai viewBox 438×926 ── */}
-      <div style={{ position: "relative", flexShrink: 0, width: MAP_W, height: MAP_H }}>
+      {/* ── Carte — taille fixe (viewBox 438×926) sauf fillHeight : dans ce
+          cas elle s'adapte à la hauteur réelle du conteneur (ratio conservé
+          via aspectRatio) pour ne jamais être rognée par un parent plus
+          court que MAP_H (ex: ligne de cartes Aperçu Marché, dont la
+          hauteur dépend du viewport, pas du contenu) ── */}
+      <div style={fillHeight
+        ? { position: "relative", flexShrink: 0, height: "100%", width: "auto", aspectRatio: `${MAP_W} / ${MAP_H}`, minHeight: 0 }
+        : { position: "relative", flexShrink: 0, width: MAP_W, height: MAP_H }
+      }>
         <div className="svg-host" style={{ width: "100%", height: "100%" }} />
 
         {/* Tooltip */}
@@ -217,22 +224,30 @@ export default function TunisiaMap({ data = {}, compact = false, noPanel = false
         )}
       </div>
 
-      {/* ── Panneau droit ── */}
-      {!noPanel && <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 10 }}>
+      {/* ── Panneau droit — en fillHeight, la légende passe en grille à 2
+          colonnes (Densité 2x2, Régions/Zones 2 colonnes) : une carte
+          "portrait" (haute et étroite) laisse structurellement beaucoup de
+          largeur inutilisée à côté d'elle dans un cadre presque carré (ligne
+          de cartes Aperçu Marché) - une seule colonne de texte court laissait
+          une bande vide sur toute la largeur restante (retour utilisateur,
+          capture à l'appui). 2 colonnes remplissent cette largeur ET
+          libèrent de la hauteur (4 lignes pour 7 régions au lieu de 7),
+          hauteur réinvestie en tailles de police plus lisibles. ── */}
+      {!noPanel && <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: fillHeight ? 10 : 10, overflowY: fillHeight ? "auto" : undefined }}>
 
         {/* Niveaux */}
         <div>
           <div style={{ fontSize: 7.5, fontWeight: 800, textTransform: "uppercase",
-            letterSpacing: "1.5px", color: "#B0B0B8", marginBottom: 6 }}>Densité</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            letterSpacing: "1.5px", color: "#B0B0B8", marginBottom: fillHeight ? 5 : 6 }}>Densité</div>
+          <div style={{ display: fillHeight ? "grid" : "flex", gridTemplateColumns: fillHeight ? "1fr 1fr" : undefined, flexDirection: fillHeight ? undefined : "column", columnGap: fillHeight ? 14 : undefined, rowGap: fillHeight ? 5 : undefined, gap: fillHeight ? undefined : 4 }}>
             {Object.entries(LEVEL_LABELS).map(([k, label]) => (
               <div key={k} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{
-                  width: 20, height: 6, borderRadius: 3, flexShrink: 0,
+                  width: 20, height: fillHeight ? 6 : 6, borderRadius: 3, flexShrink: 0,
                   background: LEVEL_COLORS[k],
                   boxShadow: "0 1px 4px rgba(0,0,0,0.10)",
                 }} />
-                <span style={{ fontSize: 9.5, color: "#2E2E38", fontWeight: 500 }}>{label}</span>
+                <span style={{ fontSize: fillHeight ? 10.5 : 9.5, color: "#2E2E38", fontWeight: 500 }}>{label}</span>
               </div>
             ))}
           </div>
@@ -243,28 +258,28 @@ export default function TunisiaMap({ data = {}, compact = false, noPanel = false
         {/* Régions ou zones personnalisées */}
         {!compact && <div>
           <div style={{ fontSize: 7.5, fontWeight: 800, textTransform: "uppercase",
-            letterSpacing: "1.5px", color: "#B0B0B8", marginBottom: 6 }}>
+            letterSpacing: "1.5px", color: "#B0B0B8", marginBottom: fillHeight ? 5 : 6 }}>
             {zones ? "Répartition" : "Régions"}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{ display: fillHeight ? "grid" : "flex", gridTemplateColumns: fillHeight ? "1fr 1fr" : undefined, flexDirection: fillHeight ? undefined : "column", columnGap: fillHeight ? 14 : undefined, rowGap: fillHeight ? 7 : undefined, gap: fillHeight ? undefined : 5 }}>
             {zones ? zones.map((z, i) => {
               const txtCol = z.color === "#FFE600" ? "#2E2E38" : "white";
               return (
                 <div key={z.label} style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
                   <div style={{
-                    width: 16, height: 16, borderRadius: 4, flexShrink: 0, marginTop: 1,
+                    width: fillHeight ? 15 : 16, height: fillHeight ? 15 : 16, borderRadius: 4, flexShrink: 0, marginTop: 1,
                     background: z.color,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 8, fontWeight: 900, color: txtCol,
+                    fontSize: fillHeight ? 7.5 : 8, fontWeight: 900, color: txtCol,
                     boxShadow: "0 1px 3px rgba(0,0,0,0.10)",
                     border: z.color === "#FFE600" ? "1px solid #c8a000" : "none",
                   }}>{i + 1}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 9.5, fontWeight: 700, color: "#2E2E38",
+                    <div style={{ fontSize: fillHeight ? 10 : 9.5, fontWeight: 700, color: "#2E2E38",
                       lineHeight: 1.2 }}>
                       {z.label}
                     </div>
-                    <div style={{ fontSize: 8.5, color: "#9B9BA8", marginTop: 1 }}>
+                    <div style={{ fontSize: fillHeight ? 8.5 : 8.5, color: "#9B9BA8", marginTop: 0 }}>
                       {z.pct}%
                     </div>
                   </div>
@@ -282,20 +297,20 @@ export default function TunisiaMap({ data = {}, compact = false, noPanel = false
                   onMouseEnter={() => setHovered(id)}
                   onMouseLeave={() => setHovered(null)}>
                   <div style={{
-                    width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                    width: fillHeight ? 15 : 16, height: fillHeight ? 15 : 16, borderRadius: 4, flexShrink: 0,
                     background: color,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 8, fontWeight: 900, color: txtCol,
+                    fontSize: fillHeight ? 7.5 : 8, fontWeight: 900, color: txtCol,
                     boxShadow: isHov ? "0 2px 8px rgba(0,0,0,0.18)" : "0 1px 3px rgba(0,0,0,0.10)",
                     transition: "box-shadow .15s",
                   }}>{i + 1}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 9.5, fontWeight: 700, color: "#2E2E38",
+                    <div style={{ fontSize: fillHeight ? 10 : 9.5, fontWeight: 700, color: "#2E2E38",
                       lineHeight: 1.2 }}>
                       {meta.label}
                     </div>
                     {getValue(id) && (
-                      <div style={{ fontSize: 8.5, color: "#9B9BA8", marginTop: 1 }}>
+                      <div style={{ fontSize: fillHeight ? 8.5 : 8.5, color: "#9B9BA8", marginTop: 0 }}>
                         {getValue(id)}
                       </div>
                     )}

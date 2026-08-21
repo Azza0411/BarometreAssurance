@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS anomalies_detectees (
 CREATE TABLE IF NOT EXISTS notifications (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    type        VARCHAR(50)  NOT NULL,   -- 'nouveau_document' | 'anomalie_critique' | 'echec_pipeline'
+    type        VARCHAR(50)  NOT NULL,   -- 'nouveau_document' | 'anomalie_critique' | 'echec_pipeline' | 'nouvelle_actualite' | 'nouvelle_reglementation'
     titre       VARCHAR(255) NOT NULL,
     message     TEXT         NULL,
     gravite     VARCHAR(20)  NOT NULL DEFAULT 'info',  -- 'critique' | 'avertissement' | 'info'
@@ -88,4 +88,34 @@ CREATE TABLE IF NOT EXISTS notifications (
     lu          TINYINT(1)   NOT NULL DEFAULT 0,
     INDEX idx_notifications_lu (lu),
     INDEX idx_notifications_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Actualites/reglementation deja vues (api/routes/veille.py) : ces 2
+-- sections n'avaient jusque-la aucune persistance (scrape live + cache
+-- memoire 1h a chaque requete), rendant impossible de detecter un
+-- "nouvel article/texte depuis la derniere visite". Ces 2 tables servent
+-- UNIQUEMENT a ce diff (cle naturelle = url/id de la source), alimente par
+-- pipelines/run_pipeline.py::_run_veille() a chaque execution planifiee -
+-- jamais ecrites depuis une route HTTP (les endpoints /api/actualites et
+-- /api/veille-reglementaire restent des scrapes live, inchanges).
+CREATE TABLE IF NOT EXISTS actualites_vues (
+    id                INT AUTO_INCREMENT PRIMARY KEY,
+    url               VARCHAR(500) NOT NULL,
+    titre             VARCHAR(500) NOT NULL,
+    src               VARCHAR(50)  NOT NULL,
+    date_publication  VARCHAR(20)  NULL,
+    date_ajout        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_actualites_vues_url (url),
+    INDEX idx_actualites_vues_date (date_ajout)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS reglementation_vues (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    doc_key     VARCHAR(64)  NOT NULL,  -- id (hash) ou url du texte source
+    titre       VARCHAR(500) NOT NULL,
+    src         VARCHAR(50)  NOT NULL,
+    url         VARCHAR(500) NULL,
+    date_ajout  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_reglementation_vues_key (doc_key),
+    INDEX idx_reglementation_vues_date (date_ajout)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -60,6 +60,38 @@ export function YearSelector({ year, years, onChange, noDataYears = [] }) {
   );
 }
 
+/* ── Filtre famille (conventionnelle/takaful) — 2 pills, binaire ──
+   value: "conventionnelle" | "takaful" — jamais "toutes" : les deux
+   familles ne doivent jamais être affichées simultanément (règle métier
+   n°1 du PROMPT MAÎTRE, 2026-08-06). */
+export function FamilleFilter({ value, onChange }) {
+  const options = [
+    { key:"conventionnelle", label:"Conventionnelle" },
+    { key:"takaful",         label:"Takaful" },
+  ];
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+      <span style={{ fontSize:10, fontWeight:700, color:G, letterSpacing:"1px", textTransform:"uppercase" }}>Famille</span>
+      <div style={{ display:"flex", background:"#F2F2F4", borderRadius:9, padding:3, gap:2 }}>
+        {options.map(o => {
+          const active = value === o.key;
+          return (
+            <button key={o.key} onClick={() => onChange(o.key)} style={{
+              padding:"6px 13px", border:"none", borderRadius:7, cursor:"pointer",
+              fontSize:11.5, fontWeight: active ? 800 : 600,
+              color: active ? D : G,
+              background: active ? Y : "transparent",
+              boxShadow: active ? "0 2px 8px rgba(255,230,0,.35)" : "none",
+              transition:"all .15s", whiteSpace:"nowrap",
+              fontFamily:"Barlow, system-ui, sans-serif",
+            }}>{o.label}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ══ DarkKpiBanner — bandeau KPI sombre unifié (style ApercuMarche) ══
    items: [{ label, value, sub?, delta?, pos? }]
 */
