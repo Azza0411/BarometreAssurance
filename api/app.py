@@ -16,6 +16,7 @@ Structure :
 
 import os
 import sys
+import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -52,6 +53,41 @@ app.register_blueprint(notifications.bp)
 @app.errorhandler(ValueError)
 def _handle_value_error(exc):
     return jsonify({"error": str(exc)}), 400
+
+
+# ── Veille (notifications actualités/réglementation) en tâche de fond ──────
+# La tâche planifiée Windows (schtasks, pipeline complet hebdomadaire) reste
+# en place pour la collecte CMF, mais s'est révélée peu fiable pour CE
+# symptôme précis : constaté 2026-08-22 (retour utilisateur - des actualités
+# publiées le jour même ne généraient aucune notification) qu'elle n'avait
+# JAMAIS tourné une seule fois depuis son enregistrement (mode "Interactive
+# uniquement", nécessite une session utilisateur active pile au moment
+# prévu - voir docs/pfe_phase_documentation.md, limite déjà documentée mais
+# dont l'impact réel n'avait pas été mesuré). Solution robuste : un thread
+# de fond DANS le process Flask lui-même (donc actif dès que la plateforme
+# tourne, sans dépendre d'un déclencheur OS externe fragile), qui vérifie
+# les nouveautés au démarrage puis toutes les 30 minutes. Cache 1h déjà en
+# place côté scraping (veille.py::_CACHE_TTL) → pas de sur-sollicitation
+# réseau même à cette fréquence.
+_VEILLE_CHECK_INTERVAL_SECONDS = 30 * 60
+
+
+def _veille_watcher_loop():
+    import time
+    from pipelines.run_pipeline import check_and_notify_veille
+    while True:
+        try:
+            check_and_notify_veille()
+        except Exception as exc:
+            print(f"[veille_watcher] erreur ignorée : {exc}")
+        time.sleep(_VEILLE_CHECK_INTERVAL_SECONDS)
+
+
+def _start_veille_watcher():
+    threading.Thread(target=_veille_watcher_loop, daemon=True).start()
+
+
+_start_veille_watcher()
 
 
 if __name__ == "__main__":
