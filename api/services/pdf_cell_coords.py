@@ -195,7 +195,19 @@ def _find_row_y(rows: list[tuple], ligne_norm: str):
         if score > best_score:
             best_score, best_row = score, (top_y, bot_y)
     if best_row is not None:
-        return _resolve_title_row(rows, best_row)
+        # PAS de _resolve_title_row ici (contrairement aux passes 1-3) :
+        # celui-ci part du principe qu'une ligne SANS chiffre propre est un
+        # titre de section dont le vrai total est plus bas - vrai pour du
+        # texte réel propre, mais trompeur sur une page OCR où le libellé
+        # peut être clustered SÉPARÉMENT de ses propres chiffres pour de
+        # simples raisons de mise en page/tolérance Y, sans que ce soit un
+        # vrai "titre sans total". Constaté 2026-08-22 sur STAR 2025 Annexe
+        # 13 : "Charges d'acquisition et de gestion nettes" (repérée à 86%,
+        # SA PROPRE ligne de total existe bien mais dans un cluster de mots
+        # séparé) était poussée à tort vers "Solde Financier" 3 lignes plus
+        # bas via ce mécanisme - on fait confiance à la position trouvée par
+        # la correspondance floue elle-même plutôt que de la corriger encore.
+        return best_row
 
     return None
 
