@@ -130,6 +130,24 @@ function PdfCanvas({ pdfUrl, pageNum, highlight }) {
 
       canvas.width  = Math.round(vp.width);
       canvas.height = Math.round(vp.height);
+      // Le canvas de surbrillance (overlay) DOIT être redimensionné ICI, au
+      // même moment que le canvas PDF lui-même : l'effet séparé qui dessine
+      // le surlignage (dépendances [highlight, pdfDims]) copie aussi
+      // `canvas.width/height` vers l'overlay, mais ne se redéclenche QUE
+      // quand `highlight`/`pdfDims` changent - pas quand ce canvas est
+      // redimensionné pour une AUTRE raison (nouvelle page/zoom sans
+      // changement de highlight). Sans cette synchronisation ici, l'overlay
+      // pouvait rester bloqué à sa taille par défaut (300×150, avant tout
+      // dessin) alors que le canvas PDF réel faisait déjà 638×451 - le
+      // rectangle de surlignage se dessinait alors dans un buffer trop
+      // petit et mal calé, donc invisible malgré un badge "Cellule
+      // surlignée" correct (coordonnées bien trouvées côté API) - retour
+      // utilisateur du 2026-08-22, capture à l'appui.
+      const overlayEl = overlayRef.current;
+      if (overlayEl) {
+        overlayEl.width  = canvas.width;
+        overlayEl.height = canvas.height;
+      }
 
       const ctx = canvas.getContext("2d");
       const renderTask = page.render({ canvasContext: ctx, viewport: vp });
