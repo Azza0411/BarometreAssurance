@@ -30,6 +30,12 @@ DATA_DIR = os.path.join(
 
 _cache: dict = {}
 _ROW_TOL = 4   # points — tolérance pour regrouper des mots sur la même ligne
+
+# Titre de page/annexe (ex: "Annexe N°13 : Résultat technique de la
+# catégorie d'Assurance Non-Vie au 31/12/2025") - contient quasi toujours le
+# nom du KPI cherché en toutes lettres (le titre EST le nom du tableau), un
+# faux positif systématique pour la recherche de ligne (voir _find_row_y).
+_TITLE_ROW_RE = re.compile(r"^annexe\s*n\s*\d")
 _NUMERIC_TOKEN_RE = re.compile(r"^[\d\s.,()\-]+$")
 
 
@@ -125,6 +131,20 @@ def _find_row_y(rows: list[tuple], ligne_norm: str):
     candidates = []
     for top_y, bot_y, words in rows:
         full = _norm(" ".join(w["text"] for w in words))
+        if _TITLE_ROW_RE.match(full):
+            # Le TITRE de la page/annexe (ex: "Annexe N°13 : Résultat
+            # technique de la catégorie d'Assurance Non-Vie...") contient
+            # presque toujours le nom du KPI cherché en toutes lettres (ex.
+            # "Résultat technique") - un faux positif systématique, pas
+            # spécifique à une société : constaté 2026-08-22 sur STAR 2025
+            # Annexe 13, où la VRAIE ligne de données "Résultat technique"
+            # a été totalement ratée par l'OCR (absente, pas seulement mal
+            # lue) - sans cette exclusion, le titre était surligné à tort à
+            # la place, "trouvé" alors que la vraie donnée est introuvable.
+            # Mieux vaut laisser cette ligne échouer les passes suivantes
+            # (jusqu'à "ligne_introuvable" si rien d'autre ne matche) que de
+            # renvoyer silencieusement une coordonnée dans le titre.
+            continue
         if ligne_norm in full:
             candidates.append((len(full), top_y, bot_y, words))
     if candidates:
@@ -135,6 +155,9 @@ def _find_row_y(rows: list[tuple], ligne_norm: str):
     tokens = ligne_norm.split()
     candidates = []
     for top_y, bot_y, words in rows:
+        full = _norm(" ".join(w["text"] for w in words))
+        if _TITLE_ROW_RE.match(full):
+            continue
         word_norms = [_norm(w["text"]) for w in words]
         # Vérifier que tous les tokens sont présents quelque part dans la ligne
         if all(any(t in wn for wn in word_norms) for t in tokens):
@@ -154,6 +177,8 @@ def _find_row_y(rows: list[tuple], ligne_norm: str):
     merged = _merge_wrapped_titles(rows)
     candidates = []
     for top_y, bot_y, full, value_row in merged:
+        if _TITLE_ROW_RE.match(full):
+            continue
         if ligne_norm in full:
             candidates.append((len(full), top_y, bot_y, value_row))
     if candidates:
@@ -187,6 +212,9 @@ def _find_row_y(rows: list[tuple], ligne_norm: str):
     target = ligne_norm.replace(" ", "")
     best_score, best_row = 82, None
     for top_y, bot_y, words in rows:
+        full_raw = _norm(" ".join(w["text"] for w in words))
+        if _TITLE_ROW_RE.match(full_raw):
+            continue
         label_words = [w for w in words if not _NUMERIC_TOKEN_RE.match(w["text"])]
         if not label_words:
             continue
