@@ -18,6 +18,7 @@ import re
 import sys
 import unicodedata
 import pdfplumber
+from rapidfuzz import fuzz
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from extraction.bilan_kpi_extractor import _OcrFallbackPage
@@ -160,6 +161,41 @@ def _find_row_y(rows: list[tuple], ligne_norm: str):
         if value_row is not None:
             return value_row
         return _resolve_title_row(rows, (top_y, bot_y))
+
+    # Passe 4 : correspondance FLOUE (repli, uniquement si les passes 1-3
+    # (toutes basées sur une correspondance EXACTE en sous-chaîne) échouent
+    # totalement) - nécessaire sur les pages SCANNÉES (repli OCR, voir
+    # _OcrFallbackPage) où l'OCR peut suffisamment dégrader un libellé pour
+    # qu'aucune sous-chaîne exacte ne survive, même si le contenu reste
+    # globalement reconnaissable (ex: "Charges d'acquisition et de gestion
+    # nettes" lu "Chargesd'acqusion gestonnetes" par l'OCR - espaces et
+    # lettres perdus, mais 86% de similarité globale - découvert le
+    # 2026-08-22 sur STAR 2025, Annexe 13, retour utilisateur avec capture
+    # d'écran montrant la ligne bien présente et lisible visuellement dans
+    # le PDF alors que "ligne_introuvable" était renvoyé). Seuil élevé (82%)
+    # pour rester sélectif : ce repli s'applique à TOUTES les recherches,
+    # pas seulement celles sur page scannée, donc doit rester strict pour ne
+    # pas accrocher à tort une ligne voisine sur une page à texte réel
+    # propre (où les passes 1-3, plus précises, trouvent déjà tout ce qui
+    # est légitimement trouvable).
+    # Comparaison sur les mots NON numériques uniquement (comme
+    # _row_has_digit/_count_numeric_tokens) : la plupart des lignes de
+    # données ont leur libellé collé aux montants dans le même "mot" OCR
+    # (ex: "Frais d'acquisition -16423 ..."), et un ratio global sur la
+    # ligne ENTIÈRE serait faussé par cette longueur ajoutée - déjà le motif
+    # documenté sur _pick_shortest, pour la même raison.
+    target = ligne_norm.replace(" ", "")
+    best_score, best_row = 82, None
+    for top_y, bot_y, words in rows:
+        label_words = [w for w in words if not _NUMERIC_TOKEN_RE.match(w["text"])]
+        if not label_words:
+            continue
+        full = _norm(" ".join(w["text"] for w in label_words)).replace(" ", "")
+        score = fuzz.ratio(full, target)
+        if score > best_score:
+            best_score, best_row = score, (top_y, bot_y)
+    if best_row is not None:
+        return _resolve_title_row(rows, best_row)
 
     return None
 
