@@ -791,6 +791,7 @@ def get_cell_coords(code: str, annee: int, page_num: int,
 
     result = None
     reason = "erreur"
+    page_rotation = 0
     try:
         with pdfplumber.open(path) as pdf:
             if page_num < 1 or page_num > len(pdf.pages):
@@ -799,6 +800,7 @@ def get_cell_coords(code: str, annee: int, page_num: int,
             page   = pdf.pages[page_num - 1]
             page_w = float(page.width)
             page_h = float(page.height)
+            page_rotation = page.rotation
 
             # ── 1. Toutes les cellules PDF de la page ────────────────────────
             tables = page.find_tables()
@@ -909,5 +911,53 @@ def get_cell_coords(code: str, annee: int, page_num: int,
         print(f"[pdf_cell_coords] ERROR {code} {annee} p{page_num}: {exc}", file=sys.stderr)
         reason = "erreur"
 
+    if result is not None and page_rotation % 360 != 0:
+        result = _rotate_to_native(result, page_rotation)
+
     _cache[cache_key] = (result, None if result else reason)
     return _cache[cache_key]
+
+
+def _rotate_to_native(result, rotation):
+    """pdfplumber applique /Rotate à `page.width`/`page.height` ET aux
+    coordonnées des mots (elles sont donc déjà dans le repère "visuel"
+    post-rotation, cohérent avec `page_width`/`page_height` tels que
+    renvoyés ci-dessus) — mais pdf.js côté frontend (PDFPageProxy.
+    getViewport()/convertToViewportPoint(), voir KpiDetail.jsx) attend des
+    coordonnées dans le repère NATIF (avant rotation) : c'est lui qui
+    applique la rotation via son propre viewport pour l'affichage. Sans
+    cette conversion, une page pivotée (ex: Annexe 13 imprimée en paysage
+    dans un document par ailleurs portrait, /Rotate 90) plaçait le
+    surlignage à un endroit incorrect (ou hors champ), alors que la page
+    non pivotée voisine (Annexe 12, /Rotate 0) fonctionnait déjà
+    correctement avec exactement le même mécanisme côté frontend —
+    constaté 2026-08-22 sur STAR 2025 (page 45 vs page 44), retour
+    utilisateur avec capture d'écran comparative.
+
+    `result["page_width"/"page_height"]` sont mis à jour en conséquence
+    (dimensions natives, dimensions permutées pour 90°/270°) pour rester
+    cohérents avec les coordonnées renvoyées, même si le frontend ne les
+    utilise pas actuellement pour la conversion elle-même (il ne fait
+    confiance qu'à son propre `viewport`, calculé indépendamment depuis le
+    PDF)."""
+    x0, y0, x1, y1 = result["x0"], result["y0"], result["x1"], result["y1"]
+    page_w, page_h = result["page_width"], result["page_height"]
+    rotation = rotation % 360
+    if rotation == 90:
+        nx0, ny0 = page_h - y0, x0
+        nx1, ny1 = page_h - y1, x1
+        native_w, native_h = page_h, page_w
+    elif rotation == 270:
+        nx0, ny0 = y0, page_w - x0
+        nx1, ny1 = y1, page_w - x1
+        native_w, native_h = page_h, page_w
+    elif rotation == 180:
+        nx0, ny0 = page_w - x0, page_h - y0
+        nx1, ny1 = page_w - x1, page_h - y1
+        native_w, native_h = page_w, page_h
+    else:
+        return result
+    result["x0"], result["x1"] = min(nx0, nx1), max(nx0, nx1)
+    result["y0"], result["y1"] = min(ny0, ny1), max(ny0, ny1)
+    result["page_width"], result["page_height"] = native_w, native_h
+    return result
