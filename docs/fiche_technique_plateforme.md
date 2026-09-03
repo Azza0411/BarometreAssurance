@@ -31,8 +31,7 @@
 1. **LLM = Groq, pas Claude.** Le `README.md` racine et le `docs/prompt_handoff_ia_technique.md` mentionnent une clé "Claude API" (`VITE_ANTHROPIC_KEY`). Le code réel (`chatbot_portable/app.py`) appelle exclusivement **Groq** (modèle `openai/gpt-oss-120b`). Aucune clé Anthropic nulle part dans le dépôt. Le widget Chatbot affiche lui-même "Groq LLM" dans son pied de page.
 2. **Le RAG n'a pas d'embeddings** — retrieval **TF-IDF fait main**, pas de base vectorielle.
 3. **"SHAP" = TreeSHAP natif XGBoost**, pas la librairie Python `shap` (absente de `requirements.txt`).
-4. **6 sources de collecte "documents", pas 5** : CMF, FTUSA, CGA, BVMT, INS, **+ ENQUETE** (données d'enquête Excel, `get_or_create_source(conn, "ENQUETE", ...)`).
-5. **+ 4 flux de "veille"** distincts, dans un mécanisme séparé (pas dans `documents`/`kpi_values` mais dans `actualites_vues`/`reglementation_vues`) : **IlBoursa**, **Atlas Magazine** (actualités), **CGA** et **FTUSA** en version "textes réglementaires" (lois/décrets/circulaires — distinct de leurs rapports KPI). Ces 4 flux ne vivent **pas** dans `scraping/` mais dans `api/routes/veille.py`.
+4. **8 sources d'origine, pas 5** : CMF, FTUSA, CGA, BVMT, INS, **Atlas Magazine, IlBoursa, ENQUETE**. CGA et FTUSA alimentent chacune deux circuits différents (rapports KPI dans `documents`/`kpi_values` **et** textes réglementaires dans `actualites_vues`/`reglementation_vues`, ce second circuit vivant dans `api/routes/veille.py`, pas dans `scraping/`) — mais restent une seule source d'origine chacune.
 6. **README obsolète sur plusieurs points** : indique React 18 (le code utilise React 19), et une clé `VITE_ANTHROPIC_KEY` inexistante dans le code.
 7. **Frontend : pages mortes/non finalisées** : `/positionnement` (stub, données codées en dur), `/geographie` (100% données mock), composants orphelins (`Sidebar.jsx`, `PageHeader.jsx`, `KpiCard.jsx`, `components/Positionnement.jsx`), pages non routées (`CarteAfrique.jsx`, `EtatGeneral.jsx`, `FicheEntreprise.jsx`).
 8. **`react-simple-maps` est une dépendance installée mais inutilisée** — la carte de Tunisie est un SVG statique manipulé à la main.
@@ -110,7 +109,7 @@ Sites web sources (CMF, FTUSA, CGA, BVMT, INS)
 | Backend | Python 3.11 / Flask 3 | `requirements-api.txt` | Framework léger, cohérent avec un backend dont la logique métier (extraction PDF, calculs) est déjà en Python pur — pas besoin d'un framework "batteries incluses" type Django pour une API interne sans admin ni auth |
 | Base de données | MySQL 8 | `MarketInsurance` | Modèle **relationnel** naturel pour des données structurées (société × document × KPI), avec contraintes d'unicité utilisées comme garde-fou anti-doublon au niveau BDD (`uq_document_tableau_kpi`) |
 | Accès BDD | `pymysql` (pas d'ORM) | | Accès direct pour garder un contrôle total sur les requêtes de migration idempotente (`information_schema`, jamais de `DROP TABLE`) — un ORM aurait masqué ce contrôle fin |
-| Scraping | `selenium` (CMF) / `requests` + regex (FTUSA/CGA/BVMT/INS) | | Selenium réservé au **seul** cas qui l'exige réellement (widget JS dynamique du portail CMF) — `requests` partout ailleurs, plus rapide et plus simple à maintenir |
+| Scraping | `selenium` (CMF) / `requests`+regex (FTUSA, CGA, BVMT, INS, Atlas Magazine, IlBoursa) | | Selenium réservé au **seul** cas qui l'exige réellement (widget JS dynamique du portail CMF) — `requests` partout ailleurs, plus rapide et plus simple à maintenir (détail Partie 3) |
 | Extraction PDF | `pdfplumber` | ≥0.10.0 | Donne accès aux mots et à leurs coordonnées (`extract_words()`), ce qui permet de **reconstruire soi-même** les lignes/colonnes plutôt que de dépendre de `extract_tables()`, jugé peu fiable sur les PDF réels (cellules fusionnées, alignements irréguliers) |
 | OCR | Tesseract (`pytesseract`) | modèles `fra`, `ara`, `eng` | Solution OCR **gratuite et locale** (pas d'appel API externe, donc pas de coût récurrent ni de dépendance réseau), avec support multilingue (français/arabe) nécessaire pour AL_AMANAH_TAKAFUL |
 | Correspondance floue | `rapidfuzz` | | Implémentation C++ de la distance de Levenshtein, largement plus rapide que `difflib` natif Python — utilisé au moment de l'extraction (repli) et pour le surlignage PDF |
@@ -129,42 +128,41 @@ Sites web sources (CMF, FTUSA, CGA, BVMT, INS)
 
 ## 3. Couche 1 — Collecte des données (scraping)
 
-**10 flux de collecte distincts au total**, répartis en 2 mécanismes différents :
+**8 sources d'origine.** Deux d'entre elles (CGA et FTUSA) alimentent chacune deux circuits différents dans l'application — des rapports chiffrés (KPI) *et* des textes réglementaires — mais restent une seule source d'origine chacune.
 
-### 3.1 Les 6 sources "documents" (alimentent `documents`/`kpi_values`, `scraping/` + `scripts/seed_enquete_marche.py`)
+![Schéma de la couche de scraping](diagrams/scraping_architecture.png)
 
-| Source | Fichier | Cible | Méthode | Ce qui est collecté |
-|---|---|---|---|---|
-| **CMF** | `scraping/cmf_portal_scraper.py` | Portail CMF (Conseil du Marché Financier) | **Selenium** (Chrome headless) | États financiers annuels au 31/12 des 24 compagnies, sur ~10-11 ans glissants |
-| **FTUSA** | `scraping/ftusa_scraper.py` | ftusanet.org | `requests` + `pdfplumber` | Rapports annuels sectoriels (Fédération Tunisienne des Sociétés d'Assurances) |
-| **CGA** | `scraping/cga_scraper.py` | cga.gov.tn | `requests` + regex | Rapports annuels du régulateur (Comité Général des Assurances) — réseau d'agences, primes par branche |
-| **BVMT** | `scraping/bvmt_scraper.py` | tunis-stockexchange.com | `requests` + regex | Statut de cotation, rapports ESG, données de marché (cours, ISIN), bulletin boursier officiel |
-| **INS** | `scraping/ins_scraper.py` | dataportal.ins.tn + ins.tn | API POST XML + repli HTML | Population totale, PIB (Institut National de la Statistique) |
-| **ENQUETE** | `scripts/seed_enquete_marche.py` + `extraction/enquete_extractor.py` | Fichier Excel fourni (`Survey CX_...xlsx`) | Lecture directe (pas de scraping web) | Enquête de satisfaction/perception client (segments, régions, canaux) |
+Trois méthodes techniques différentes selon la nature du site, et une chaîne commune de 4 étapes une fois la donnée récupérée :
 
-**Justification technique par scraper** :
-- **Selenium pour CMF uniquement** : le sélecteur de société est un widget JavaScript dynamique (plugin "Chosen" Drupal) — un simple `requests`+regex ne peut pas interagir avec un composant rendu côté client. Repli sur le `<select>` HTML natif si le widget n'a pas chargé.
-- **`requests`+regex pour FTUSA/CGA/BVMT/INS** : pages HTML majoritairement statiques, plus simple/rapide/robuste que d'ouvrir un navigateur complet.
-- **Détection d'année par contenu du PDF (FTUSA)**, pas par nom de fichier — jugé "trop peu fiable sur 25 ans d'archives" (ex. fichiers nommés `Rapport-FTUSA-DEFINITIF.pdf`).
-- **Découverte dynamique des sociétés cotées (BVMT)** plutôt qu'une liste codée en dur — évite une maintenance manuelle si une société entre/sort de la cote.
-- **Résilience réseau générique** : tous les scrapers `requests` partagent un helper de retry (3 tentatives, pause 1.5s) car les sites cibles répondent parfois par un simple timeout.
-
-### 3.2 Les 4 flux de "veille" (mécanisme séparé, `api/routes/veille.py`)
-
-Ces flux **ne produisent pas de KPI** — ils alimentent les pages Actualités et Veille réglementaire, avec un cache mémoire (TTL 1h) et une détection de nouveauté propre (`actualites_vues`/`reglementation_vues`), indépendante du pipeline KPI.
-
-| Flux | Cible | Nature |
+| Méthode | Sources concernées | Pourquoi ce choix |
 |---|---|---|
-| **IlBoursa** | ilboursa.com, 7 tickers boursiers codés en dur | Actualités/cotations des compagnies cotées en bourse |
-| **Atlas Magazine** | atlas-mag.net/fr/news/tunisia | Actualités sectorielles assurance Tunisie/Afrique |
-| **CGA (réglementaire)** | cga.gov.tn | Textes légaux (lois, décrets, circulaires) — distinct des rapports KPI du même régulateur |
-| **FTUSA (réglementaire)** | ftusanet.org | Codes et textes professionnels |
+| **Selenium** (navigateur piloté, invisible) | CMF uniquement | Le sélecteur de société sur ce portail est un widget JavaScript dynamique (plugin "Chosen" Drupal) — une simple requête HTTP ne peut pas interagir avec un composant rendu côté client. Repli sur le `<select>` HTML natif si le widget n'a pas chargé. |
+| **`requests` + regex** (requête HTTP directe) | FTUSA, CGA, BVMT, INS, Atlas Magazine, IlBoursa | Pages HTML majoritairement statiques — plus simple, plus rapide et plus robuste que d'ouvrir un navigateur complet pour une page qui ne le nécessite pas. |
+| **Lecture de fichier local** | ENQUETE | Ce n'est pas un site web : les données viennent d'un fichier Excel (`Survey CX_...xlsx`) fourni directement — pas de scraping à proprement parler. |
 
-Scraping via **BeautifulSoup** + `ThreadPoolExecutor(max_workers=8)` (paralléliser la récupération d'image/résumé par article).
+**Le déroulé concret pour CMF** (le scraper le plus complexe, donc le plus représentatif) : ouverture d'un Chrome invisible → sélection de la société dans le menu déroulant → lancement de la recherche → **filtrage** (voir ci-dessous) → vérification que le lien du PDF répond → **déduplication** (voir ci-dessous) → enregistrement en base des métadonnées seulement (jamais le PDF lui-même, il sera re-téléchargé à la demande). En cas d'échec en cours de route, le programme relance tout depuis le début (jusqu'à 3 fois) plutôt que de reprendre au milieu — un plantage en cours de route laisse le navigateur dans un état difficile à récupérer proprement.
 
-### 3.3 Reconnaissance des sociétés — `config/company_registry.py`
+**Filtrage** : parmi tous les documents qu'une source propose, ne garder que ceux qui sont réellement pertinents. Le critère exact dépend de la source — exemple concret pour CMF ci-dessous.
 
-`COMPANY_REGISTRY` (24 sociétés, `{cmf_name, aliases}`) + `find_code_by_name()` : rapprochement par **similarité de Jaccard pondérée** — chaque mot d'un alias est pondéré par l'inverse du nombre de sociétés qui le partagent (un mot rare comme "VIE" compte plus qu'un mot générique comme "ASSURANCES"), avec une liste de stopwords français. Corrige un bug réel où "El Amana Takaful" matchait à tort "AMI" (alias "El Ittihad") sur le seul mot commun "EL".
+![Exemple de filtrage — cas du scraper CMF](diagrams/filtrage_exemple_cmf.png)
+
+**Déduplication** : avant d'enregistrer un document, le programme vérifie dans la base de données si un document identique (même société, même source, même année) existe déjà. Si oui, rien n'est fait ; si non, il est enregistré. Ça évite qu'un même rapport soit dupliqué en base à chaque passage du scraper.
+
+**Résilience réseau** : tous les scrapers `requests` partagent un mécanisme de nouvelle tentative (3 essais, pause de 1,5 seconde entre chaque) car les sites cibles répondent parfois par un simple délai d'attente dépassé sans raison particulière.
+
+**Détails propres à certaines sources** :
+- **FTUSA** : l'année d'un rapport est détectée en lisant le **contenu** du PDF plutôt que son nom de fichier — jugé trop peu fiable sur 25 ans d'archives (ex. fichiers nommés `Rapport-FTUSA-DEFINITIF.pdf`).
+- **BVMT** : la liste des sociétés cotées en bourse est découverte dynamiquement plutôt que codée en dur — évite une maintenance manuelle si une société entre ou sort de la cote.
+- **CGA / FTUSA (réglementaire)** : ce deuxième circuit (lois, décrets, circulaires côté CGA ; codes professionnels côté FTUSA) alimente la page "Veille réglementaire", avec un cache mémoire (1h) et une détection de nouveauté propre (`actualites_vues`/`reglementation_vues`), indépendante des tables `documents`/`kpi_values` utilisées par le reste du pipeline.
+- **Atlas Magazine / IlBoursa** : scraping via BeautifulSoup, exécuté en parallèle (`ThreadPoolExecutor`) pour aller plus vite ; alimentent la page Actualités, pas les KPI.
+
+### Reconnaissance automatique des sociétés — `config/company_registry.py`
+
+Problème concret : quand un scraper lit un nom sur un site (ex. "Assurances Maghrebia Vie"), comment reconnaître automatiquement qu'il s'agit du code interne `MAGHREBIA_VIE` et pas de `MAGHREBIA` (la maison-mère) ?
+
+`COMPANY_REGISTRY` (24 sociétés, `{cmf_name, aliases}`) + `find_code_by_name()` : rapprochement par **similarité de Jaccard pondérée** — chaque mot d'un alias est pondéré par l'inverse du nombre de sociétés qui le partagent. Un mot générique comme "ASSURANCES" (présent dans presque tous les noms) compte très peu ; un mot rare et distinctif comme "VIE" ou "MAGHREBIA" compte beaucoup plus. Sans cette pondération, deux sociétés au nom proche obtiendraient un score de correspondance quasi identique face à un même texte source.
+
+Bug réel corrigé grâce à cette pondération : "El Amana Takaful" était mal reconnu et confondu avec la société "AMI" (dont un alias est "El Ittihad") — les deux ne partageaient que le mot "EL", bien trop générique pour être un indice de correspondance fiable.
 
 ---
 
