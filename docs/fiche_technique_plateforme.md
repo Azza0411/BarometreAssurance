@@ -142,11 +142,19 @@ Trois méthodes techniques différentes selon la nature du site, et une chaîne 
 
 **Le déroulé concret pour CMF** (le scraper le plus complexe, donc le plus représentatif) : ouverture d'un Chrome invisible → sélection de la société dans le menu déroulant → lancement de la recherche → **filtrage** (voir ci-dessous) → vérification que le lien du PDF répond → **déduplication** (voir ci-dessous) → enregistrement en base des métadonnées seulement (jamais le PDF lui-même, il sera re-téléchargé à la demande). En cas d'échec en cours de route, le programme relance tout depuis le début (jusqu'à 3 fois) plutôt que de reprendre au milieu — un plantage en cours de route laisse le navigateur dans un état difficile à récupérer proprement.
 
+**Extrait de code réel — `scraping/cmf_portal_scraper.py`, méthode `run()` (lignes 310-328)** : c'est exactement ce mécanisme de nouvelle tentative complète, pas juste de l'étape en échec.
+
+![Code réel du mécanisme de nouvelle tentative](diagrams/code_scraping_retry.png)
+
 **Filtrage** : parmi tous les documents qu'une source propose, ne garder que ceux qui sont réellement pertinents. Le critère exact dépend de la source — exemple concret pour CMF ci-dessous.
 
 ![Exemple de filtrage — cas du scraper CMF](diagrams/filtrage_exemple_cmf.png)
 
 **Déduplication** : avant d'enregistrer un document, le programme vérifie dans la base de données si un document identique (même société, même source, même année) existe déjà. Si oui, rien n'est fait ; si non, il est enregistré. Ça évite qu'un même rapport soit dupliqué en base à chaque passage du scraper.
+
+**Extrait de code réel — `scraping/cmf_portal_scraper.py`, méthode `extract_and_store()` (lignes 281-298)** : `document_exists()` (ligne 289) est l'appel qui fait exactement cette vérification ; `save_document()` (ligne 296) n'enregistre que le nom, l'année et le lien — jamais le fichier PDF.
+
+![Code réel de la déduplication et de l'enregistrement](diagrams/code_scraping_dedup.png)
 
 **Résilience réseau** : tous les scrapers `requests` partagent un mécanisme de nouvelle tentative (3 essais, pause de 1,5 seconde entre chaque) car les sites cibles répondent parfois par un simple délai d'attente dépassé sans raison particulière.
 
