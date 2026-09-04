@@ -1,8 +1,14 @@
 -- Schéma pour le stockage des états financiers/rapports de plusieurs sources.
 -- `sources`     : une ligne par source de données (CMF, FTUSA, et d'autres à venir).
--- `cmf`         : une ligne par société suivie (pertinent pour les sources qui
+-- `societes`    : une ligne par société suivie (pertinent pour les sources qui
 --                 publient par société, comme CMF ; NULL pour les sources
---                 sectorielles comme FTUSA).
+--                 sectorielles comme FTUSA). Nommée `societes` (et non `cmf`,
+--                 son ancien nom historique de l'époque où seul le portail CMF
+--                 était scrapé) pour ne pas la confondre avec la source "CMF"
+--                 de la table `sources` — elle sert à toutes les sources, pas
+--                 seulement à CMF. La colonne `cmf_id` (FK vers cette table)
+--                 garde son nom : c'est un identifiant de colonne courant,
+--                 sans ambiguïté avec la source CMF.
 -- `documents`   : une ligne par document (état financier annuel, rapport
 --                 sectoriel...) trouvé pour une source.
 -- `kpi_values`  : une ligne par KPI extrait d'un document (Bilan, Annexe 12, Annexe 13...).
@@ -13,7 +19,7 @@ CREATE TABLE IF NOT EXISTS sources (
     lien VARCHAR(500) NOT NULL           -- URL de base du site source
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS cmf (
+CREATE TABLE IF NOT EXISTS societes (
     id             INT AUTO_INCREMENT PRIMARY KEY,
     code           VARCHAR(50)  NOT NULL UNIQUE,   -- code court (ex: STAR, COMAR)
     nom_entreprise VARCHAR(255) NOT NULL            -- nom exact tel qu'affiché sur le portail CMF
@@ -32,7 +38,7 @@ CREATE TABLE IF NOT EXISTS documents (
     date_ajout   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_document_source_cmf_annee (source_id, cmf_id, annee),
     CONSTRAINT fk_documents_source FOREIGN KEY (source_id) REFERENCES sources(id),
-    CONSTRAINT fk_documents_cmf FOREIGN KEY (cmf_id) REFERENCES cmf(id)
+    CONSTRAINT fk_documents_cmf FOREIGN KEY (cmf_id) REFERENCES societes(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- valeur_nombre / valeur_texte : un seul des deux est renseigné par KPI.

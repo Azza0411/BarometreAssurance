@@ -97,7 +97,7 @@ def list_documents_by_source(conn, source_nom: str):
         SELECT d.id, d.cmf_id, c.code, d.annee
         FROM documents d
         JOIN sources s ON s.id = d.source_id
-        LEFT JOIN cmf c ON c.id = d.cmf_id
+        LEFT JOIN societes c ON c.id = d.cmf_id
         WHERE s.nom = ?
         ORDER BY d.annee DESC
     """, (source_nom,)).fetchall()
@@ -691,7 +691,7 @@ def _fetch_kpi_for_company_exact(conn, kpi_name: str, company_code: str, year: i
     rows = conn.execute(f"""
         SELECT d.annee, k.valeur_nombre, k.valeur_texte, s.nom
         FROM kpi_values k JOIN documents d ON d.id=k.document_id
-        JOIN sources s ON s.id=d.source_id JOIN cmf c ON c.id=d.cmf_id
+        JOIN sources s ON s.id=d.source_id JOIN societes c ON c.id=d.cmf_id
         WHERE c.code=? AND k.kpi=? {year_clause} ORDER BY d.annee
     """, params).fetchall()
     results = []
@@ -762,13 +762,13 @@ def fetch_explain_context(conn, kpi_name: str, company_code: str, year: int) -> 
         if isinstance(cv, (int, float)) and isinstance(pv, (int, float)) and pv:
             yoy_pct = round((cv - pv) / abs(pv) * 100, 1)
 
-    # INNER JOIN sur cmf exclut naturellement les sources sectorielles
+    # INNER JOIN sur societes exclut naturellement les sources sectorielles
     # (FTUSA/CGA/INS, cmf_id NULL) — ne garde que les vraies compagnies.
     sector_rows = conn.execute("""
         SELECT c.code, k.valeur_nombre
         FROM kpi_values k
         JOIN documents d ON d.id = k.document_id
-        JOIN cmf c ON c.id = d.cmf_id
+        JOIN societes c ON c.id = d.cmf_id
         WHERE k.kpi = ? AND d.annee = ? AND k.valeur_nombre IS NOT NULL
     """, (resolved_kpi, year)).fetchall()
     values = [(code, v) for code, v in sector_rows if v is not None]
@@ -796,7 +796,7 @@ def fetch_ranking(conn, kpi_name: str, year: int, limit: int = 10) -> list[dict]
         rows = conn.execute("""
             SELECT c.code, c.nom_entreprise, k.valeur_nombre, k.valeur_texte, s.nom
             FROM kpi_values k JOIN documents d ON d.id=k.document_id
-            JOIN sources s ON s.id=d.source_id JOIN cmf c ON c.id=d.cmf_id
+            JOIN sources s ON s.id=d.source_id JOIN societes c ON c.id=d.cmf_id
             WHERE k.kpi=? AND d.annee=? AND k.valeur_nombre IS NOT NULL
               AND k.valeur_nombre BETWEEN -500 AND ?
             ORDER BY k.valeur_nombre DESC LIMIT ?
@@ -805,7 +805,7 @@ def fetch_ranking(conn, kpi_name: str, year: int, limit: int = 10) -> list[dict]
         rows = conn.execute("""
             SELECT c.code, c.nom_entreprise, k.valeur_nombre, k.valeur_texte, s.nom
             FROM kpi_values k JOIN documents d ON d.id=k.document_id
-            JOIN sources s ON s.id=d.source_id JOIN cmf c ON c.id=d.cmf_id
+            JOIN sources s ON s.id=d.source_id JOIN societes c ON c.id=d.cmf_id
             WHERE k.kpi=? AND d.annee=? AND k.valeur_nombre IS NOT NULL
             ORDER BY k.valeur_nombre DESC LIMIT ?
         """, (kpi_name, year, limit)).fetchall()
@@ -902,7 +902,7 @@ def fetch_available_years(conn) -> list[int]:
 
 def fetch_available_companies(conn) -> list[str]:
     rows = conn.execute("""
-        SELECT DISTINCT c.code FROM cmf c JOIN documents d ON d.cmf_id=c.id ORDER BY c.code
+        SELECT DISTINCT c.code FROM societes c JOIN documents d ON d.cmf_id=c.id ORDER BY c.code
     """).fetchall()
     return [r[0] for r in rows]
 
@@ -916,7 +916,7 @@ BASE DE DONNÉES SQLite — marché des assurances en Tunisie
 
 TABLES :
   sources(id, nom)           -- nom ∈ {'CMF','FTUSA','INS','CGA'}
-  cmf(id, code, nom_entreprise)  -- compagnies d'assurance
+  societes(id, code, nom_entreprise)  -- compagnies d'assurance
   documents(id, source_id, cmf_id, annee)
   kpi_values(id, document_id, kpi, valeur_nombre, valeur_texte)
 
@@ -941,7 +941,7 @@ RÈGLES SQL :
   1. Primes/actifs CMF : diviser valeur_nombre par 1000000 pour MDT
   2. Classements : filtrer valeur_nombre BETWEEN 0.1 AND 500 pour '%'
   3. TOUJOURS utiliser d.annee = <année> dans le WHERE
-  4. Données compagnie : JOIN cmf c ON c.id = d.cmf_id AND c.code = '<CODE>'
+  4. Données compagnie : JOIN societes c ON c.id = d.cmf_id AND c.code = '<CODE>'
   5. Données marché : WHERE s.nom = 'FTUSA' AND d.cmf_id IS NULL
 """
 

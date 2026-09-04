@@ -46,7 +46,7 @@ CREATE TABLE sources (
     lien TEXT NOT NULL
 );
 
-CREATE TABLE cmf (
+CREATE TABLE societes (
     id             INTEGER PRIMARY KEY,
     code           TEXT NOT NULL UNIQUE,
     nom_entreprise TEXT NOT NULL
@@ -61,7 +61,7 @@ CREATE TABLE documents (
     lien       TEXT NOT NULL,
     date_ajout TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (source_id) REFERENCES sources(id),
-    FOREIGN KEY (cmf_id) REFERENCES cmf(id)
+    FOREIGN KEY (cmf_id) REFERENCES societes(id)
 );
 
 CREATE TABLE kpi_values (
@@ -104,10 +104,10 @@ def _rebuild_sqlite(sqlite_path: str) -> dict:
             sqlite_conn.executemany("INSERT INTO sources (id, nom, lien) VALUES (?, ?, ?)", rows)
             counts["sources"] = len(rows)
 
-            cur.execute("SELECT id, code, nom_entreprise FROM cmf")
+            cur.execute("SELECT id, code, nom_entreprise FROM societes")
             rows = cur.fetchall()
-            sqlite_conn.executemany("INSERT INTO cmf (id, code, nom_entreprise) VALUES (?, ?, ?)", rows)
-            counts["cmf"] = len(rows)
+            sqlite_conn.executemany("INSERT INTO societes (id, code, nom_entreprise) VALUES (?, ?, ?)", rows)
+            counts["societes"] = len(rows)
 
             cur.execute("SELECT id, source_id, cmf_id, nom_pdf, annee, lien FROM documents")
             rows = cur.fetchall()
