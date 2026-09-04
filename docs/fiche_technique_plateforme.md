@@ -65,9 +65,28 @@
 
 ![Schéma de la couche de scraping](diagrams/scraping_architecture.png)
 
-### Déroulé complet — cas CMF (le plus complexe, donc représentatif)
+## DÉTAIL PAR SOURCE
 
-![Déroulé complet du scraper CMF](diagrams/cmf_workflow.png)
+### CMF
+
+![Scraper CMF — étapes et fonctions réelles appelées](diagrams/source_cmf_steps.png)
+
+| Fonction (`scraping/cmf_portal_scraper.py`) | Rôle |
+|---|---|
+| `__init__` | Configure Chrome (headless), connecte la base, fixe la fenêtre 10-11 ans |
+| `open_page` | Charge la page du portail CMF |
+| `select_company` | Sélectionne la société (widget Chosen, repli `<select>` natif) |
+| `_wait_for_filtered_options` | Attend que le menu affiche les résultats filtrés |
+| `_match_option` | Trouve l'option qui correspond exactement au nom cherché |
+| `click_search` | Clique sur "Rechercher", attend le rechargement de la page |
+| `_parse_current_page` | Lit les lignes de résultats affichées (année, période, lien PDF) |
+| `_go_to_next_page` | Passe à la page suivante des résultats, si elle existe |
+| `is_annual_statement_31_12` | Vérifie qu'un document est annuel et daté du 31/12 |
+| `collect_annual_statements` | Parcourt toutes les pages, applique le filtre, garde 10-11 ans |
+| `_verify_pdf_link` | Vérifie que le lien PDF répond (HEAD, repli GET) |
+| `extract_and_store` | Déduplique et enregistre les métadonnées en base |
+| `run` | Orchestre tout le déroulé, relance ×3 en cas de timeout |
+| `close` | Ferme le navigateur Chrome |
 
 En cas d'échec à n'importe quelle étape : relance complète (×3), jamais une reprise partielle.
 
