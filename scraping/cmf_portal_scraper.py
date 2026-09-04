@@ -55,6 +55,7 @@ REQUEST_HEADERS = {
 
 
 class CMFPortalScraper:
+    # Utilité : configure Chrome (headless), connecte la base, fixe la fenêtre 10-11 ans
     def __init__(self, company_registry, headless=True):
         self.registry = company_registry  # dict des 24 sociétés (config/company_registry.py)
 
@@ -86,11 +87,13 @@ class CMFPortalScraper:
     # Navigation
     # ------------------------------------------------------------------ #
 
+    # Utilité : charge la page du portail CMF
     def open_page(self):
         print("[STEP] Ouverture de la page CMF...")
         self.driver.get(CMF_URL)  # charge la page du portail
         self.wait.until(EC.presence_of_element_located((By.ID, SELECT_FIELD_ID)))  # attend que le menu existe
 
+    # Utilité : sélectionne la société (widget Chosen, repli <select> natif)
     def select_company(self, company_key):
         cmf_name = self.registry[company_key]["cmf_name"]  # nom exact attendu par le portail CMF
         print(f"[STEP] Sélection de la société : {cmf_name}")
@@ -138,6 +141,7 @@ class CMFPortalScraper:
                 return
         raise ValueError(f"Société introuvable dans le widget CMF : {cmf_name}")
 
+    # Utilité : attend que le menu affiche les résultats filtrés
     def _wait_for_filtered_options(self, chosen_id, timeout=5):
         end_time = time.time() + timeout  # borne de temps pour arrêter le polling
         options = []
@@ -149,6 +153,7 @@ class CMFPortalScraper:
             time.sleep(0.2)  # petite pause avant de revérifier
         return options
 
+    # Utilité : trouve l'option qui correspond exactement au nom cherché
     @staticmethod
     def _match_option(options, target_text):
         target_norm = " ".join(target_text.lower().split())  # normalise espaces + casse
@@ -160,6 +165,7 @@ class CMFPortalScraper:
                 return opt  # sinon, repli sur une correspondance partielle
         return None  # aucune option ne correspond
 
+    # Utilité : clique sur "Rechercher", attend le rechargement de la page
     def click_search(self):
         print("[STEP] Clic sur 'Rechercher'...")
         # Le formulaire de recherche déclenche un rechargement complet de la page
@@ -186,6 +192,7 @@ class CMFPortalScraper:
     # Extraction des résultats
     # ------------------------------------------------------------------ #
 
+    # Utilité : lit les lignes de résultats affichées (année, période, lien PDF)
     def _parse_current_page(self):
         entries = []
         rows = self.driver.find_elements(By.CSS_SELECTOR, "div.views-row")  # une ligne par document affiché
@@ -207,6 +214,7 @@ class CMFPortalScraper:
             entries.append({"year": year_text, "period": period_text, "pdf_url": pdf_url})
         return entries
 
+    # Utilité : passe à la page suivante des résultats, si elle existe
     def _go_to_next_page(self):
         next_links = self.driver.find_elements(By.CSS_SELECTOR, "li.pager-next a")  # lien "page suivante"
         if not next_links:
@@ -225,6 +233,7 @@ class CMFPortalScraper:
             return False  # la page suivante n'a pas chargé à temps
         return True
 
+    # Utilité : vérifie qu'un document est annuel et daté du 31/12
     @staticmethod
     def is_annual_statement_31_12(period_text):
         text = period_text.lower()
@@ -232,6 +241,7 @@ class CMFPortalScraper:
             return False  # document intermédiaire, exclu
         return bool(ANNUAL_31_12_PATTERN.search(text))  # vrai seulement si "31/12" est présent
 
+    # Utilité : parcourt toutes les pages, applique le filtre, garde 10-11 ans
     def collect_annual_statements(self, max_pages=30):
         """Parcourt toutes les pages de résultats et renvoie {annee: pdf_url}
         pour les états financiers annuels au 31/12 dans la fenêtre des 10
@@ -257,6 +267,7 @@ class CMFPortalScraper:
     # Vérification du lien et enregistrement en base
     # ------------------------------------------------------------------ #
 
+    # Utilité : vérifie que le lien PDF répond (HEAD, repli GET)
     def _verify_pdf_link(self, url, retries=2, timeout=15):
         """Vérifie que le lien pointe bien vers un PDF accessible, sans
         conserver son contenu."""
@@ -279,6 +290,7 @@ class CMFPortalScraper:
                 time.sleep(1.5)  # pause avant de réessayer
         return False  # toutes les tentatives ont échoué
 
+    # Utilité : déduplique et enregistre les métadonnées en base
     def extract_and_store(self, company_key):
         print("[STEP] Extraction des lignes et enregistrement en base (10 dernières années)...")
         statements = self.collect_annual_statements()  # {annee: pdf_url} déjà filtré
@@ -308,6 +320,7 @@ class CMFPortalScraper:
     # Pipeline complet pour une société
     # ------------------------------------------------------------------ #
 
+    # Utilité : orchestre tout le déroulé, relance ×3 en cas de timeout
     def run(self, company_key, retries=3):
         """Comme _verify_pdf_link : le portail CMF peut occasionnellement ne
         pas charger a temps (page lente, widget Chosen pas encore pret) ->
@@ -328,6 +341,7 @@ class CMFPortalScraper:
                     time.sleep(2)  # petite pause avant de relancer toute la séquence
         raise last_exc  # toutes les tentatives ont échoué, on remonte la dernière erreur
 
+    # Utilité : ferme le navigateur Chrome
     def close(self):
         try:
             self.driver.quit()  # ferme le navigateur Chrome

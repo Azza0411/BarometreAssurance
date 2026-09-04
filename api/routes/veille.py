@@ -153,6 +153,7 @@ def _article_image(url):
 
 # ── Scraping IlBoursa ──────────────────────────────────────────────────────────
 
+# Utilité : actualités liées à 7 tickers cotés BVMT (liste codée en dur)
 def _scrape_ilboursa():
     # Ces 7 tickers couvrent l'integralite des compagnies d'assurance
     # effectivement cotees a la BVMT (verifie via
@@ -242,6 +243,7 @@ def _scrape_ilboursa():
 
 # ── Scraping Atlas Magazine ────────────────────────────────────────────────────
 
+# Utilité : actualités Tunisie sur Atlas Magazine (4 pages, fenêtre 5 ans)
 def _scrape_atlas():
     articles     = []  # résultat final enrichi
     seen_urls    = set()  # anti-doublon inter-pages
@@ -352,6 +354,7 @@ def _extract_date_from_title(titre):
     return "", None  # aucune date trouvée
 
 
+# Utilité : textes réglementaires PDF d'une rubrique du site CGA
 def _scrape_cga_page(page_id):
     # Scrape une page du site CGA (Comité Général des Assurances) identifiée par son id
     # (page_id 33 et 30 sont deux rubriques différentes, appelées séparément par _build_veille)
@@ -406,6 +409,7 @@ def _scrape_cga_page(page_id):
     return docs
 
 
+# Utilité : textes législatifs et réglementaires cités sur FTUSA
 def _scrape_ftusa_textes():
     # Scrape la page FTUSA listant les textes législatifs/réglementaires (pas que des PDF,
     # contrairement à CGA : peut aussi lister de simples entrées textuelles avec ou sans lien)
@@ -458,6 +462,7 @@ def _scrape_ftusa_textes():
     return docs
 
 
+# Utilité : page dédiée au Code des assurances sur FTUSA
 def _scrape_ftusa_code():
     # Scrape la page dédiée au Code des assurances (un seul document, id fixe "ftusa_code_ass")
     url = "https://www.ftusanet.org/cadre-institutionnel/code-des-assurances/"
@@ -491,6 +496,7 @@ def _scrape_ftusa_code():
     }]
 
 
+# Utilité : agrège les 4 sources réglementaires en parallèle (ThreadPoolExecutor)
 def _build_veille():
     # Agrège les 4 sources réglementaires (2 rubriques CGA + code FTUSA + textes FTUSA)
     # Scraping en parallèle pour éviter les timeouts cumulatifs
@@ -534,6 +540,7 @@ def _build_veille():
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
+# Utilité : point d'entrée — re-scrape à froid + diff contre la base (appelé par le pipeline)
 def sync_new_items():
     """Scrape actualités + veille réglementaire et diffe contre les tables
     *_vues (database.repository) pour détecter ce qui est réellement

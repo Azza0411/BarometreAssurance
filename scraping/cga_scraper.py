@@ -31,6 +31,7 @@ NB_YEARS = 10  # nombre d'années de rapports à conserver au final
 REQUEST_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; InsuranceKPIBot/1.0)"}  # évite un blocage anti-bot basique
 
 
+# Utilité : requête GET avec 3 tentatives
 def _get_with_retries(url, timeout=30, retries=3):
     """Meme approche que bvmt_scraper/ftusa_scraper : le site peut echouer
     ponctuellement (timeout, 5xx passager), quelques tentatives suffisent."""
@@ -62,10 +63,12 @@ GDRIVE_LINK_RE = re.compile(
 )  # capture l'id du fichier Google Drive dans la page news
 
 
+# Utilité : construit l'URL de téléchargement direct depuis un id Google Drive
 def _gdrive_download_url(file_id):
     return f"https://drive.google.com/uc?export=download&id={file_id}"  # construit l'URL de téléchargement direct du PDF
 
 
+# Utilité : récupère les liens PDF (page principale + suivi de lien pour 2023+)
 def _fetch_report_links():
     """Renvoie {annee: url_pdf} pour tous les rapports annuels CGA.
 
@@ -100,6 +103,7 @@ def _fetch_report_links():
     return by_year  # dict complet annee -> url (PDF direct ou Google Drive)
 
 
+# Utilité : orchestre tout : liens, filtrage, enregistrement
 def sync_documents():
     """Enregistre un document pour chacun des NB_YEARS derniers rapports
     annuels CGA disponibles."""
