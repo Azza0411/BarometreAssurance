@@ -8,18 +8,18 @@ Automatise :
   3. l'extraction des lignes de résultats (année / type de document / lien PDF),
   4. le filtrage des états financiers annuels au 31/12 sur les 10 dernières années,
   5. l'enregistrement des métadonnées (nom, année, lien) en base MySQL
-     (tables `cmf` et `documents` — aucun PDF n'est téléchargé sur disque).
+     (tables `societes` et `documents` — aucun PDF n'est téléchargé sur disque).
 """
 
-import re
-import time
-from datetime import datetime
+import re  # extraire l'année et détecter le motif "31/12" dans le texte du site
+import time  # pauses entre tentatives / polling du widget Chosen
+from datetime import datetime  # calculer l'année en cours (fenêtre des 10-11 dernières années)
 
-import requests
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import Select, WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+import requests  # vérifier qu'un lien PDF répond, sans passer par Selenium
+from selenium import webdriver  # pilote le navigateur Chrome
+from selenium.webdriver.common.by import By  # sélecteurs CSS pour retrouver les éléments
+from selenium.webdriver.support.ui import Select, WebDriverWait  # <select> natif + attentes explicites
+from selenium.webdriver.support import expected_conditions as EC  # conditions d'attente (élément présent, cliquable...)
 from selenium.common.exceptions import (
     NoSuchElementException,
     StaleElementReferenceException,
@@ -27,25 +27,26 @@ from selenium.common.exceptions import (
 )
 
 from database.repository import (
-    document_exists,
-    ensure_database,
-    get_connection,
-    get_or_create_company,
-    get_or_create_source,
-    init_schema,
-    save_document,
-    count_documents,
+    document_exists,       # vérifie qu'un document n'est pas déjà en base (déduplication)
+    ensure_database,        # crée la base MySQL si elle n'existe pas
+    get_connection,          # ouvre la connexion MySQL
+    get_or_create_company,    # récupère ou crée l'id interne d'une société (table societes)
+    get_or_create_source,      # récupère ou crée l'id de la source "CMF" (table sources)
+    init_schema,                 # crée/met à jour les tables si besoin
+    save_document,                 # enregistre les métadonnées d'un document (jamais le PDF)
+    count_documents,                 # compte les documents déjà enregistrés pour une société
 )
 
 CMF_URL = "https://www.cmf.tn/consultation-des-tats-financier-des-soci-t-s-faisant-ape"
-SELECT_FIELD_ID = "edit-field-societesape-value"
+SELECT_FIELD_ID = "edit-field-societesape-value"  # id HTML natif du menu de sélection de société
 
 # Le champ "période" contient par exemple "Etats financiers au 31/12" ou
 # "Etats financiers intermédiaires au 30/06". On ne garde que les annuels au 31/12.
-ANNUAL_31_12_PATTERN = re.compile(r"31\s*/\s*12")
-INTERIM_KEYWORDS = ("intermédiaire", "intermediaire")
+ANNUAL_31_12_PATTERN = re.compile(r"31\s*/\s*12")  # motif "31/12" (avec espaces optionnels)
+INTERIM_KEYWORDS = ("intermédiaire", "intermediaire")  # mots qui excluent un document (pas annuel)
 
 REQUEST_HEADERS = {
+    # Certains serveurs bloquent les requêtes sans User-Agent de navigateur "normal"
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
@@ -55,31 +56,31 @@ REQUEST_HEADERS = {
 
 class CMFPortalScraper:
     def __init__(self, company_registry, headless=True):
-        self.registry = company_registry
+        self.registry = company_registry  # dict des 24 sociétés (config/company_registry.py)
 
         options = webdriver.ChromeOptions()
         if headless:
-            options.add_argument("--headless=new")
-        options.add_argument("--window-size=1400,1000")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument(f"user-agent={REQUEST_HEADERS['User-Agent']}")
+            options.add_argument("--headless=new")  # navigateur invisible (pas de fenêtre affichée)
+        options.add_argument("--window-size=1400,1000")  # taille fixe, la page s'adapte en desktop
+        options.add_argument("--disable-gpu")  # évite des erreurs GPU en mode headless
+        options.add_argument("--no-sandbox")  # nécessaire dans certains environnements restreints
+        options.add_argument("--disable-dev-shm-usage")  # évite un crash de mémoire partagée
+        options.add_argument(f"user-agent={REQUEST_HEADERS['User-Agent']}")  # même UA que les requêtes HTTP
 
-        self.driver = webdriver.Chrome(options=options)
-        self.wait = WebDriverWait(self.driver, 20)
+        self.driver = webdriver.Chrome(options=options)  # lance le navigateur Chrome piloté
+        self.wait = WebDriverWait(self.driver, 20)  # attente explicite par défaut : 20s max
 
         # Fenêtre des "10 dernières années" : l'année en cours n'a en général pas
         # encore d'état financier publié (ex: en 2026, on part de 2015 pour
         # obtenir les 10 derniers exercices réellement disponibles, 2015-2025).
         current_year = datetime.now().year
-        self.min_year = current_year - 11
-        self.max_year = current_year
+        self.min_year = current_year - 11  # borne basse de la fenêtre de collecte
+        self.max_year = current_year  # borne haute (année en cours incluse, rarement disponible)
 
-        ensure_database()
-        self.db_conn = get_connection()
-        init_schema(self.db_conn)
-        self.source_id = get_or_create_source(self.db_conn, "CMF", CMF_URL)
+        ensure_database()  # crée la base MySQL si elle n'existe pas déjà
+        self.db_conn = get_connection()  # ouvre la connexion pour toute la durée du scraping
+        init_schema(self.db_conn)  # crée/migre les tables si nécessaire (idempotent)
+        self.source_id = get_or_create_source(self.db_conn, "CMF", CMF_URL)  # id de la source "CMF"
 
     # ------------------------------------------------------------------ #
     # Navigation
@@ -87,36 +88,36 @@ class CMFPortalScraper:
 
     def open_page(self):
         print("[STEP] Ouverture de la page CMF...")
-        self.driver.get(CMF_URL)
-        self.wait.until(EC.presence_of_element_located((By.ID, SELECT_FIELD_ID)))
+        self.driver.get(CMF_URL)  # charge la page du portail
+        self.wait.until(EC.presence_of_element_located((By.ID, SELECT_FIELD_ID)))  # attend que le menu existe
 
     def select_company(self, company_key):
-        cmf_name = self.registry[company_key]["cmf_name"]
+        cmf_name = self.registry[company_key]["cmf_name"]  # nom exact attendu par le portail CMF
         print(f"[STEP] Sélection de la société : {cmf_name}")
 
         # Le module Drupal "Chosen" génère l'id du widget en remplaçant tous les
         # tirets de l'id d'origine par des underscores (ex: edit-field-x -> edit_field_x_chosen)
         chosen_id = SELECT_FIELD_ID.replace("-", "_") + "_chosen"
         try:
-            container = self.wait.until(EC.presence_of_element_located((By.ID, chosen_id)))
-            container.find_element(By.CSS_SELECTOR, ".chosen-single").click()
+            container = self.wait.until(EC.presence_of_element_located((By.ID, chosen_id)))  # widget JS
+            container.find_element(By.CSS_SELECTOR, ".chosen-single").click()  # ouvre le menu déroulant
 
             search_box = self.wait.until(
                 EC.visibility_of_element_located(
                     (By.CSS_SELECTOR, f"#{chosen_id} .chosen-search input")
                 )
-            )
-            search_box.clear()
-            search_box.send_keys(cmf_name)
+            )  # champ de recherche interne au widget
+            search_box.clear()  # vide le champ avant de taper
+            search_box.send_keys(cmf_name)  # tape le nom de la société pour filtrer les options
 
-            options = self._wait_for_filtered_options(chosen_id)
-            target = self._match_option(options, cmf_name)
+            options = self._wait_for_filtered_options(chosen_id)  # récupère les options filtrées visibles
+            target = self._match_option(options, cmf_name)  # trouve l'option qui correspond exactement
             if target is None:
                 # ferme le widget avant de basculer sur le repli natif
                 container.find_element(By.CSS_SELECTOR, ".chosen-single").click()
                 raise NoSuchElementException(cmf_name)
 
-            target.click()
+            target.click()  # sélectionne l'option trouvée
             print("[INFO] Société sélectionnée via le widget Chosen.")
             return
         except (TimeoutException, NoSuchElementException):
@@ -127,37 +128,37 @@ class CMFPortalScraper:
         # une chaîne vide sur les <option> : il faut lire l'attribut "value"
         # (qui est identique au libellé pour ce champ Drupal).
         select_el = self.wait.until(EC.presence_of_element_located((By.ID, SELECT_FIELD_ID)))
-        select = Select(select_el)
-        target_norm = cmf_name.strip().lower()
+        select = Select(select_el)  # wrapper Selenium pour un <select> HTML natif
+        target_norm = cmf_name.strip().lower()  # normalise pour une comparaison insensible à la casse
         for option in select.options:
             value = (option.get_attribute("value") or "").strip()
             if value.lower() == target_norm:
-                select.select_by_value(value)
+                select.select_by_value(value)  # sélectionne l'option native correspondante
                 print("[INFO] Société sélectionnée via le <select> natif.")
                 return
         raise ValueError(f"Société introuvable dans le widget CMF : {cmf_name}")
 
     def _wait_for_filtered_options(self, chosen_id, timeout=5):
-        end_time = time.time() + timeout
+        end_time = time.time() + timeout  # borne de temps pour arrêter le polling
         options = []
         while time.time() < end_time:
-            raw = self.driver.find_elements(By.CSS_SELECTOR, f"#{chosen_id} li.active-result")
-            options = [li for li in raw if li.is_displayed()]
+            raw = self.driver.find_elements(By.CSS_SELECTOR, f"#{chosen_id} li.active-result")  # options du menu
+            options = [li for li in raw if li.is_displayed()]  # ne garde que celles visibles (filtrées)
             if options:
-                break
-            time.sleep(0.2)
+                break  # dès qu'il y a au moins une option filtrée, on arrête d'attendre
+            time.sleep(0.2)  # petite pause avant de revérifier
         return options
 
     @staticmethod
     def _match_option(options, target_text):
-        target_norm = " ".join(target_text.lower().split())
+        target_norm = " ".join(target_text.lower().split())  # normalise espaces + casse
         for opt in options:
             if " ".join(opt.text.strip().lower().split()) == target_norm:
-                return opt
+                return opt  # correspondance exacte trouvée en premier
         for opt in options:
             if target_norm in " ".join(opt.text.strip().lower().split()):
-                return opt
-        return None
+                return opt  # sinon, repli sur une correspondance partielle
+        return None  # aucune option ne correspond
 
     def click_search(self):
         print("[STEP] Clic sur 'Rechercher'...")
@@ -166,20 +167,20 @@ class CMFPortalScraper:
         # sa disparition avant de lire les nouveaux résultats (évite les
         # StaleElementReferenceException lors du parsing des lignes).
         old_content = self.driver.find_elements(By.CSS_SELECTOR, ".view-content")
-        old_marker = old_content[0] if old_content else None
+        old_marker = old_content[0] if old_content else None  # référence à l'ancien contenu (avant clic)
 
         btn = self.wait.until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "input.form-submit[value='Rechercher']"))
-        )
-        btn.click()
+        )  # attend que le bouton soit cliquable
+        btn.click()  # lance la recherche
 
         if old_marker is not None:
             try:
-                self.wait.until(EC.staleness_of(old_marker))
+                self.wait.until(EC.staleness_of(old_marker))  # attend que l'ancien contenu disparaisse
             except TimeoutException:
-                pass
+                pass  # tolère l'absence de rechargement détecté, on vérifie la suite quand même
 
-        self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".view-content")))
+        self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".view-content")))  # nouveau contenu chargé
 
     # ------------------------------------------------------------------ #
     # Extraction des résultats
@@ -187,69 +188,69 @@ class CMFPortalScraper:
 
     def _parse_current_page(self):
         entries = []
-        rows = self.driver.find_elements(By.CSS_SELECTOR, "div.views-row")
+        rows = self.driver.find_elements(By.CSS_SELECTOR, "div.views-row")  # une ligne par document affiché
         for row in rows:
             try:
                 year_text = row.find_element(
                     By.CSS_SELECTOR, ".field-name-field-exercice .field-item"
-                ).text.strip()
+                ).text.strip()  # texte de l'année (ex: "2022")
                 period_text = row.find_element(
                     By.CSS_SELECTOR, ".field-name-field-p-riode .field-item"
-                ).text.strip()
+                ).text.strip()  # texte de la période (ex: "Etats financiers au 31/12")
                 pdf_url = row.find_element(
                     By.CSS_SELECTOR, ".field-name-field-pdf-cf a"
-                ).get_attribute("href")
+                ).get_attribute("href")  # lien du PDF
             except (NoSuchElementException, StaleElementReferenceException):
-                continue
+                continue  # ligne incomplète ou périmée, on l'ignore
             if not year_text or not pdf_url:
-                continue
+                continue  # ligne inexploitable sans année ou sans lien
             entries.append({"year": year_text, "period": period_text, "pdf_url": pdf_url})
         return entries
 
     def _go_to_next_page(self):
-        next_links = self.driver.find_elements(By.CSS_SELECTOR, "li.pager-next a")
+        next_links = self.driver.find_elements(By.CSS_SELECTOR, "li.pager-next a")  # lien "page suivante"
         if not next_links:
-            return False
+            return False  # pas de page suivante : dernière page atteinte
         current_rows = self.driver.find_elements(By.CSS_SELECTOR, "div.views-row")
-        anchor = current_rows[0] if current_rows else None
-        next_links[0].click()
+        anchor = current_rows[0] if current_rows else None  # repère pour détecter le changement de page
+        next_links[0].click()  # clique sur "page suivante"
         if anchor is not None:
             try:
-                self.wait.until(EC.staleness_of(anchor))
+                self.wait.until(EC.staleness_of(anchor))  # attend que l'ancienne page disparaisse
             except TimeoutException:
                 pass
         try:
-            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".view-content")))
+            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".view-content")))  # nouvelle page chargée
         except TimeoutException:
-            return False
+            return False  # la page suivante n'a pas chargé à temps
         return True
 
     @staticmethod
     def is_annual_statement_31_12(period_text):
         text = period_text.lower()
         if any(keyword in text for keyword in INTERIM_KEYWORDS):
-            return False
-        return bool(ANNUAL_31_12_PATTERN.search(text))
+            return False  # document intermédiaire, exclu
+        return bool(ANNUAL_31_12_PATTERN.search(text))  # vrai seulement si "31/12" est présent
 
     def collect_annual_statements(self, max_pages=30):
         """Parcourt toutes les pages de résultats et renvoie {annee: pdf_url}
         pour les états financiers annuels au 31/12 dans la fenêtre des 10
         dernières années."""
         collected = {}
-        for _ in range(max_pages):
+        for _ in range(max_pages):  # garde-fou : ne boucle pas indéfiniment si la pagination est cassée
             for entry in self._parse_current_page():
                 if not self.is_annual_statement_31_12(entry["period"]):
-                    continue
+                    continue  # filtre : garde seulement les rapports annuels au 31/12
                 match = re.search(r"\d{4}", entry["year"])
                 if not match:
-                    continue
+                    continue  # année illisible, on ignore la ligne
                 year = int(match.group())
                 if not (self.min_year <= year <= self.max_year):
-                    continue
+                    continue  # filtre : hors fenêtre des 10-11 dernières années
                 # garde la première occurrence rencontrée (la plus récemment publiée)
                 collected.setdefault(year, entry["pdf_url"])
             if not self._go_to_next_page():
-                break
+                break  # plus de page suivante, on arrête de parcourir
         return collected
 
     # ------------------------------------------------------------------ #
@@ -263,43 +264,43 @@ class CMFPortalScraper:
             try:
                 response = requests.head(
                     url, headers=REQUEST_HEADERS, timeout=timeout, allow_redirects=True
-                )
+                )  # requête légère : on ne veut pas télécharger le PDF, juste vérifier le lien
                 if response.status_code == 200:
-                    return True
+                    return True  # lien valide
                 # Certains serveurs ne gèrent pas HEAD correctement -> repli GET
                 response = requests.get(
                     url, headers=REQUEST_HEADERS, timeout=timeout, stream=True
-                )
+                )  # stream=True : ne télécharge pas tout le contenu en mémoire
                 ok = response.status_code == 200
-                response.close()
+                response.close()  # ferme la connexion sans lire le corps de la réponse
                 return ok
             except requests.RequestException as exc:
                 print(f"[WARN] Tentative {attempt}/{retries} échouée pour {url} : {exc}")
-                time.sleep(1.5)
-        return False
+                time.sleep(1.5)  # pause avant de réessayer
+        return False  # toutes les tentatives ont échoué
 
     def extract_and_store(self, company_key):
         print("[STEP] Extraction des lignes et enregistrement en base (10 dernières années)...")
-        statements = self.collect_annual_statements()
+        statements = self.collect_annual_statements()  # {annee: pdf_url} déjà filtré
 
         cmf_name = self.registry[company_key]["cmf_name"]
-        cmf_id = get_or_create_company(self.db_conn, company_key, cmf_name)
+        cmf_id = get_or_create_company(self.db_conn, company_key, cmf_name)  # id interne de la société
 
         saved = 0
-        for year in sorted(statements):
+        for year in sorted(statements):  # traite les années dans l'ordre chronologique
             pdf_url = statements[year]
             if document_exists(self.db_conn, self.source_id, cmf_id, year):
                 print(f"[INFO] Déjà en base : {company_key} {year}")
-                continue
+                continue  # déduplication : on ne réenregistre pas un document déjà connu
             if not self._verify_pdf_link(pdf_url):
                 print(f"[WARN] Lien PDF invalide, ignoré : {pdf_url}")
-                continue
-            nom_pdf = f"{company_key}_{year}.pdf"
-            save_document(self.db_conn, self.source_id, cmf_id, nom_pdf, year, pdf_url)
+                continue  # lien mort, on n'enregistre rien pour cette année
+            nom_pdf = f"{company_key}_{year}.pdf"  # nom de fichier construit, pas le fichier lui-même
+            save_document(self.db_conn, self.source_id, cmf_id, nom_pdf, year, pdf_url)  # écrit les métadonnées
             saved += 1
             print(f"[OK] Enregistré en base : {nom_pdf}")
 
-        total = count_documents(self.db_conn, cmf_id)
+        total = count_documents(self.db_conn, cmf_id)  # total cumulé après ce passage
         print(f"[INFO] {saved} nouveau(x) document(s) pour {company_key} ({total} au total en base)")
         return saved
 
@@ -313,26 +314,26 @@ class CMFPortalScraper:
         on relance la sequence complete (page fraiche) plutot qu'une seule
         etape, car un TimeoutException en cours de route laisse le driver
         dans un etat intermediaire non reutilisable."""
-        last_exc = None
+        last_exc = None  # mémorise la dernière erreur pour la relever si tout échoue
         for attempt in range(1, retries + 1):
             try:
-                self.open_page()
-                self.select_company(company_key)
-                self.click_search()
-                return self.extract_and_store(company_key)
+                self.open_page()  # étape 1 : charger la page
+                self.select_company(company_key)  # étape 2 : sélectionner la société
+                self.click_search()  # étape 3 : lancer la recherche
+                return self.extract_and_store(company_key)  # étape 4 : filtrer + dédupliquer + enregistrer
             except TimeoutException as exc:
                 last_exc = exc
                 print(f"[WARN] Tentative {attempt}/{retries} echouee pour {company_key} (page CMF) : {exc}")
                 if attempt < retries:
-                    time.sleep(2)
-        raise last_exc
+                    time.sleep(2)  # petite pause avant de relancer toute la séquence
+        raise last_exc  # toutes les tentatives ont échoué, on remonte la dernière erreur
 
     def close(self):
         try:
-            self.driver.quit()
+            self.driver.quit()  # ferme le navigateur Chrome
         except Exception:
-            pass
+            pass  # déjà fermé ou jamais ouvert correctement, sans conséquence
         try:
-            self.db_conn.close()
+            self.db_conn.close()  # ferme la connexion à la base
         except Exception:
             pass
