@@ -4,27 +4,11 @@
 
 ### Structure des dossiers
 
-```
-BarometreAssurance/
-├── api/              serveur backend
-├── frontend/          site web
-├── scraping/           robots de collecte
-├── extraction/           lecture des PDF
-├── database/              accès MySQL
-├── config/                 registre des 24 compagnies
-├── pipelines/               orchestration planifiée
-└── chatbot_portable/         IA, serveur séparé
-```
+![Structure des dossiers du projet](diagrams/folder_structure.png)
 
 ### Flux de la donnée
 
-- Scraping → un PDF est repéré sur un site officiel
-- Base de données → métadonnées notées (société, année, lien)
-- Extraction → les chiffres sont lus dans le PDF
-- Base de données → chiffres stockés
-- Calcul → ratios déduits (rentabilité, sinistralité...)
-- API → backend sert les données en JSON
-- Frontend → affichage en graphiques/tableaux
+![Flux de la donnée, du site source à l'écran](diagrams/data_flow.png)
 
 ### Stack technique — l'essentiel
 
@@ -56,34 +40,42 @@ BarometreAssurance/
 | `requests` + regex | FTUSA, CGA, BVMT, INS, Atlas Magazine, IlBoursa | Pages HTML statiques, plus simple |
 | Fichier local | ENQUETE | Excel fourni, pas un site web |
 
-**Déroulé CMF** (le plus complexe, donc représentatif) :
-- Ouvrir un Chrome invisible
-- Sélectionner la société
-- Lancer la recherche
-- **Filtrer** (voir schéma ci-dessous)
-- Vérifier que le lien PDF répond
-- **Dédupliquer** (voir schéma ci-dessous)
-- Enregistrer les métadonnées seules — jamais le PDF
-- En cas d'échec : relance complète (×3), jamais une reprise partielle
+### Déroulé complet — cas CMF (le plus complexe, donc représentatif)
+
+![Déroulé complet du scraper CMF](diagrams/cmf_workflow.png)
+
+En cas d'échec à n'importe quelle étape : relance complète (×3), jamais une reprise partielle — un plantage en cours de route laisse le navigateur dans un état difficile à récupérer.
+
+**scraping/cmf_portal_scraper.py — lignes 310 à 328 — mécanisme de nouvelle tentative**
 
 ![Code réel du mécanisme de nouvelle tentative](diagrams/code_scraping_retry.png)
 
-**Filtrage** — exemple concret CMF : annuel + daté du 31/12 + dans les 10-11 dernières années.
+---
+
+![Zoom filtrage](diagrams/banner_zoom_filtrage.png)
+
+Parmi tous les documents qu'une source propose, ne garder que ceux qui sont réellement pertinents — le critère exact dépend de la source. Exemple concret CMF :
 
 ![Exemple de filtrage — cas du scraper CMF](diagrams/filtrage_exemple_cmf.png)
 
-**Déduplication** — vérifie en base (société + source + année) avant d'enregistrer.
+---
+
+![Zoom déduplication](diagrams/banner_zoom_dedup.png)
+
+Avant d'enregistrer un document, vérifier qu'il n'existe pas déjà en base (société + source + année) :
+
+![Exemple de déduplication — cas du scraper CMF](diagrams/dedup_exemple_cmf.png)
+
+**scraping/cmf_portal_scraper.py — lignes 281 à 298 — déduplication et enregistrement**
 
 ![Code réel de la déduplication et de l'enregistrement](diagrams/code_scraping_dedup.png)
 
-**À savoir par source** :
-- FTUSA : année lue dans le contenu du PDF, pas dans le nom du fichier
-- BVMT : liste des sociétés cotées découverte dynamiquement
-- CGA / FTUSA réglementaire : circuit séparé (veille), cache 1h
-- Atlas Magazine / IlBoursa : BeautifulSoup en parallèle, alimentent les actualités
+---
+
+### À savoir par source
+
+![À savoir par source](diagrams/a_savoir_par_source.png)
 
 ### Reconnaissance automatique des sociétés
 
-- Problème : "Assurances Maghrebia Vie" → quel code interne ?
-- Solution : score de ressemblance pondéré — un mot rare ("VIE") compte plus qu'un mot générique ("ASSURANCES")
-- Bug corrigé : "El Amana Takaful" confondu avec "AMI" à cause du seul mot commun "EL"
+![Reconnaissance automatique des sociétés](diagrams/reconnaissance_societes.png)
