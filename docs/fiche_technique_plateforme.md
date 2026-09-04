@@ -2,15 +2,12 @@
 
 ## PARTIE 1 — ARCHITECTURE GÉNÉRALE ET STACK TECHNIQUE
 
-### Structure des dossiers
+### Explication générale
 
-![Structure des dossiers du projet](diagrams/folder_structure.png)
+- Décrit comment le projet est organisé sur le disque et comment une donnée voyage, du site source jusqu'à l'écran
+- Sert de carte de lecture pour toutes les parties suivantes : chaque partie est un zoom sur une étape de ce flux
 
-### Flux de la donnée
-
-![Flux de la donnée, du site source à l'écran](diagrams/data_flow.png)
-
-### Stack technique — l'essentiel
+### Justification des outils
 
 | Brique | Outil | Pourquoi (résumé) |
 |---|---|---|
@@ -26,13 +23,23 @@
 
 **Règle générale** : l'outil le plus simple qui couvre le besoin réel, pas le plus sophistiqué.
 
+### Schémas
+
+![Structure des dossiers du projet](diagrams/folder_structure.png)
+
+![Flux de la donnée, du site source à l'écran](diagrams/data_flow.png)
+
 ---
 
 ## PARTIE 2 — SCRAPING — LA COLLECTE DES DONNÉES
 
-**8 sources d'origine.** CGA et FTUSA servent chacune 2 usages (rapports KPI + veille réglementaire), mais restent 1 source chacune.
+### Explication générale
 
-![Schéma de la couche de scraping](diagrams/scraping_architecture.png)
+- Automatise la récupération des documents sur 8 sources d'origine, pour ne plus les chercher à la main
+- CGA et FTUSA servent chacune 2 usages (rapports KPI + veille réglementaire), mais restent 1 source chacune
+- Chaque document passe ensuite par 4 étapes communes : lecture, filtrage, déduplication, sauvegarde des métadonnées seules (jamais le PDF)
+
+### Justification des outils
 
 | Méthode | Sources | Pourquoi (résumé) |
 |---|---|---|
@@ -40,15 +47,17 @@
 | `requests` + regex | FTUSA, CGA, BVMT, INS, Atlas Magazine, IlBoursa | Pages HTML statiques, plus simple |
 | Fichier local | ENQUETE | Excel fourni, pas un site web |
 
+### Schéma général
+
+![Schéma de la couche de scraping](diagrams/scraping_architecture.png)
+
 ### Déroulé complet — cas CMF (le plus complexe, donc représentatif)
 
 ![Déroulé complet du scraper CMF](diagrams/cmf_workflow.png)
 
-En cas d'échec à n'importe quelle étape : relance complète (×3), jamais une reprise partielle — un plantage en cours de route laisse le navigateur dans un état difficile à récupérer.
+En cas d'échec à n'importe quelle étape : relance complète (×3), jamais une reprise partielle.
 
-**scraping/cmf_portal_scraper.py — lignes 310 à 328 — mécanisme de nouvelle tentative**
-
-![Code réel du mécanisme de nouvelle tentative](diagrams/code_scraping_retry.png)
+![scraping/cmf_portal_scraper.py — lignes 310 à 328 — mécanisme de nouvelle tentative](diagrams/code_scraping_retry.png)
 
 ---
 
@@ -66,9 +75,7 @@ Avant d'enregistrer un document, vérifier qu'il n'existe pas déjà en base (so
 
 ![Exemple de déduplication — cas du scraper CMF](diagrams/dedup_exemple_cmf.png)
 
-**scraping/cmf_portal_scraper.py — lignes 281 à 298 — déduplication et enregistrement**
-
-![Code réel de la déduplication et de l'enregistrement](diagrams/code_scraping_dedup.png)
+![scraping/cmf_portal_scraper.py — lignes 281 à 298 — déduplication et enregistrement](diagrams/code_scraping_dedup.png)
 
 ---
 
