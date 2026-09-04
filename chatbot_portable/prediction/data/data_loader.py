@@ -151,7 +151,7 @@ class DataLoader:
             FROM kpi_values k
             JOIN documents d ON d.id = k.document_id
             JOIN sources s   ON s.id = d.source_id
-            JOIN cmf c       ON c.id = d.cmf_id
+            JOIN societes c       ON c.id = d.cmf_id
             WHERE c.code = ?
               AND k.kpi = ?
               AND k.valeur_nombre IS NOT NULL
@@ -202,7 +202,7 @@ class DataLoader:
     def list_available_companies(self) -> list[str]:
         """Retourne tous les codes compagnies ayant des documents CMF."""
         rows = self._conn.execute(
-            "SELECT DISTINCT c.code FROM cmf c JOIN documents d ON d.cmf_id = c.id ORDER BY c.code"
+            "SELECT DISTINCT c.code FROM societes c JOIN documents d ON d.cmf_id = c.id ORDER BY c.code"
         ).fetchall()
         return [r[0] for r in rows]
 
@@ -212,7 +212,7 @@ class DataLoader:
             rows = self._conn.execute(
                 """
                 SELECT DISTINCT d.annee FROM documents d
-                JOIN cmf c ON c.id = d.cmf_id
+                JOIN societes c ON c.id = d.cmf_id
                 WHERE c.code = ? ORDER BY d.annee
                 """,
                 (company,),

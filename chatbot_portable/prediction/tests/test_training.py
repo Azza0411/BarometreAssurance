@@ -32,7 +32,7 @@ def make_sqlite_db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.executescript("""
         CREATE TABLE sources (id INTEGER PRIMARY KEY, nom TEXT);
-        CREATE TABLE cmf (id INTEGER PRIMARY KEY, code TEXT);
+        CREATE TABLE societes (id INTEGER PRIMARY KEY, code TEXT);
         CREATE TABLE documents (
             id INTEGER PRIMARY KEY, annee INTEGER,
             source_id INTEGER, cmf_id INTEGER
@@ -43,7 +43,7 @@ def make_sqlite_db() -> sqlite3.Connection:
         );
 
         INSERT INTO sources VALUES (1, 'CMF'), (2, 'FTUSA');
-        INSERT INTO cmf VALUES (1, 'STAR');
+        INSERT INTO societes VALUES (1, 'STAR');
     """)
 
     # 12 années de données pour STAR / Primes émises par assurance

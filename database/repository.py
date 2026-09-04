@@ -1,8 +1,9 @@
 """
 Accès MySQL : création du schéma et opérations sur les tables `sources`
-(origines des documents : CMF, FTUSA...), `cmf` (sociétés suivies par la
-source CMF), `documents` (métadonnées des documents, toutes sources
-confondues) et `kpi_values`.
+(origines des documents : CMF, FTUSA...), `societes` (les compagnies suivies,
+toutes sources confondues — ex-nommée `cmf`, renommée pour ne pas la
+confondre avec la source "CMF" de la table `sources`), `documents`
+(métadonnées des documents, toutes sources confondues) et `kpi_values`.
 
 Aucun contenu binaire n'est stocké : seuls le nom du PDF, l'année et le lien
 d'origine sont conservés.
@@ -117,7 +118,7 @@ def _migrate_documents_schema(conn):
         indexes = {row[2] for row in cur.fetchall()}
         if "uq_document_cmf_annee" in indexes:
             # Cet ancien index unique (cmf_id, annee) sert aussi de support à
-            # la FK cmf_id -> cmf(id) : il faut retirer la FK avant de
+            # la FK cmf_id -> societes(id) : il faut retirer la FK avant de
             # pouvoir le supprimer, puis lui fournir un nouvel index dédié.
             cur.execute(
                 """
@@ -132,7 +133,7 @@ def _migrate_documents_schema(conn):
             cur.execute("ALTER TABLE documents ADD INDEX idx_documents_cmf_id (cmf_id)")
             cur.execute(
                 "ALTER TABLE documents ADD CONSTRAINT fk_documents_cmf "
-                "FOREIGN KEY (cmf_id) REFERENCES cmf(id)"
+                "FOREIGN KEY (cmf_id) REFERENCES societes(id)"
             )
 
         cur.execute("SHOW INDEX FROM documents")
@@ -198,8 +199,8 @@ def _migrate_kpi_values_unique_key(conn):
 
 
 def init_schema(conn):
-    """Crée les tables `sources`, `cmf`, `documents` et `kpi_values` si elles
-    n'existent pas, et fait évoluer le schéma existant si besoin."""
+    """Crée les tables `sources`, `societes`, `documents` et `kpi_values` si
+    elles n'existent pas, et fait évoluer le schéma existant si besoin."""
     with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
         # Retire les commentaires "-- ..." avant de découper sur ";" : un ";"
         # dans un commentaire (ex: une énumération en français) ne doit pas
@@ -227,12 +228,12 @@ def get_or_create_source(conn, nom, lien):
 
 def get_or_create_company(conn, code, nom_entreprise):
     with conn.cursor() as cur:
-        cur.execute("SELECT id FROM cmf WHERE code = %s", (code,))
+        cur.execute("SELECT id FROM societes WHERE code = %s", (code,))
         row = cur.fetchone()
         if row:
             return row[0]
         cur.execute(
-            "INSERT INTO cmf (code, nom_entreprise) VALUES (%s, %s)",
+            "INSERT INTO societes (code, nom_entreprise) VALUES (%s, %s)",
             (code, nom_entreprise),
         )
         return cur.lastrowid
@@ -300,7 +301,7 @@ def list_all_documents(conn):
             SELECT d.id, s.nom, c.code, c.nom_entreprise, d.nom_pdf, d.annee, d.lien
             FROM documents d
             JOIN sources s ON s.id = d.source_id
-            LEFT JOIN cmf c ON c.id = d.cmf_id
+            LEFT JOIN societes c ON c.id = d.cmf_id
             ORDER BY s.nom, c.code, d.annee
             """
         )
@@ -468,7 +469,7 @@ def get_document_meta(conn, code, annee):
             SELECT d.nom_pdf, d.lien
             FROM documents d
             JOIN sources s ON s.id = d.source_id
-            JOIN cmf c ON c.id = d.cmf_id
+            JOIN societes c ON c.id = d.cmf_id
             WHERE s.nom = 'CMF' AND c.code = %s AND d.annee = %s
             LIMIT 1
             """,
@@ -488,7 +489,7 @@ def get_document_id(conn, code, annee):
             SELECT d.id
             FROM documents d
             JOIN sources s ON s.id = d.source_id
-            JOIN cmf c ON c.id = d.cmf_id
+            JOIN societes c ON c.id = d.cmf_id
             WHERE s.nom = 'CMF' AND c.code = %s AND d.annee = %s
             LIMIT 1
             """,
@@ -507,7 +508,7 @@ def list_documents_by_source(conn, source_nom):
             SELECT d.id, d.cmf_id, c.code, d.annee
             FROM documents d
             JOIN sources s ON s.id = d.source_id
-            LEFT JOIN cmf c ON c.id = d.cmf_id
+            LEFT JOIN societes c ON c.id = d.cmf_id
             WHERE s.nom = %s
             ORDER BY d.annee
             """,
@@ -597,7 +598,7 @@ def get_kpi_values_by_use_case(conn, use_case, annee=None, code=None):
         FROM kpi_values k
         JOIN documents d ON d.id = k.document_id
         JOIN sources s ON s.id = d.source_id
-        LEFT JOIN cmf c ON c.id = d.cmf_id
+        LEFT JOIN societes c ON c.id = d.cmf_id
         WHERE ({" OR ".join(name_clauses)})
     """
     if annee is not None:
