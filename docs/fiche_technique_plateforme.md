@@ -29,6 +29,12 @@
 
 ![Flux de la donnée, du site source à l'écran](diagrams/data_flow.png)
 
+### Trajet enrichi — cas particuliers du Scraping et de l'Extraction PDF
+
+![Trajet de la donnée, avec les cas particuliers du Scraping et de l'Extraction PDF](diagrams/trajet_donnee_avec_cas.png)
+
+**Version interactive** (survol des étapes pour voir leurs cas particuliers, y compris Base de données et Calcul des KPI) : https://claude.ai/code/artifact/7855bd9a-5178-440c-b735-944677018ca7
+
 ---
 
 ## PARTIE 2 — SCRAPING — LA COLLECTE DES DONNÉES
@@ -238,3 +244,59 @@ Pas de notion de société ni de PDF ici : chaque enregistrement est une valeur 
 ### Reconnaissance automatique des sociétés
 
 ![Reconnaissance automatique des sociétés](diagrams/reconnaissance_societes.png)
+
+### Cas particuliers — Scraping
+
+![Cas particuliers — Scraping](diagrams/cas_particuliers_scraping.png)
+
+---
+
+## PARTIE 3 — BASE DE DONNÉES
+
+### Explication générale
+
+- Toutes les données extraites (scraping + extraction PDF) doivent être stockées durablement, sinon il faudrait tout refaire à chaque affichage
+- Sert de pivot entre toutes les couches : le scraping y écrit des métadonnées, l'extraction y écrit des chiffres, le backend y lit pour construire les pages
+- MySQL, base nommée `MarketInsurance`
+
+### Fichiers concernés
+
+| Fichier | Rôle |
+|---|---|
+| `database/schema.sql` | Définition des 8 tables |
+| `database/repository.py` | Toutes les fonctions d'accès (lecture, écriture, migrations) |
+
+### Justification des outils
+
+| Choix | Pourquoi (résumé) |
+|---|---|
+| MySQL | Données très relationnelles (société → document → KPI) |
+| `pymysql` sans ORM | Contrôle total sur les migrations de schéma |
+
+### Schéma des tables
+
+![Schéma des tables de la base de données](diagrams/database_schema.png)
+
+**8 tables, 3 familles** : le référentiel (`sources`, `societes`), les données collectées (`documents`, `kpi_values`), et le suivi/qualité (`anomalies_detectees`, `notifications`, `actualites_vues`, `reglementation_vues`).
+
+### Migrations idempotentes
+
+Le schéma peut évoluer (nouvelle colonne, nouvelle contrainte) sans jamais casser une base déjà en place. Avant chaque changement, le code vérifie l'état réel de la table via `information_schema` et n'applique le changement que s'il n'est pas déjà fait — `init_schema()` peut tourner à chaque démarrage du serveur sans risque.
+
+### Cas particuliers — Base de données
+
+![Cas particuliers — Base de données](diagrams/cas_particuliers_bdd.png)
+
+### Pourquoi 2 passages en base (exemple concret)
+
+![Relancer l'extraction seule, sans re-scraper](diagrams/relance_extraction_sans_scraping.png)
+
+---
+
+## PARTIE 4 — EXTRACTION PDF (aperçu)
+
+*Partie en cours de construction — seuls les cas particuliers déjà validés sont consignés ici pour l'instant.*
+
+### Cas particuliers — Extraction PDF
+
+![Cas particuliers — Extraction PDF](diagrams/cas_particuliers_extraction.png)
