@@ -27,7 +27,9 @@ from database.repository import (
     save_kpi_value,  # insère/actualise un KPI numérique ou texte (upsert)
 )
 
-# ── Données de l'enquête STAR 2024 ────────────────────────────────────────────
+# ------------------------------------------------------------------ #
+# Données de l'enquête (dict codé en dur, pas lu depuis un fichier)
+# ------------------------------------------------------------------ #
 ENQUETE_DATA = {
     # Comptages totaux
     "counts": {
@@ -140,6 +142,10 @@ ENQUETE_DATA = {
     },
 }
 
+
+# ------------------------------------------------------------------ #
+# Écriture en base
+# ------------------------------------------------------------------ #
 
 # Utilité : point d'entrée unique — crée le référentiel puis insère tous les KPI
 def seed(conn):  # insère tout ENQUETE_DATA en base via une seule connexion

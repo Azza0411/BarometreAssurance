@@ -55,6 +55,10 @@ YEAR_TITLE_RE = re.compile(r"\ben\s+(20\d{2})\b", re.IGNORECASE)  # motif "en 20
 BARE_YEAR_RE = re.compile(r"\b(20\d{2})\b")  # repli : n'importe quelle annee 20xx isolee dans le texte
 
 
+# ------------------------------------------------------------------ #
+# Requêtes réseau
+# ------------------------------------------------------------------ #
+
 # Utilité : requête GET avec 3 tentatives en cas d'échec réseau
 def _get_with_retries(url, timeout=30, retries=3):
     """Le site peut echouer ponctuellement (timeout, 5xx passager) :
@@ -70,6 +74,10 @@ def _get_with_retries(url, timeout=30, retries=3):
             print(f"  [WARN] Tentative {attempt}/{retries} echouee pour {url} : {exc}")  # log avant nouvel essai
             time.sleep(1.5)  # petite pause avant de reessayer
 
+
+# ------------------------------------------------------------------ #
+# Collecte et détection de l'année
+# ------------------------------------------------------------------ #
 
 # Utilité : récupère les liens PDF de la zone principale (exclut le bloc "à la une")
 def _collect_main_pdf_links():
@@ -101,6 +109,10 @@ def _detect_report_year(pdf_bytes):
     match = YEAR_TITLE_RE.search(text) or BARE_YEAR_RE.search(text)  # motif precis puis repli plus large
     return int(match.group(1)) if match else None  # annee trouvee, sinon None
 
+
+# ------------------------------------------------------------------ #
+# Orchestration
+# ------------------------------------------------------------------ #
 
 # Utilité : orchestre tout : collecte, téléchargement, filtrage, enregistrement
 def sync_documents():

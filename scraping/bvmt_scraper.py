@@ -86,6 +86,10 @@ TITRES_EMIS_RE = re.compile(r"<td><strong>Titres .mis</strong></td>\s*<td[^>]*>(
 BULLETIN_LINK_RE = re.compile(r'href="([^"]*[Bb]ull(\d{8})\.pdf)"')  # capture (lien complet, date AAAAMMJJ)
 
 
+# ------------------------------------------------------------------ #
+# Requêtes réseau
+# ------------------------------------------------------------------ #
+
 # Utilité : requête GET générique avec 3 tentatives
 def _get_with_retries(url, params=None, retries=3, timeout=30):
     """Le site répond parfois par un simple timeout de lecture (observé de
@@ -101,6 +105,10 @@ def _get_with_retries(url, params=None, retries=3, timeout=30):
             print(f"  [WARN] Tentative {attempt}/{retries} echouee pour {url} : {exc}")
             time.sleep(1.5)  # pause avant de réessayer
 
+
+# ------------------------------------------------------------------ #
+# Découverte des sociétés (partagée par les 3 volets)
+# ------------------------------------------------------------------ #
 
 # Utilité : découvre les sociétés cotées du secteur Assurance
 def _fetch_listed_insurance_companies():
@@ -150,6 +158,10 @@ def _matched_insurance_companies():
     return matched
 
 
+# ------------------------------------------------------------------ #
+# Volet 1 : statut de cotation
+# ------------------------------------------------------------------ #
+
 # Utilité : volet 1 — enregistre le statut "Cotée" par société
 def sync_status_cotation():
     """Enregistre le KPI "Status de cotation" = "Cotée" pour chaque société
@@ -178,6 +190,10 @@ def sync_status_cotation():
     print(f"[INFO] {saved} statut(s) de cotation enregistre(s) en base\n")
     return saved
 
+
+# ------------------------------------------------------------------ #
+# Volet 2 : rapports ESG
+# ------------------------------------------------------------------ #
 
 # Utilité : volet 2 — enregistre les rapports ESG par société
 def sync_esg_documents():
@@ -213,6 +229,10 @@ def sync_esg_documents():
     print(f"[INFO] {saved} rapport(s) ESG enregistre(s) en base\n")
     return saved
 
+
+# ------------------------------------------------------------------ #
+# Volet 3 : données de marché (cours, ISIN, bulletin)
+# ------------------------------------------------------------------ #
 
 # Utilité : récupère les bulletins publiés dans une plage de dates
 def _bulletin_links_in_range(date_min, date_max):
@@ -327,6 +347,10 @@ def sync_market_data():
     print(f"[INFO] {bulletins_saved} bulletin(s) annuel(s) enregistre(s) en base\n")
     return {"company_kpis_saved": company_kpis_saved, "bulletins_saved": bulletins_saved}
 
+
+# ------------------------------------------------------------------ #
+# Orchestration globale
+# ------------------------------------------------------------------ #
 
 # Utilité : orchestre les 3 volets indépendants
 def sync_all():

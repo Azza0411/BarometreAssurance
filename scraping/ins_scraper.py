@@ -57,6 +57,10 @@ PIB_QUERY = f"""
 YEAR_SET_RE = re.compile(r'Period="YEARS:(\d{4})"[^>]*>([\d.\-]+)</Set>')  # capture (annee, valeur) dans la reponse XML de l'API
 
 
+# ------------------------------------------------------------------ #
+# Requêtes réseau
+# ------------------------------------------------------------------ #
+
 # Utilité : requête GET avec 3 tentatives
 def _get_with_retries(url, timeout=30, retries=3):
     """Meme approche que bvmt_scraper/ftusa_scraper/cga_scraper : le site peut
@@ -87,6 +91,10 @@ def _post_with_retries(url, headers, data, timeout=30, retries=3):
             print(f"  [WARN] Tentative {attempt}/{retries} echouee pour {url} : {exc}")
             time.sleep(1.5)  # pause avant de reessayer
 
+
+# ------------------------------------------------------------------ #
+# Collecte des données (API + repli HTML)
+# ------------------------------------------------------------------ #
 
 # Utilité : interroge l'API INS et parse la réponse XML
 def _fetch_series(query_xml):
@@ -133,6 +141,10 @@ def _fetch_population_jan():
             pass  # valeur non numerique, ignoree
     return result
 
+
+# ------------------------------------------------------------------ #
+# Orchestration
+# ------------------------------------------------------------------ #
 
 # Utilité : orchestre tout : Population, PIB, repli, enregistrement
 def sync_all():
