@@ -49,7 +49,8 @@
 | `scraping/bvmt_scraper.py` | Scraper BVMT |
 | `scraping/ins_scraper.py` | Scraper INS |
 | `api/routes/veille.py` | Atlas Magazine, IlBoursa, CGA/FTUSA réglementaire |
-| `scripts/seed_enquete_marche.py` | Chargement du fichier Excel ENQUETE |
+| `scripts/seed_enquete_marche.py` | Écrit en base les statistiques ENQUETE (dict Python déjà rempli, pas de lecture Excel) |
+| `extraction/enquete_extractor.py` | Lit réellement le fichier Excel (`pandas`) — module d'extraction, pas de scraping |
 | `config/company_registry.py` | Reconnaissance des sociétés (`find_code_by_name`) |
 | `database/repository.py` | `document_exists`, `save_document`, `get_or_create_source` |
 
@@ -147,6 +148,88 @@ Avant d'enregistrer un document, vérifier qu'il n'existe pas déjà en base (so
 | 300 | Journalise la confirmation |
 
 ---
+
+### FTUSA
+
+![Scraper FTUSA — étapes et fonctions réelles appelées](diagrams/source_ftusa_steps.png)
+
+| Fonction (`scraping/ftusa_scraper.py`) | Rôle |
+|---|---|
+| `_get_with_retries` | Requête GET avec 3 tentatives en cas d'échec réseau |
+| `_collect_main_pdf_links` | Récupère les liens PDF de la zone principale (exclut le bloc "à la une") |
+| `_detect_report_year` | Lit les 2 premières pages du PDF pour trouver l'année du rapport |
+| `sync_documents` | Orchestre tout : collecte, téléchargement, filtrage, enregistrement |
+
+Pas de fonction de déduplication locale — la première URL rencontrée par année est gardée (la page liste du plus récent au plus ancien), et `save_document()` gère la déduplication côté base.
+
+### CGA
+
+![Scraper CGA — étapes et fonctions réelles appelées](diagrams/source_cga_steps.png)
+
+| Fonction (`scraping/cga_scraper.py`) | Rôle |
+|---|---|
+| `_get_with_retries` | Requête GET avec 3 tentatives |
+| `_gdrive_download_url` | Construit l'URL de téléchargement direct depuis un id Google Drive |
+| `_fetch_report_links` | Récupère les liens PDF (page principale + suivi de lien pour 2023+) |
+| `sync_documents` | Orchestre tout : liens, filtrage, enregistrement |
+
+### INS
+
+![Scraper INS — étapes et fonctions réelles appelées](diagrams/source_ins_steps.png)
+
+| Fonction (`scraping/ins_scraper.py`) | Rôle |
+|---|---|
+| `_get_with_retries` | Requête GET avec 3 tentatives |
+| `_post_with_retries` | Requête POST avec 3 tentatives (appel API XML) |
+| `_fetch_series` | Interroge l'API INS et parse la réponse XML |
+| `_fetch_population_jan` | Repli HTML pour les années absentes de l'API |
+| `sync_all` | Orchestre tout : Population, PIB, repli, enregistrement |
+
+Pas de notion de société ni de PDF ici : chaque enregistrement est une valeur macroéconomique (Population, PIB) rattachée à une année.
+
+### BVMT
+
+![Scraper BVMT — les 3 volets indépendants](diagrams/source_bvmt_steps.png)
+
+| Fonction (`scraping/bvmt_scraper.py`) | Rôle |
+|---|---|
+| `_get_with_retries` | Requête GET générique avec 3 tentatives |
+| `_fetch_listed_insurance_companies` | Découvre les sociétés cotées du secteur Assurance |
+| `_fetch_esg_societe_ids` | Récupère les identifiants de filtre ESG par société |
+| `_fetch_esg_report_links` | Récupère les liens PDF des rapports ESG d'une société |
+| `_report_year` | Déduit l'année d'un rapport depuis son nom de fichier |
+| `_matched_insurance_companies` | Relie les sociétés BVMT au registre des sociétés (`find_code_by_name`) |
+| `sync_status_cotation` | Volet 1 : enregistre le statut "Cotée" par société |
+| `sync_esg_documents` | Volet 2 : enregistre les rapports ESG par société |
+| `_bulletin_links_in_range` | Récupère les bulletins publiés dans une plage de dates |
+| `_last_bulletin_of_year` | Trouve le dernier bulletin boursier d'une année |
+| `sync_market_data` | Volet 3 : cours, ISIN, nombre d'actions, bulletin annuel |
+| `sync_all` | Orchestre les 3 volets indépendants |
+
+### ENQUETE
+
+![ENQUETE — étapes et fonctions réelles appelées](diagrams/source_enquete_steps.png)
+
+| Fonction (`scripts/seed_enquete_marche.py`) | Rôle |
+|---|---|
+| `seed(conn)` | Point d'entrée unique : crée le référentiel puis insère tous les KPI d'un dict Python déjà rempli |
+
+**Correction importante** : ce script **ne lit aucun fichier Excel** — ses statistiques sont un dict Python codé en dur (`ENQUETE_DATA`), écrit une seule fois en base. La vraie lecture du fichier Excel (`Survey CX_...xlsx`, via `pandas`) se fait dans `extraction/enquete_extractor.py` (733 lignes), qui recalcule les statistiques à la volée pour l'API — un module d'extraction, pas de scraping, hors du périmètre commenté ici.
+
+### Atlas Magazine / IlBoursa (veille)
+
+![Veille — IlBoursa & Atlas Magazine](diagrams/source_veille_steps.png)
+
+| Fonction (`api/routes/veille.py`, partie scraping) | Rôle |
+|---|---|
+| `_scrape_ilboursa` | Actualités liées à 7 tickers cotés BVMT (liste codée en dur) |
+| `_scrape_atlas` | Actualités Tunisie sur Atlas Magazine (4 pages, fenêtre 5 ans) |
+| `_scrape_cga_page` | Textes réglementaires PDF d'une rubrique du site CGA |
+| `_scrape_ftusa_textes` / `_scrape_ftusa_code` | Textes législatifs et Code des assurances sur FTUSA |
+| `_build_veille` | Agrège les 4 sources réglementaires en parallèle (`ThreadPoolExecutor`) |
+| `sync_new_items` | Point d'entrée : re-scrape à froid + diff contre la base (appelé uniquement par le pipeline, jamais par une route HTTP) |
+
+**Deux mécanismes distincts, à ne pas confondre** : un **cache mémoire** (`_SCRAPE_CACHE`, 1h) sert les routes HTTP live (`/api/actualites`) pour éviter de re-scraper à chaque visite ; la **détection de nouveauté** (`diff_and_mark_actualites`/`diff_and_mark_reglementation`, tables `actualites_vues`/`reglementation_vues`) sert uniquement les notifications, et re-scrape toujours à froid.
 
 ### À savoir par source
 
