@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="50" viewBox="0 0 600 50">
+<title>Bannière zoom déduplication</title>
+<desc>Bannière indiquant un zoom sur l'étape Déduplication</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+<rect x="0" y="0" width="600" height="50" fill="#FFFFFF"/>
+<rect x="0" y="0" width="600" height="50" rx="6" fill="#0F6E56"/><text x="300" y="25" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">ZOOM — ÉTAPE 6 : DÉDUPLICATION</text>
+</svg>

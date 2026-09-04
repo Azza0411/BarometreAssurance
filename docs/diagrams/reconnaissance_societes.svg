@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="140" viewBox="0 0 700 140">
+<title>Reconnaissance automatique des sociétés</title>
+<desc>Problème, mécanisme de correspondance pondérée, et exemple de bug réel corrigé grâce à cette pondération.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+<rect x="0" y="0" width="700" height="140" fill="#FFFFFF"/>
+<rect x="20" y="40" width="210" height="66" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/><text x="125" y="65.08" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#712B13">Problème</text><text x="125" y="87.52" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#993C1D">Quel code pour "Maghrebia Vie" ?</text><line x1="230" y1="73" x2="254" y2="73" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/><rect x="254" y="40" width="210" height="66" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/><text x="359" y="65.08" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#085041">Mécanisme</text><text x="359" y="87.52" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#0F6E56">Score pondéré par mot rare</text><line x1="464" y1="73" x2="488" y2="73" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/><rect x="488" y="40" width="210" height="66" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/><text x="593" y="65.08" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#27500A">Résultat</text><text x="593" y="87.52" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#3B6D11">Bug "El Amana"/"AMI" corrigé</text>
+</svg>
