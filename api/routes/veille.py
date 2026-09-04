@@ -15,6 +15,9 @@ from flask import Blueprint, jsonify, request, Response
 
 bp = Blueprint("veille", __name__)
 
+# ------------------------------------------------------------------ #
+# Cache mémoire (pages live) et utilitaires réseau
+# ------------------------------------------------------------------ #
 _SCRAPE_CACHE: dict = {}  # cache mémoire process : clé -> (timestamp, données)
 _CACHE_TTL = 3600  # durée de vie du cache en secondes (1 heure)
 
@@ -88,6 +91,10 @@ def _get(url, timeout=6):
         return None  # échec silencieux (timeout, 404, site down...) -> appelant doit gérer None
 
 
+# ------------------------------------------------------------------ #
+# Utilitaires de formatage (date, catégorie, image d'article)
+# ------------------------------------------------------------------ #
+
 def _normalize_date(date_str):
     current_year = str(datetime.now().year)  # valeur de repli si date illisible
     if not date_str:
@@ -152,6 +159,10 @@ def _article_image(url):
 
 
 # ── Scraping IlBoursa ──────────────────────────────────────────────────────────
+
+# ------------------------------------------------------------------ #
+# Actualités : IlBoursa
+# ------------------------------------------------------------------ #
 
 # Utilité : actualités liées à 7 tickers cotés BVMT (liste codée en dur)
 def _scrape_ilboursa():
@@ -243,6 +254,10 @@ def _scrape_ilboursa():
 
 # ── Scraping Atlas Magazine ────────────────────────────────────────────────────
 
+# ------------------------------------------------------------------ #
+# Actualités : Atlas Magazine
+# ------------------------------------------------------------------ #
+
 # Utilité : actualités Tunisie sur Atlas Magazine (4 pages, fenêtre 5 ans)
 def _scrape_atlas():
     articles     = []  # résultat final enrichi
@@ -325,6 +340,10 @@ def _scrape_atlas():
 
 # ── Scraping Veille Réglementaire ─────────────────────────────────────────────
 
+# ------------------------------------------------------------------ #
+# Utilitaires pour la veille réglementaire (CGA / FTUSA)
+# ------------------------------------------------------------------ #
+
 def _detect_type(text):
     # Devine le type de texte réglementaire à partir de mots-clés dans son titre
     t = text.lower()
@@ -353,6 +372,10 @@ def _extract_date_from_title(titre):
         return m.group(1), int(m.group(1))
     return "", None  # aucune date trouvée
 
+
+# ------------------------------------------------------------------ #
+# Veille réglementaire : CGA
+# ------------------------------------------------------------------ #
 
 # Utilité : textes réglementaires PDF d'une rubrique du site CGA
 def _scrape_cga_page(page_id):
@@ -408,6 +431,10 @@ def _scrape_cga_page(page_id):
         })
     return docs
 
+
+# ------------------------------------------------------------------ #
+# Veille réglementaire : FTUSA
+# ------------------------------------------------------------------ #
 
 # Utilité : textes législatifs et réglementaires cités sur FTUSA
 def _scrape_ftusa_textes():
@@ -496,6 +523,10 @@ def _scrape_ftusa_code():
     }]
 
 
+# ------------------------------------------------------------------ #
+# Agrégation et détection de nouveauté
+# ------------------------------------------------------------------ #
+
 # Utilité : agrège les 4 sources réglementaires en parallèle (ThreadPoolExecutor)
 def _build_veille():
     # Agrège les 4 sources réglementaires (2 rubriques CGA + code FTUSA + textes FTUSA)
@@ -563,6 +594,10 @@ def sync_new_items():
     finally:
         conn.close()  # ferme la connexion même en cas d'exception
 
+
+# ------------------------------------------------------------------ #
+# Routes Flask (plomberie HTTP — pas du scraping, sert le cache/résultats)
+# ------------------------------------------------------------------ #
 
 @bp.route("/api/actualites", methods=["GET"])
 def get_actualites():
