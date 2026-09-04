@@ -57,6 +57,7 @@ PIB_QUERY = f"""
 YEAR_SET_RE = re.compile(r'Period="YEARS:(\d{4})"[^>]*>([\d.\-]+)</Set>')  # capture (annee, valeur) dans la reponse XML de l'API
 
 
+# Utilité : requête GET avec 3 tentatives
 def _get_with_retries(url, timeout=30, retries=3):
     """Meme approche que bvmt_scraper/ftusa_scraper/cga_scraper : le site peut
     echouer ponctuellement (timeout, 5xx passager), quelques tentatives suffisent."""
@@ -72,6 +73,7 @@ def _get_with_retries(url, timeout=30, retries=3):
             time.sleep(1.5)  # pause avant de reessayer
 
 
+# Utilité : requête POST avec 3 tentatives (appel API XML)
 def _post_with_retries(url, headers, data, timeout=30, retries=3):
     """Meme logique que _get_with_retries, pour l'appel POST vers l'API INS."""
     for attempt in range(1, retries + 1):  # jusqu'a `retries` tentatives
@@ -86,6 +88,7 @@ def _post_with_retries(url, headers, data, timeout=30, retries=3):
             time.sleep(1.5)  # pause avant de reessayer
 
 
+# Utilité : interroge l'API INS et parse la réponse XML
 def _fetch_series(query_xml):
     response = _post_with_retries(
         API_BASE_URL,
@@ -96,6 +99,7 @@ def _fetch_series(query_xml):
     return {int(year): float(value) for year, value in YEAR_SET_RE.findall(response.text)}  # {annee: valeur} extrait du XML reponse
 
 
+# Utilité : repli HTML pour les années absentes de l'API
 def _fetch_population_jan():
     """Scrape ins.tn/statistiques/111 : tableau 'Population au 1er Janvier'
     dont les annees sont en colonnes (<thead>) et la population totale en <tbody>.
@@ -130,6 +134,7 @@ def _fetch_population_jan():
     return result
 
 
+# Utilité : orchestre tout : Population, PIB, repli, enregistrement
 def sync_all():
     """Recupere Population Totale et PIB pour toutes les annees disponibles."""
     ensure_database()  # cree la base si necessaire

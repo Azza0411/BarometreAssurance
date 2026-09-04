@@ -55,6 +55,7 @@ YEAR_TITLE_RE = re.compile(r"\ben\s+(20\d{2})\b", re.IGNORECASE)  # motif "en 20
 BARE_YEAR_RE = re.compile(r"\b(20\d{2})\b")  # repli : n'importe quelle annee 20xx isolee dans le texte
 
 
+# Utilité : requête GET avec 3 tentatives en cas d'échec réseau
 def _get_with_retries(url, timeout=30, retries=3):
     """Le site peut echouer ponctuellement (timeout, 5xx passager) :
     quelques nouvelles tentatives suffisent (meme approche que bvmt_scraper)."""
@@ -70,6 +71,7 @@ def _get_with_retries(url, timeout=30, retries=3):
             time.sleep(1.5)  # petite pause avant de reessayer
 
 
+# Utilité : récupère les liens PDF de la zone principale (exclut le bloc "à la une")
 def _collect_main_pdf_links():
     """Renvoie les liens .pdf de la zone principale de la page (avant le
     bloc "à la une"), sans doublon, dans l'ordre d'apparition (du plus
@@ -87,6 +89,7 @@ def _collect_main_pdf_links():
     return ordered
 
 
+# Utilité : lit les 2 premières pages du PDF pour trouver l'année du rapport
 def _detect_report_year(pdf_bytes):
     """Détermine l'année couverte par le rapport en lisant son titre (les 2
     premières pages), plutôt que son nom de fichier (trop peu fiable sur
@@ -99,6 +102,7 @@ def _detect_report_year(pdf_bytes):
     return int(match.group(1)) if match else None  # annee trouvee, sinon None
 
 
+# Utilité : orchestre tout : collecte, téléchargement, filtrage, enregistrement
 def sync_documents():
     """Télécharge (en mémoire) les rapports de la zone principale de la page
     FTUSA, détermine l'année réelle de chacun d'après son contenu, et

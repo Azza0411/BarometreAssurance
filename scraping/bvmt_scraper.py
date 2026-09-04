@@ -86,6 +86,7 @@ TITRES_EMIS_RE = re.compile(r"<td><strong>Titres .mis</strong></td>\s*<td[^>]*>(
 BULLETIN_LINK_RE = re.compile(r'href="([^"]*[Bb]ull(\d{8})\.pdf)"')  # capture (lien complet, date AAAAMMJJ)
 
 
+# Utilité : requête GET générique avec 3 tentatives
 def _get_with_retries(url, params=None, retries=3, timeout=30):
     """Le site répond parfois par un simple timeout de lecture (observé de
     façon intermittente) : quelques nouvelles tentatives suffisent."""
@@ -101,6 +102,7 @@ def _get_with_retries(url, params=None, retries=3, timeout=30):
             time.sleep(1.5)  # pause avant de réessayer
 
 
+# Utilité : découvre les sociétés cotées du secteur Assurance
 def _fetch_listed_insurance_companies():
     """Renvoie [(nom_societe, chemin_profil), ...] pour les sociétés cotées
     du secteur Assurance, tel qu'affiché sur /emetteurs."""
@@ -110,6 +112,7 @@ def _fetch_listed_insurance_companies():
     return [(name.strip(), path) for path, name in TITLE_LINK_RE.findall(response.text)]  # parse toutes les lignes de la liste
 
 
+# Utilité : récupère les identifiants de filtre ESG par société
 def _fetch_esg_societe_ids():
     """Renvoie {nom_societe: id} pour le filtre "societe" de la page de
     reporting ESG (toutes sociétés cotées, pas seulement Assurance)."""
@@ -119,6 +122,7 @@ def _fetch_esg_societe_ids():
     return {name.strip(): int(societe_id) for societe_id, name in SOCIETE_OPTION_RE.findall(response.text)}  # dict nom -> id
 
 
+# Utilité : récupère les liens PDF des rapports ESG d'une société
 def _fetch_esg_report_links(societe_id):
     """Renvoie les liens PDF des rapports ESG d'une société (URLs absolues)."""
     response = _get_with_retries(ESG_REPORTS_URL, params={"societe": societe_id})  # filtre serveur par société
@@ -126,11 +130,13 @@ def _fetch_esg_report_links(societe_id):
     return [link if link.startswith("http") else BASE_URL + link for link in links]  # normalise en URLs absolues
 
 
+# Utilité : déduit l'année d'un rapport depuis son nom de fichier
 def _report_year(pdf_url):
     match = DATE_IN_FILENAME_RE.search(pdf_url) or BARE_YEAR_RE.search(pdf_url)  # date complète, sinon année isolée
     return int(match.group(1)) if match else None  # None si aucune année détectable
 
 
+# Utilité : relie les sociétés BVMT au registre des sociétés (find_code_by_name)
 def _matched_insurance_companies():
     """Sociétés du secteur Assurance cotées en bourse, reconnues dans le
     registre CMF : [(code, nom_sur_bvmt, chemin_profil), ...]."""
@@ -144,6 +150,7 @@ def _matched_insurance_companies():
     return matched
 
 
+# Utilité : volet 1 — enregistre le statut "Cotée" par société
 def sync_status_cotation():
     """Enregistre le KPI "Status de cotation" = "Cotée" pour chaque société
     du secteur Assurance présente dans la liste des sociétés cotées BVMT."""
@@ -172,6 +179,7 @@ def sync_status_cotation():
     return saved
 
 
+# Utilité : volet 2 — enregistre les rapports ESG par société
 def sync_esg_documents():
     """Enregistre un document par rapport ESG trouve, pour chaque societe
     d'assurance cotee reconnue."""
@@ -206,6 +214,7 @@ def sync_esg_documents():
     return saved
 
 
+# Utilité : récupère les bulletins publiés dans une plage de dates
 def _bulletin_links_in_range(date_min, date_max):
     """Renvoie [(date_str "AAAAMMJJ", url_absolue), ...] des bulletins
     officiels publiés entre `date_min` et `date_max` (AAAA-MM-JJ), triés du
@@ -215,6 +224,7 @@ def _bulletin_links_in_range(date_min, date_max):
     return sorted((date_str, path if path.startswith("http") else BASE_URL + path) for date_str, path in matches)  # tri chronologique croissant
 
 
+# Utilité : trouve le dernier bulletin boursier d'une année
 def _last_bulletin_of_year(year, today):
     """Bulletin du dernier jour de bourse de `year` (fenêtre de recherche en
     décembre, élargie si aucun bulletin n'y est trouvé — jours fériés
@@ -232,6 +242,7 @@ def _last_bulletin_of_year(year, today):
     return None, None  # aucun bulletin trouvé dans aucune fenêtre
 
 
+# Utilité : volet 3 — cours, ISIN, nombre d'actions, bulletin annuel
 def sync_market_data():
     """Pour chaque société d'assurance cotée reconnue, enregistre sur son
     document de profil (même document que sync_status_cotation) :
@@ -317,6 +328,7 @@ def sync_market_data():
     return {"company_kpis_saved": company_kpis_saved, "bulletins_saved": bulletins_saved}
 
 
+# Utilité : orchestre les 3 volets indépendants
 def sync_all():
     cotation_saved = sync_status_cotation()  # volet 1 : statut de cotation (présence dans la liste Assurance)
     esg_saved = sync_esg_documents()  # volet 2 : documents ESG (rapports PDF par société)

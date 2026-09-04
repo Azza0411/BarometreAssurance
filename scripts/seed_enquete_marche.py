@@ -141,7 +141,8 @@ ENQUETE_DATA = {
 }
 
 
-def seed(conn):  # point d'entrée : insère tout ENQUETE_DATA en base via une seule connexion
+# Utilité : point d'entrée unique — crée le référentiel puis insère tous les KPI
+def seed(conn):  # insère tout ENQUETE_DATA en base via une seule connexion
     source_id = get_or_create_source(conn, "ENQUETE", "Enquête de marché")  # source "ENQUETE" (pas une URL, juste un libellé)
     cmf_id    = get_or_create_company(conn, "STAR", "Société Tunisienne d'Assurances et de Réassurance")  # rattache l'enquête à la société STAR
     doc_id    = save_document(conn, source_id, cmf_id, "Enquête de marché STAR 2024", 2024, "")  # "document" = l'enquête elle-même (pas de lien PDF)
