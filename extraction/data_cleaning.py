@@ -28,21 +28,10 @@ reste possible et ne doit pas être écrasée silencieusement.
 
 from database.repository import get_document_id, get_kpi_values_for_document
 
-# Au-delà de ces seuils, une variation d'un KPI d'une année sur l'autre est
-# jugée implausible pour la quasi-totalité des lignes du Bilan : presque
-# toujours une erreur d'extraction (chiffres fusionnés, mauvaise colonne...)
-# plutôt qu'une vraie évolution business. Seuils repris de C:\fsmi (R-YOY),
-# assez larges pour ignorer une croissance/décroissance normale.
-YOY_MAX_DROP_PCT = 95.0    # toute baisse au-delà de ce pourcentage est suspecte
-YOY_MAX_GROWTH_X = 20.0    # tout multiplicateur au-delà de celui-ci est suspect
-YOY_MIN_ABS = 1000.0       # ignore les micro-valeurs (le bruit d'arrondi domine)
+YOY_MAX_DROP_PCT = 95.0
+YOY_MAX_GROWTH_X = 20.0
+YOY_MIN_ABS = 1000.0
 
-# KPI pour lesquels ce contrôle a un sens : des masses financières censées
-# rester globalement stables d'une année sur l'autre pour une société en
-# activité continue. Exclut volontairement les KPI de nature différente
-# (dates, texte, compteurs de faible amplitude comme "Effectif" qui peut
-# légitimement doubler pour une petite société, ratios déjà bornés par
-# ailleurs) — liste alignée sur bilan_kpi_extractor.KPI_DEFINITIONS.
 YOY_CHECKED_KPIS = {
     "Total actif",
     "Capitaux propres",
@@ -55,20 +44,7 @@ YOY_CHECKED_KPIS = {
     "Autres passifs",
     "Part des réassureurs dans les provisions techniques",
     "Provisions techniques brutes",
-    # Ajouté pour couvrir un KPI "en valeur absolue" affiché sur la page
-    # Qualité Data — sans plage de plausibilité fixe possible (l'échelle
-    # varie trop d'une société à l'autre), la comparaison à soi-même d'une
-    # année sur l'autre est le contrôle "aberrant" pertinent ici. Toujours
-    # positif par nature (des primes émises négatives n'existent pas) : le
-    # test sign_flip ne peut jamais s'y déclencher à tort.
     "Primes émises par assurance",
-    # Volontairement absents : "Résultat Net" et "Résultat technique (TND)"
-    # sont des résultats de P&L, signés par nature — passer du bénéfice à la
-    # perte (ou l'inverse) d'une année sur l'autre est un événement business
-    # tout à fait normal, pas un signe d'erreur d'extraction. Les inclure ici
-    # générait de faux positifs confirmés en base (ex: TUNIS_RE 2018 12,3M
-    # -> -17,1M signalé "signe inverse suspect" ; AT_TAKAFULIA 2019 -650k ->
-    # +334k, une vraie sortie de perte, pas un bug — voir commit associé).
 }
 
 

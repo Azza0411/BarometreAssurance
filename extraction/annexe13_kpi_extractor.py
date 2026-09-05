@@ -28,33 +28,8 @@ from extraction.bilan_kpi_extractor import (
     _normalizer,
 )
 
-# Cette annexe peut se trouver très loin dans le document (ex: page 74 sur
-# 101 chez TUNIS_RE, société de réassurance aux annexes très détaillées).
 MAX_PAGES_SCANNED = 120
 
-# Trois présentations rencontrées pour ce même tableau :
-#  - "Résultat technique par catégorie d'assurance Non Vie" (STAR, COMAR...) :
-#    une colonne par branche + une colonne "Total" ;
-#  - "Tableau de raccordement du résultat technique..." (ASTREE, GAT...) :
-#    une seule colonne (totaux directs, négatifs entre chevrons ou parenthèses) ;
-#  - "Résultat technique par catégorie d'assurance" sans mention "Non Vie"
-#    (MAGHREBIA...) : table combinée sans séparation Vie/Non-Vie.
-# Les pages "raccordement" sont toujours scannées EN PREMIER car elles
-# contiennent directement le total agrégé (une seule valeur par ligne),
-# contrairement aux tableaux multi-colonnes où `clusters[-1]` peut être
-# une colonne de branche plutôt que le Total.
-# "(?:non.?vie |vie )?" : même variante d'ordre des mots que côté Annexe 12
-# (voir annexe12_kpi_extractor.PAGE_TITLE_RE) — chez BIAT par exemple, le
-# titre est "RESULTAT TECHNIQUE NON VIE PAR CATEGORIE D'ASSURANCE" (le mot
-# "Non Vie" intercalé entre "technique" et "par"), pas seulement en fin de
-# titre comme documenté plus haut pour STAR/COMAR/ASTREE/GAT/MAGHREBIA —
-# vérifié sur BIAT_2024.pdf, page Annexe 13.
-# Variante de gabarit "État de résultat technique (Non-)Vie DE <société>"
-# (nom de la société, pas "par catégorie") - voir la même note dans
-# annexe12_kpi_extractor.PAGE_TITLE_RE (découverte 2026-08-16 sur GAT_VIE).
-# Même motif "ETAT DE RESULTAT TECHNIQUE DE L'ASSURANCE..." que
-# annexe12_kpi_extractor.py (cas CTAMA, découvert le 2026-08-17) — voir son
-# commentaire détaillé pour le contexte.
 PAGE_TITLE_RE = re.compile(
     r"resultat technique (?:non.?vie |vie )?par categorie"
     r"|resultat technique (?:non.?vie|vie) de\b"
@@ -65,20 +40,9 @@ RACCORDEMENT_RE = re.compile(r"raccordement")
 NON_VIE_RE = re.compile(r"non.?vie")
 VIE_RE = re.compile(r"\bvie\b")
 
-# Même piège que annexe12_kpi_extractor.NOTES_SECTION_RE (cf. son commentaire
-# détaillé, cas ATTIJARI) : une page de "NOTES" narrative en prose peut
-# mentionner "résultat technique par catégorie" en passant sans être la table
-# elle-même — exclue par précaution ici aussi, même si non encore observée
-# côté Non-Vie spécifiquement.
 NOTES_SECTION_RE = re.compile(r"\bnotes sur\b")
 
-# Dans la section "Informations complémentaires", certaines lignes existent en
-# double : année en cours (ex: "clôture", "Année N") et année précédente (ex:
-# "Réouverture"/"Ouverture", "Année N-1"). On exclut les variantes "année
-# précédente" pour ne garder que l'année en cours.
 PRIOR_YEAR_EXCLUSION_RE = re.compile(r"n-1|ouverture|precedent|anterieur")
-# Labels contenant une référence de note de bas de page ("primes emises note n°19")
-# sont des renvois de tableau, pas des lignes de données — à exclure.
 NOTE_REFERENCE_RE = re.compile(r"\bnote\b")
 
 KPI_PATTERNS = {
@@ -89,15 +53,9 @@ KPI_PATTERNS = {
     "Primes émises Non-Vie par assurance": re.compile(r"^primes emises\b"),
     "Primes acquises": re.compile(r"^primes acquises\b"),
     "Charges de prestations Non-Vie": re.compile(r"^charges de prestations?\b"),
-    # S'arrête avant "nettes" : ce libellé se coupe parfois en fin de ligne
-    # juste avant ce mot (ex: STAR : "...de gestion n"), comme "et caisse"
-    # pour le Bilan (voir bilan_kpi_extractor.DEPOTS_LIQUIDITE_RE).
     "Charges d'acquisition et de gestion nettes Non-Vie": re.compile(
         r"charges d acquisition et de gestion"
     ),
-    # Exclut la ligne de titre de la page elle-même ("Résultat technique par
-    # catégorie d'assurance Non Vie..."), qui commence par les mêmes mots que
-    # la ligne de total recherchée.
     "Résultat technique Non-Vie": re.compile(r"^resultat technique\b(?!.*(categorie|assurance))"),
 }
 
@@ -110,23 +68,7 @@ def _label_text(line):
     if not label_words:
         return None
     label = _normalizer.clean(" ".join(w["text"] for w in label_words))
-    # Certaines pages "raccordement" (ex: HAYETT) présentent chaque poste
-    # comme un item de liste à puces ("-primes", "-charges de prestation"),
-    # le "-" étant collé au mot suivant dans le PDF source (un seul "mot"
-    # pdfplumber, donc pas filtrable comme token numérique). Sans ce
-    # nettoyage, `^primes\b` etc. ne matchaient jamais "-primes" - découvert
-    # le 2026-08-16 sur HAYETT_2024.pdf (Annexe 12, "Primes émises Vie par
-    # assurance" restait introuvable alors que la ligne existe bien).
     label = _LEADING_BULLET_RE.sub("", label)
-    # Code de ligne (PRV11, CHV1...) collé au libellé, jamais retiré ici
-    # avant le 2026-08-17 : cette fonction est une COPIE de
-    # bilan_kpi_extractor._label_text (pas un appel partagé) et n'avait
-    # jamais reçu le même traitement de préfixe. Chez CTAMA (et
-    # probablement d'autres), le code de ligne EST détaché du libellé par
-    # pdfplumber ("PRV11 Primes émises et acceptées" -> un seul mot
-    # "PRV11" + le reste) — sans ce retrait, aucun motif "^primes\b" ne
-    # matchait jamais, laissant 100 % des documents CTAMA sans Primes
-    # émises/Charges ni aucun ratio dérivé.
     return ROW_CODE_PREFIX_RE.sub("", label, count=1)
 
 
@@ -146,16 +88,11 @@ def _is_target_page(page, lines_checked=4):
         return False
     if not PAGE_TITLE_RE.search(normalized):
         return False
-    # Accepter : explicitement "Non Vie", OU pas de mention "Vie" du tout
-    # (table combinée sans séparation, ex: MAGHREBIA).
-    # Rejeter : pages Vie pures (domaine de l'Annexe 12).
     if NON_VIE_RE.search(normalized):
         return True
     return not VIE_RE.search(normalized)
 
 
-# Sections qui marquent la FIN d'un groupe "Charges de prestations" dans le
-# forward scan.
 _SECTION_STOP_RE = re.compile(
     r"^(solde|frais d acquisition|charges d acquisition et de gestion|"
     r"produits|resultat technique|part des reassureurs|retrocessionn|"
@@ -183,7 +120,6 @@ def _find_total_value(pdf, pattern, max_pages=MAX_PAGES_SCANNED):
         norm = _normalizer.clean((page.extract_text() or "")[:300])
         target_pages.append((not RACCORDEMENT_RE.search(norm), page))
 
-    # Raccordement pages first (is_raccordement=True → sort key False → first)
     target_pages.sort(key=lambda x: x[0])
 
     for _, page in target_pages:
@@ -199,21 +135,9 @@ def _find_total_value(pdf, pattern, max_pages=MAX_PAGES_SCANNED):
             if NOTE_REFERENCE_RE.search(label):
                 continue
             clusters = _extract_numeric_clusters(line)
-            # Un renvoi de note ou un numéro de page/ligne capturé par erreur
-            # (ex: COTUNACE "Charges de prestations" = 20.0) est rejeté par
-            # _is_plausible : on retombe alors sur le forward scan des
-            # sous-lignes plutôt que de renvoyer ce chiffre tel quel.
             value = _pick_current_year_value(clusters)
             if value is not None and _is_plausible(value):
                 return value
-            # Ligne sans valeur inline (ou valeur inline implausible) :
-            # forward scan des sous-lignes. Gère deux cas :
-            #   1. Label seul + nombre sur la ligne suivante sans label (STAR 2023)
-            #   2. En-tête de section + sous-lignes labelées (COMAR/CARTE)
-            # `last_seen` évite un double-comptage quand le PDF source
-            # affiche deux fois la même rangée de chiffres sans libellé sur
-            # la 2e occurrence (voir annexe12_kpi_extractor._find_total_value
-            # pour le détail complet — même garde ici, cas CARTE_VIE/COMAR).
             total = None
             last_seen = None
             for j in range(idx + 1, min(idx + 1 + _FORWARD_SCAN_WINDOW, len(lines))):
@@ -263,7 +187,7 @@ def extract_annexe13_kpis(pdf):
 def extract_annexe13_kpis_from_url(pdf_url, timeout=30):
     """Télécharge le PDF en mémoire (aucune écriture sur disque) et en
     extrait les KPI de l'Annexe N°13."""
-    import pdfplumber  # import local pour éviter la dépendance si non utilisé
+    import pdfplumber
 
     response = requests.get(pdf_url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
     response.raise_for_status()

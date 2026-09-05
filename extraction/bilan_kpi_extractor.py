@@ -39,68 +39,20 @@ from utils.text_normalizer import TextNormalizer
 
 _normalizer = TextNormalizer()
 
-# Motifs recherchés (après normalisation : minuscules, sans accents, sans
-# ponctuation), sous forme de regex pour tolérer les variantes constatées
-# d'une société à l'autre (article "des"/"de l'" optionnel, singulier/pluriel).
 TOTAL_ACTIF_RE = re.compile(r"^total (de l |des )?actifs?\b")
-# "Total capitaux propres avant résultat de l'exercice" est une ligne
-# INTERMÉDIAIRE (avant d'ajouter le résultat de l'exercice en cours) —
-# presque tous les documents ont ensuite une ligne "avant affectation", le
-# vrai total final. Chercher "av(ant)? resultat" sans distinction faisait
-# remonter la valeur intermédiaire chez des sociétés qui ont les deux lignes
-# (ex: BIAT 2025 : 103,1M extraits au lieu de 128,8M, sous-estimant les
-# capitaux propres — donc surestimant le ROE affiché — exactement du montant
-# du résultat de l'exercice). Voir _find_capitaux_propres : la ligne "avant
-# affectation" est maintenant cherchée en priorité.
 TOTAL_CAPITAUX_PROPRES_AFFECTATION_RE = re.compile(r"^total (des )?(capitaux propres|cp) av(ant)? affectation\b")
 TOTAL_CAPITAUX_PROPRES_RE = re.compile(r"^total (des )?(capitaux propres|cp) av(ant)? resultat\b")
 TOTAL_PASSIF_RE = re.compile(r"^total (du |des )?passifs?\b")
-# Pas de \b/^ en tête : comme pour les sections, le code de ligne (ex:
-# "AC332") est parfois collé sans séparateur au libellé (ex: "ac33autres
-# placements financiers" chez ASTREE) — on cherche donc une sous-chaîne
-# (voir _find_row_value, qui utilise .search() et non .match()).
 OBLIGATIONS_RE = re.compile(r"obligations et autres titres")
 ACTIONS_PARTICIPATION_RE = re.compile(r"actions,? ?autres titres a revenu variable")
 OPCVM_RE = re.compile(r"autres placements financiers")
-# S'arrête avant "et caisse" : ce libellé se coupe parfois sur 2 lignes juste
-# avant ce mot (ex: STAR), le reste du motif restant intact sur la 1ère ligne.
 DEPOTS_LIQUIDITE_RE = re.compile(r"avoirs en banques?,? ?ccp,? ?ch[eè]ques")
 
 ACTIF_PAGE_TITLE_RE = re.compile(r"\bactifs?\b")
 PASSIF_PAGE_TITLE_RE = re.compile(r"\bpassifs?\b")
-# Codes de section de premier niveau du plan comptable réglementaire tunisien
-# des assurances (ex: "AC3 Placements", "PA7 Autres passifs") : un chiffre
-# unique après le préfixe (le \b empêche de matcher "AC31", "AC331"...).
 SECTION_CODE_RE = re.compile(r"^(ac|pa)([1-7])\b")
-# Les libellés de lignes de détail sont souvent précédés du code de la ligne
-# (ex: "AC332 Obligations..." -> "ac332 obligations...") : on l'enlève avant
-# de comparer aux motifs, pour ne pas avoir à répéter tous les codes possibles
-# dans chaque motif. "prv|prnv|chv|chnv" (codes Annexe 12/13 : Primes/Charges
-# Vie/Non-Vie, ex: "PRV11 Primes émises et acceptées") ajoutés le 2026-08-17 —
-# cette fonction est réutilisée telle quelle par annexe12/13_kpi_extractor.py
-# (import direct), mais n'y couvrait jusqu'ici que les codes Bilan (AC/PA/CP)
-# : chez CTAMA (et probablement d'autres), le code de ligne PRV/CHV n'est pas
-# détaché du libellé par pdfplumber comme il l'est chez la plupart des autres
-# sociétés — le préfixe non retiré empêchait tout motif "^primes emises\b"
-# de matcher, laissant Primes émises Vie/Non-Vie et tous les KPI dérivés
-# introuvables pour 100 % de ses documents.
 ROW_CODE_PREFIX_RE = re.compile(r"^(ac|pa|cp|prv|prnv|chv|chnv)\d+\s+")
 
-# Repli utilisé quand le code de section (AC1..AC7/PA1..PA7) n'est pas
-# détectable tel quel dans le texte extrait (ex: chiffre du code absent ou
-# collé sans espace au libellé — constaté chez ASTREE, BH) : on identifie
-# alors directement les titres de section par leur texte, dans l'ordre où le
-# plan comptable réglementaire les présente. Les motifs excluent
-# explicitement les libellés de sous-éléments qui contiennent le même mot
-# (ex: "AC34 Créances pour espèces déposées..." est un sous-élément de
-# Placements/AC3, pas le début de la section Créances/AC6).
-# Pas de \b en début de motif : le code de ligne est parfois collé sans
-# aucun séparateur au libellé (ex: "ac3placements", "acactifs incorporels"
-# chez ASTREE) — un chiffre ou une lettre collés juste avant empêchent une
-# frontière de mot regex de s'y trouver. On recherche donc une simple
-# sous-chaîne, et c'est l'heuristique "libellé le plus court" (voir
-# _section_starts_for_page) qui distingue le titre de section de ses
-# sous-éléments contenant le même mot.
 ACTIF_SECTION_TEXT_PATTERNS = [
     ("1", re.compile(r"actifs incorporels")),
     ("2", re.compile(r"actifs corporels")),
@@ -115,90 +67,18 @@ PASSIF_SECTION_TEXT_PATTERNS = [
     ("7", re.compile(r"autres passifs")),
 ]
 
-MAX_PAGES_SCANNED = 12   # le Bilan se trouve systématiquement en tête de document
-# Fenêtre restreinte pour les recherches spécifiquement filtrées par
-# _is_actif_page/_is_passif_page (Total actif, Total Passif, et leurs replis).
-# Sur l'ensemble des 186 PDF CMF locaux, la page "Actif" du Bilan est TOUJOURS
-# en position 0-2 (indexée à partir de 0) et la page "Passif" toujours en
-# position 0-3 ; tout ce qui se présente comme "page actif/passif" au-delà
-# (constaté en positions 5 à 9) est un faux positif : une page d'annexe/notes
-# mentionnant "actif"/"passif" en passant dans une phrase (ex: "Tableau des
-# engagements reçus et donnés" contient "...actifs acquis avec engagement de
-# revente"). Avec la fenêtre large MAX_PAGES_SCANNED=12, un tel faux positif
-# pouvait faire remonter une valeur erronée (ex: MAGHREBIA_VIE 2018/2020,
-# Total actif=0 capté sur une ligne "TOTAL 0 0" sans rapport, au lieu de
-# rester introuvable/None) via _find_actif_bare_total_fallback. Découvert en
-# comparant l'extraction avant/après sur l'ensemble du corpus après
-# l'élargissement de lines_checked (5->10, voir _is_actif_page) fait pour
-# BIAT 2025.
+MAX_PAGES_SCANNED = 12
 BILAN_TOTAL_MAX_PAGES = 4
-Y_TOLERANCE = 5          # tolérance (pt) pour regrouper les mots d'une même ligne visuelle
-# Écart horizontal entre deux tokens numériques consécutifs : ~1-2.3pt à
-# l'intérieur d'un même nombre (séparateur de milliers), ~8-45pt entre deux
-# colonnes distinctes (constaté sur plusieurs PDF réels, la valeur basse de
-# 8pt provenant d'un document aux colonnes resserrées) : 4 sépare proprement
-# les deux cas avec une marge confortable des deux côtés.
+Y_TOLERANCE = 5
 NUMBER_GAP_THRESHOLD = 4
-# Un token numérique peut porter une partie décimale séparée par une virgule
-# (ex: "113,026" chez certaines sociétés qui expriment les millimes).
-# Le signe négatif n'est pas toujours le tiret ASCII standard : certains
-# documents (ex: COMAR) utilisent le caractère Unicode HYPHEN (U+2010) ou des
-# variantes de tiret similaires — on les tolère toutes, puis on les
-# normalise en "-" ASCII avant conversion en nombre (voir _extract_numeric_clusters).
 MINUS_CHARS = "‐‑‒–—−"
-# Format virgule-décimale : "113,026" (un seul groupe → millimes tunisiens).
-# Format américain multi-groupes : "13,966,819.225" (virgule = milliers, point
-# = décimale) — rencontré dans les PDF COTUNACE 2021 et similaires.
-# Format tunisien alternatif multi-groupes point-milliers, sans virgule :
-# "79.274.708" (ex: UIB 2025, MAGHREBIA_VIE 2020) — `(?:\.\d+)*` (au lieu de
-# `?`) admet aussi plusieurs groupes séparés par un point ; la distinction
-# avec un simple nombre décimal ("63.8") est faite dans _parse_number selon
-# le nombre de points, pas ici (ici on ne fait que reconnaître le token).
 NUMERIC_TOKEN_RE = re.compile(rf"^[-{MINUS_CHARS}]?\d+(?:,\d+)*(?:\.\d+)*$")
 _MINUS_NORMALIZE_RE = re.compile(f"[{MINUS_CHARS}]")
-# Deux nombres consécutifs sans aucun espace entre eux, le second étant
-# négatif (ex: "104-1" = fin de "...350 104" suivi du début de "-1 144...")
-# : rencontré dans les tableaux très denses (ex: FTUSA). Un seul mot PDF
-# porte alors les deux nombres, ce qui ne correspond à aucun NUMERIC_TOKEN_RE
-# valide (le signe n'est pas en tête) -> _extract_numeric_clusters l'exclut
-# et les deux nombres sont perdus si on ne le sépare pas explicitement.
 _GLUED_NEGATIVE_RE = re.compile(rf"^(\d+)([-{MINUS_CHARS}]\d+(?:,\d+)?)$")
-# Fin d'un montant entre parenthèses (colonne Amortissements/Provisions)
-# collée sans espace au début du nombre suivant (ex: "769,278)426" = fin de
-# "(66 442 769,278)" + début de "426 512 304,411" — rencontré chez GAT 2018).
-# Un seul mot PDF porte alors la fin d'un nombre, la parenthèse fermante, et
-# le début du nombre suivant : ni NUMERIC_TOKEN_RE (la ")" au milieu ne
-# correspond à aucun format valide) ni _words_with_bracket_negatives_resolved
-# (qui ne traite que les mots commençant par "(" ou finissant par ")", pas
-# les deux à la fois avec du texte après) ne le gèrent -> le mot est perdu
-# tel quel, ce qui décale aussi le regroupement des colonnes suivantes.
 _GLUED_CLOSE_PAREN_RE = re.compile(r"^(\d+(?:,\d+)?)\)(\d+)$")
-# Séparateur de milliers en POINTS ("8.671.061" au lieu de "8 671 061" —
-# rencontré chez TUNIS_RE 2024) : la couche texte du PDF scinde ce nombre en
-# DEUX mots ("8" et ".671.061" — vérifié via page.extract_words()). Le
-# second mot ne correspond à aucun format reconnu par NUMERIC_TOKEN_RE (il
-# commence par un point) et est silencieusement perdu, ne laissant que le
-# chiffre isolé — d'où les valeurs absurdement petites observées partout où
-# ce format apparaît (voir MIN_PLAUSIBLE_VALUE ci-dessus et
-# CAS_PARTICULIERS_RESULTAT.md). "\.\d{3}(?:\.\d{3})*$" exige des groupes
-# de 3 chiffres pleins : une vraie décimale (ex: ".5", ".54") ne matche
-# jamais cette forme, ce qui limite le risque de fusionner à tort un chiffre
-# et une décimale non liée.
 _PERIOD_THOUSANDS_CONTINUATION_RE = re.compile(r"^\.\d{3}(?:\.\d{3})*$")
 _LEADING_DIGIT_GROUP_RE = re.compile(rf"^[-{MINUS_CHARS}]?\d{{1,3}}$")
-# Aucune société d'assurance tunisienne n'approche cet ordre de grandeur (en
-# dinars) : une valeur qui le dépasse trahit une erreur d'extraction (nombres
-# fusionnés) plutôt qu'un vrai montant — on la rejette plutôt que de renvoyer
-# un chiffre faux.
 MAX_PLAUSIBLE_VALUE = 50_000_000_000
-# Symétriquement : aucune ligne du Bilan/Annexe/État de résultat (totaux
-# généraux, totaux de section, lignes de détail) ne descend légitimement en
-# dessous de ce seuil (en dinars) — un chiffre non-nul plus petit trahit
-# presque toujours un renvoi de note ou un numéro de page/ligne capturé par
-# erreur à la place du vrai montant (cas documentés dans CAS_PARTICULIERS*.md :
-# COTUNACE "Charges de prestations" = 20.0, TUNIS_RE 2024 = 2.0 partout à
-# cause du format "." comme séparateur de milliers). Un vrai zéro (section
-# légitimement vide, ex: pas de contrats en unités de compte) reste accepté.
 MIN_PLAUSIBLE_VALUE = 1000
 
 
@@ -331,9 +211,6 @@ def _extract_numeric_clusters(line, gap_threshold=NUMBER_GAP_THRESHOLD):
     numeric_words = [w for w in expanded if NUMERIC_TOKEN_RE.match(w["text"])]
     clusters, current_tokens, prev_x1 = [], [], None
     for w in numeric_words:
-        # >= et non > : un ecart EXACTEMENT egal au seuil (ex: GAT 2018, 4.0pt
-        # pile) doit encore etre traite comme une frontiere de colonne, pas
-        # comme un chevauchement a l'interieur d'un meme nombre.
         if prev_x1 is not None and (w["x0"] - prev_x1) >= gap_threshold:
             clusters.append(current_tokens)
             current_tokens = []
@@ -347,13 +224,6 @@ def _extract_numeric_clusters(line, gap_threshold=NUMBER_GAP_THRESHOLD):
         raw = _MINUS_NORMALIZE_RE.sub("-", "".join(w["text"] for w in tokens))
         num_str = raw.lstrip("-")
         if "." not in num_str and num_str.count(",") > 1:
-            # Plusieurs nombres au format tunisien (une seule virgule chacun)
-            # colles dans le meme cluster : l'ecart entre deux colonnes est
-            # plus etroit que gap_threshold pour ce document precis (ex: GAT,
-            # CARTE 2018 — colonnes Net courant/Net precedent tres resserrees)
-            # et n'a donc pas ete detecte comme une frontiere. Chaque token
-            # contenant une virgule termine un nombre distinct : on resegmente
-            # plutot que d'abandonner tout le cluster (perte des 2 valeurs).
             sub_start = 0
             for i, w in enumerate(tokens):
                 if "," in w["text"]:
@@ -374,20 +244,10 @@ def _parse_number(num_str, negative):
     plage plausible (voir MAX_PLAUSIBLE_VALUE)."""
     try:
         if "." in num_str and "," in num_str:
-            # Format américain : "13,966,819.225" — virgule = milliers, point = décimale
             value = float(num_str.replace(",", ""))
         elif "," in num_str:
-            # Format tunisien/français : "113,026" — virgule = décimale
             value = float(num_str.replace(",", "."))
         elif num_str.count(".") >= 2:
-            # Format tunisien alternatif (ex: UIB 2025, BH 2020, MAGHREBIA_VIE
-            # 2020) : "79.274.708" — point = séparateur de milliers, PAS de
-            # décimale (jamais >1 point dans un nombre réel). Sans ce cas,
-            # float() levait ValueError -> None (STAR/BIAT...), ou pire,
-            # ne consommait qu'un seul groupe de chiffres selon le decoupage
-            # de tokens amont, produisant une valeur minuscule et fausse
-            # (12.0, 20.0, 2041.0 vus en base) au lieu de rejeter la ligne.
-            # Documenté dans CAS_PARTICULIERS.md ("dot-separated thousands").
             value = float(num_str.replace(".", ""))
         else:
             value = float(num_str)
@@ -472,10 +332,6 @@ def _select_column_value(clusters, lines, target_top, header_token):
     if not clusters:
         return None
     if not header_token:
-        # Certains bilans (ex: COTUNACE) insèrent un numéro de note de bas de
-        # page (petit entier ≤ 50) en première colonne avant les montants.
-        # Si le premier cluster est un entier ≤ 50 et qu'il en existe un
-        # second, on l'ignore pour prendre la vraie valeur de l'année en cours.
         start = 0
         if (len(clusters) >= 2
                 and clusters[0][0] <= 50
@@ -490,19 +346,6 @@ def _select_column_value(clusters, lines, target_top, header_token):
     return value if _is_plausible(value) else None
 
 
-# Repli OCR (2026-08-17) : certains documents ont leur page Actif et/ou
-# Passif du Bilan remplacée par une image scannée — 0 caractère extractible
-# nativement — alors que le reste du document est en texte natif normal
-# (cas confirmé : STAR 2019/2023/2025, BH 2023, UIB 2024, MAGHREBIA_VIE
-# 2018 — voir CAS_PARTICULIERS.md). Plutôt que de laisser ces cas
-# indéfiniment `None`, on retente une extraction OCR (pytesseract + rendu
-# image pdfplumber, langue française) UNIQUEMENT quand l'extraction native
-# échoue (page quasi vide, < _OCR_MIN_NATIVE_CHARS caractères) — le reste du
-# pipeline (détection de page, parsing de lignes/colonnes) est réutilisé tel
-# quel sur les mots OCR (même format de dict : text/x0/x1/top/bottom en
-# points PDF), sans aucune logique dupliquée. Coût OCR (~1-3s/page) nul sur
-# les documents en texte natif normal (l'immense majorité) : la branche OCR
-# n'est jamais atteinte tant que le texte natif est présent.
 _OCR_MIN_NATIVE_CHARS = 20
 
 
@@ -519,13 +362,6 @@ def _ocr_words(page, resolution=300):
         return []
     try:
         img = page.to_image(resolution=resolution).original
-        # --psm 6 ("bloc de texte uniforme") : le mode par défaut (psm 3,
-        # segmentation automatique complète) fusionne "Total"/"de"/"l'actif"
-        # en un seul mot garbled ("Toutde lactif") sur ces tableaux denses,
-        # cassant la reconnaissance du libellé "Total de l'actif" alors que
-        # les chiffres de la même ligne restent lisibles (constaté sur STAR
-        # 2025 : psm 6 lit "Total"/"l'actif" comme 2 mots distincts,
-        # correctement alignés avec les 4 colonnes de chiffres).
         data = pytesseract.image_to_data(img, lang="fra", config="--psm 6", output_type=Output.DICT)
     except Exception:
         return []
@@ -707,14 +543,8 @@ def _section_starts_for_page(lines, side_prefix):
     ]
     if section_starts:
         return section_starts
-    # Repli par texte : le mot-clé d'une section apparaît aussi dans ses
-    # propres sous-éléments détaillés (ex: "Créances" (AC6, en-tête) vs
-    # "Créances nées d'opérations d'assurance directe" (AC61, sous-élément)).
-    # Le VRAI titre de section est systématiquement beaucoup plus court que
-    # ces sous-éléments (souvent juste le code + le mot-clé) : on ne garde,
-    # pour chaque code, que la correspondance au libellé le plus court.
     text_patterns = ACTIF_SECTION_TEXT_PATTERNS if side_prefix == "ac" else PASSIF_SECTION_TEXT_PATTERNS
-    best_by_code = {}  # code -> (index, longueur_libellé)
+    best_by_code = {}
     for i, line in enumerate(lines):
         label = _label_text(line)
         if not label:
@@ -743,12 +573,6 @@ def _find_section_total(pdf, side_prefix, code, header_token, max_pages=MAX_PAGE
         if not lines:
             continue
         section_starts = _section_starts_for_page(lines, side_prefix)
-        # Bornes de fin supplémentaires : la dernière section (ex: AC7, PA7)
-        # n'a pas de section suivante pour la délimiter — sans ça, sa plage
-        # engloberait la ligne de total général qui la suit (ex: "Total de
-        # l'actif" ou "Total des capitaux propres et du passif"), qui a
-        # elle-même des chiffres et serait donc prise à tort pour le total de
-        # la section.
         total_line_indices = [
             i for i, line in enumerate(lines)
             if (label := _label_text(line)) and label.startswith("total")
@@ -756,47 +580,16 @@ def _find_section_total(pdf, side_prefix, code, header_token, max_pages=MAX_PAGE
         for idx, (line_idx, found_code) in enumerate(section_starts):
             if found_code != code:
                 continue
-            # Repli si aucune ligne "Total..." n'existe (ex: BH, la page se
-            # termine directement par une ligne de total général SANS
-            # libellé) : on exclut par défaut la toute dernière ligne de la
-            # page de la plage, en supposant qu'il s'agit du total général
-            # qui suit systématiquement la dernière section.
             end_idx = section_starts[idx + 1][0] if idx + 1 < len(section_starts) else len(lines) - 1
             next_total = next((i for i in total_line_indices if i > line_idx), None)
             if next_total is not None:
                 end_idx = min(end_idx, next_total)
-            # Certaines sociétés (ex: GAT) inscrivent directement le total de
-            # la section sur sa ligne de titre ; les sous-éléments détaillés
-            # ensuite (même à 0) ne doivent alors pas l'écraser. D'autres
-            # (ex: STAR, COMAR) laissent le titre sans chiffres et placent le
-            # total sur la DERNIÈRE ligne à chiffres de la plage. On exige au
-            # moins 2 colonnes sur la ligne de titre pour la traiter comme un
-            # vrai total (brut/amortissements/net...) : un seul chiffre isolé
-            # est presque toujours un renvoi de note collé au libellé (ex:
-            # "Actifs incorporels (1)" chez BH), pas un montant.
             header_clusters = _extract_numeric_clusters(lines[line_idx])
             if len(header_clusters) >= 2:
                 return _select_column_value(header_clusters, lines, lines[line_idx][0]["top"], header_token)
-            # On retient le MAXIMUM des candidats de la plage, pas le
-            # dernier trouvé : un vrai total de section, somme de
-            # composantes positives, est mathématiquement toujours >= à
-            # chacune d'elles — ce qui couvre aussi bien le cas où le total
-            # est légitimement la dernière ligne (STAR/COMAR, alors le
-            # maximum coïncide avec le dernier) que celui, découvert le
-            # 2026-08-18 sur MAGHREBIA_VIE 2025, où le document ne porte
-            # AUCUNE ligne de total pour la section : l'ancien
-            # comportement ("dernière ligne à ≥2 colonnes") retenait alors
-            # un sous-élément quelconque en fin de plage (ex: "créances
-            # pour espèces déposées" = 2 487 652 TND retenu comme
-            # "Placements", alors que le vrai total valait ~711,4M TND,
-            # dominé par "obligations et autres titres" = 530 992 021 TND
-            # resté plus proche de la vraie grandeur).
             value = None
             for j in range(line_idx + 1, end_idx):
                 clusters = _extract_numeric_clusters(lines[j])
-                # même garde-fou que ci-dessus : un renvoi de note isolé
-                # (souvent celui de la section suivante, incluse par erreur
-                # en bord de plage) ne doit pas être pris pour une valeur.
                 if len(clusters) < 2:
                     continue
                 candidate = _select_column_value(clusters, lines, lines[j][0]["top"], header_token)
@@ -854,7 +647,6 @@ def _find_actif_unlabeled_total_fallback(pdf, max_pages=BILAN_TOTAL_MAX_PAGES):
         numeric_only_lines = [line for line in lines if _label_text(line) is None]
         if not numeric_only_lines:
             continue
-        # Filtrer les lignes-note (un seul cluster, valeur ≤ 9)
         substantive = [
             line for line in numeric_only_lines
             if not (
@@ -904,9 +696,6 @@ def _find_capitaux_propres(pdf):
     return value
 
 
-# Définition de chaque KPI :
-#   - "direct" : (fonction_speciale) OU (motif_regex, header_token, page_filter)
-#   - "section" : (prefixe "ac"/"pa", code "1".."7", header_token)
 KPI_DEFINITIONS = [
     ("Total actif", "special", _find_total_actif),
     ("Capitaux propres", "special", _find_capitaux_propres),
@@ -1026,7 +815,7 @@ def extract_bilan_kpis(pdf):
 def extract_all_bilan_kpis_from_url(pdf_url, timeout=30):
     """Télécharge le PDF en mémoire (aucune écriture sur disque) et en
     extrait tous les KPI du Bilan."""
-    import pdfplumber  # import local pour éviter la dépendance si non utilisé
+    import pdfplumber
 
     response = requests.get(pdf_url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
     response.raise_for_status()
@@ -1037,7 +826,7 @@ def extract_all_bilan_kpis_from_url(pdf_url, timeout=30):
 def extract_bilan_kpis_from_url(pdf_url, timeout=30):
     """Télécharge le PDF en mémoire (aucune écriture sur disque) et en
     extrait les KPI du Bilan (compatibilité, voir extract_bilan_kpis)."""
-    import pdfplumber  # import local pour éviter la dépendance si non utilisé
+    import pdfplumber
 
     response = requests.get(pdf_url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
     response.raise_for_status()

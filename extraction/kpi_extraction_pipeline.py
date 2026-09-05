@@ -83,11 +83,6 @@ _logger = get_logger("pipeline")
 
 OUTPUT_DIR = os.path.join("data", "kpis")
 
-# Répertoire racine data/ (ancré sur ce fichier, pas le CWD du process) —
-# utilisé pour persister les PDF FTUSA/CGA téléchargés ici (voir
-# _run_ftusa/_run_cga). Avant ce correctif, ces PDF n'étaient jamais écrits
-# sur disque (contrairement à CMF) : la page Traçabilité KPI ne pouvait donc
-# les ouvrir pour aucune de ces deux sources.
 _DATA_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 
@@ -98,41 +93,12 @@ def _save_sectoral_pdf(source: str, annee, content: bytes) -> None:
         f.write(content)
 FAILURE_REPORT_PATH = os.path.join(OUTPUT_DIR, "echecs_extraction.xlsx")
 
-# Sociétés Takaful : le Bilan y est structuré différemment (colonnes "Fonds
-# des Adhérents" / "Entreprise" séparées) et les motifs de recherche
-# conventionnels ne s'y appliquent pas. AT_TAKAFULIA/ZITOUNA_TAKAFUL ont un
-# extracteur dédié (extraction/takaful_kpi_extractor.py) qui récupère les 4 KPI
-# communs au conventionnel (Total actif, Capitaux propres, Résultat Net,
-# Primes émises) + depuis août 2026, pour les exercices en format "nouveau"
-# (NCT 43, ~2020+), 6 indicateurs propres au Fonds des Participants (Surplus
-# Familial/Général, Total actifs nets des adhérents, Provisions techniques du
-# fonds, Commissions Wakala/Moudharaba — voir TAKAFUL_FONDS_PARTICIPANTS_KPI
-# ci-dessous et extraction/CAS_PARTICULIERS_TAKAFUL.md).
-# AL_AMANAH_TAKAFUL : états financiers en arabe (pas français comme les deux
-# autres) — extracteur dédié également (takaful_kpi_extractor.extract_al_amanah_takaful_kpis,
-# voir extraction/arabic_ocr_extractor.py pour la technique). Ne récupère QUE
-# les 4 KPI communs (pas de Fonds des Participants pour cette société), et
-# de façon incomplète sur certains exercices scannés en image — voir le
-# détail par exercice dans extraction/CAS_PARTICULIERS_TAKAFUL.md.
 TAKAFUL_EXTRACTABLE_COMPANIES = {"AL_AMANAH_TAKAFUL", "AT_TAKAFULIA", "ZITOUNA_TAKAFUL"}
 ARABIC_RE = re.compile(r"[؀-ۿ]")
 
 BILAN_KPI_NAMES = [definition[0] for definition in BILAN_KPI_DEFINITIONS]
 ANNEXE13_KPI_NAMES = list(ANNEXE13_KPI_PATTERNS.keys())
 ANNEXE12_KPI_NAMES = list(ANNEXE12_KPI_PATTERNS.keys())
-# "Primes émises par assurance" est normalement une valeur CALCULÉE (voir
-# calculated_kpi_extractor.py) pour un assureur conventionnel, jamais
-# extraite directement à ce stade — mais takaful_kpi_extractor.py la calcule
-# lui-même par sommation directe (Primes émises et acceptées, Fonds Familial
-# + Fonds Général) et la renvoie comme n'importe quel autre KPI direct.
-# Doit figurer dans KPI_NAMES pour que la boucle de persistance de run() (qui
-# n'itère que sur cette liste) la sauvegarde en base pour les compagnies
-# Takaful ; sans effet pour les assureurs conventionnels (jamais présente
-# dans leur dict `kpis` à ce stade, donc simplement ignorée comme avant).
-# Même raisonnement pour les 6 indicateurs du Fonds des Participants
-# (extract_fonds_participants_kpis) : sans existence propre dans les
-# extracteurs conventionnels, il faut les lister explicitement ici pour
-# qu'ils soient persistés.
 TAKAFUL_FONDS_PARTICIPANTS_KPI = [
     "Surplus du Fonds Takaful Familial (TND)",
     "Surplus du Fonds Takaful Général (TND)",
@@ -140,26 +106,10 @@ TAKAFUL_FONDS_PARTICIPANTS_KPI = [
     "Provisions techniques du Fonds des Adhérents (TND)",
     "Commission Wakala (TND)",
     "Commission Moudharaba (TND)",
-    # Répartition Familial/Général de "Primes émises par assurance" (déjà
-    # dans KPI_NAMES) - ajoutée 2026-08-11 pour permettre l'agrégation
-    # sectorielle Family/General Takaful côté Aperçu Marché (auparavant
-    # affichée "Données non publiées", faute d'une ventilation persistée -
-    # voir api/routes/apercu_marche.py::_takaful_sector_snapshot).
     "Primes émises Familial (TND)",
     "Primes émises Général (TND)",
 ]
 
-# Charges de prestations / Charges d'acquisition et de gestion nettes
-# (Annexes 14/15 - Ventilation par catégorie d'assurance) : mêmes NOMS
-# canoniques que les assureurs conventionnels (calculated_kpi_extractor.
-# _CMF_COMPUTED_KPI_NAMES), mais extraites DIRECTEMENT ici pour les
-# compagnies Takaful plutôt que recalculées comme somme Vie+Non-Vie
-# (structure inexistante côté Takaful, ces 2 KPI y restent donc toujours
-# None et invalidées par compute_cmf_derived_kpis - sans effet ici car cette
-# invalidation cible exclusivement le tableau "Calcul interne", voir
-# KPI_TABLE_LABEL ci-dessous, distinct de celui utilisé pour ces 2 KPI côté
-# Takaful). Listées séparément de TAKAFUL_FONDS_PARTICIPANTS_KPI car leur
-# tableau source (Annexes 14/15) diffère des Annexes 3/4/5.1.
 TAKAFUL_VENTILATION_KPI = [
     "Charges de prestations",
     "Charges d'acquisition et de gestion nettes",
@@ -175,7 +125,6 @@ KPI_NAMES = (
     + TAKAFUL_VENTILATION_KPI
 )
 
-# Nom du tableau source enregistré avec chaque KPI.
 KPI_TABLE_LABEL = {name: "Bilan" for name in BILAN_KPI_NAMES}
 KPI_TABLE_LABEL.update(
     {name: "Annexe 13 - Resultat technique Non-Vie" for name in ANNEXE13_KPI_NAMES}
@@ -193,12 +142,6 @@ KPI_TABLE_LABEL["Primes émises par assurance"] = "Etat de resultat (technique /
 KPI_TABLE_LABEL.update(
     {name: "Annexes 3/4/5.1 - Fonds des Participants (Takaful)" for name in TAKAFUL_FONDS_PARTICIPANTS_KPI}
 )
-# Tableau distinct de "Calcul interne" (utilisé par calculated_kpi_extractor
-# pour les assureurs conventionnels) : delete_kpi_value y est scopé par
-# tableau, donc l'invalidation "__delete__" que compute_cmf_derived_kpis
-# émet pour ces 2 KPI sur chaque document Takaful (Vie/Non-Vie inexistant
-# côté Takaful, somme toujours None) ne peut pas supprimer ces valeurs,
-# enregistrées ici sous un tableau différent.
 KPI_TABLE_LABEL.update(
     {name: "Annexes 14/15 - Ventilation par categorie d'assurance (Takaful)" for name in TAKAFUL_VENTILATION_KPI}
 )
@@ -228,19 +171,8 @@ def _get_with_retries(url, timeout, retries=3):
             time.sleep(1.5)
 
 
-# Total actif doit s'equilibrer a la dinar pres avec le total combine
-# Capitaux propres + Passif (partie double comptable) : au-dela, l'un des
-# deux (ou les deux) est probablement mal extrait.
 BALANCE_CHECK_TOLERANCE = 1.0
 
-# Le KPI "Total Passif" (TOTAL_PASSIF_RE dans bilan_kpi_extractor) capture le
-# passif SEUL (ex: "Total du Passif" / "Total des passifs"), pas la ligne qui
-# s'equilibre reellement avec le Total actif : celle-ci est la ligne
-# combinee "Total des capitaux propres et (du) passif(s)" (verifie sur des
-# PDF reels COMAR : "TOTAL DES CAPITAUX PROPRES ET DU PASSIF" ; GAT : "Total
-# des capitaux propres et passifs") -> KPI dedie pour ce controle, non
-# enregistre en base (pas ajoute a KPI_DEFINITIONS/KPI_NAMES) car il ferait
-# doublon avec les KPI "Capitaux propres" + "Total Passif" deja exposes.
 TOTAL_CP_ET_PASSIF_RE = re.compile(r"^total (des )?capitaux propres et (du )?passifs?\b")
 
 
@@ -536,10 +468,6 @@ def run():
     ensure_database()
     conn = get_connection()
     init_schema(conn)
-    # Les 4 extracteurs ci-dessus ciblent la structure des documents CMF
-    # (Bilan, Annexes, États de résultat, Présentation par société) : les
-    # documents d'une autre source (ex: FTUSA, sectorielle) ont leur propre
-    # pipeline d'extraction (_run_ftusa) et ne passent pas par celui-ci.
     documents = [doc for doc in list_all_documents(conn) if doc[1] == "CMF"]
 
     print(f"\n===== EXTRACTION KPI : {len(documents)} document(s) en base, {len(KPI_NAMES)} KPI =====\n")
@@ -561,9 +489,6 @@ def run():
                     print(f"  [WARN] Desequilibre Bilan : Total actif != Capitaux propres + Passif (ecart={ecart:,.3f} TND)")
                     details = {"total_actif": kpis.get("Total actif"), "ecart": round(ecart, 3)}
                     log_json(_logger, "balance_check_failed", company=code, annee=annee, **details)
-                    # Persiste en base (pas seulement dans logs/pipeline.log) pour que
-                    # les pages Qualite/Anomalies puissent lire ce signal (voir
-                    # api/services/quality.py, pipeline_audit.py, anomalies_service.py).
                     save_anomaly(
                         conn, source="extraction_balance", gravite="erreur",
                         code=code, annee=annee, kpi="Total actif", details=details,
@@ -629,12 +554,6 @@ def run():
     bvmt_bulletin_stats = _run_bvmt_bulletin(conn)
     cga_stats = _run_cga(conn)
 
-    # Modelisation : KPI calcules (ratios, ROE/ROA, part de marche, taux de
-    # penetration...) a partir des KPI bruts que les 5 etapes ci-dessus
-    # viennent d'enregistrer. Doit s'executer APRES elles (CMF, FTUSA, BVMT,
-    # BVMT bulletin, CGA sont tous des entrees possibles selon la famille de
-    # calcul) - jusqu'ici jamais appele automatiquement, seulement via
-    # `python -m extraction.calculated_kpi_extractor` a la main.
     print("\n===== MODELISATION : KPI CALCULES =====\n")
     calculated_stats = calculated_kpi_extractor.run(conn)
     calculated_total_saved = sum(

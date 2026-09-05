@@ -54,15 +54,8 @@ from extraction.bilan_kpi_extractor import (
     _normalizer,
 )
 
-MAX_PAGES_SCANNED = 100  # cette annexe se trouve generalement en fin de rapport
+MAX_PAGES_SCANNED = 100
 
-# Tolere la faute de frappe "EXPLOIATATION" (lettre en trop) trouvee dans le
-# titre de cette annexe sur plusieurs annees du rapport FTUSA. Chaque rapport
-# contient AUSSI une annexe voisine similairement titree "... PAR BRANCHE EN
-# [annee] (NON VIE ET VIE)", avec des colonnes agregees differentes (TOTAL
-# NON VIE / TOTAL NON VIE & VIE, sans ACCEPTATIONS ni AFF. DIRECTES
-# distincts) : "affaires directes" dans le titre cible specifiquement la
-# bonne variante et exclut l'autre.
 TITLE_RE = re.compile(r"compte d.?exploia?tation par branche.{0,40}affaires directes")
 
 PRIMES_EMISES_RE = re.compile(r"^primes emises\b")
@@ -75,9 +68,6 @@ ROW_PATTERNS = [
     (CHARGES_ACQUISITION_RE, "Charges d'acquisition et de gestion nettes"),
 ]
 
-# Distance horizontale max entre une valeur et l'ancre de colonne
-# correspondante pour l'y associer (au-dela, la colonne est consideree vide
-# pour cette ligne plutot que de rattacher une valeur au mauvais endroit).
 MAX_COLUMN_MATCH_DISTANCE = 20
 
 
@@ -110,25 +100,11 @@ def _page_title(lines, lines_checked=3):
     return _normalizer.clean(text)
 
 
-# Ordre semantique fixe des colonnes de donnees du tableau (voir docstring
-# du module) : les 8 branches Non-Vie, puis ASS. VIE, puis 2 colonnes
-# agregees non utilisees pour ces KPI (sous-total "Affaires Directes" et
-# "Acceptations"), puis le total general (traite separement, cf.
-# _extract_row_totals). Le texte d'en-tete ("Automobile", "ASS. VIE"...)
-# n'est PAS assez fiablement aligne en x avec sa colonne de donnees (un
-# libelle court comme "VIE" peut retomber plus pres de la colonne suivante
-# que de la sienne) pour servir d'ancre directe -> on utilise a la place les
-# positions (x0) d'une ligne de donnees de reference, en supposant que
-# l'ordre des colonnes est le meme d'une ligne a l'autre (verifie sur les
-# lignes cibles).
 COLUMN_ORDER = [
     "automobile", "maladie", "divers", "incendie",
     "transport", "credit", "agricoles", "travail", "vie",
 ]
 
-# Nom d'affichage par branche Non-Vie, pour la ventilation de "Primes
-# émises" (seule ligne ventilée par branche pour l'instant -> les charges
-# ne le sont pas, faute de besoin identifié).
 BRANCH_DISPLAY_NAMES = {
     "automobile": "Automobile",
     "maladie": "Groupe Maladie",
@@ -176,7 +152,7 @@ def _extract_row_totals(lines, anchors, pattern):
         if label is None or not pattern.search(label):
             continue
         clusters = _extract_numeric_clusters(line)
-        data_clusters = clusters[1:]  # clusters[0] = numero de ligne
+        data_clusters = clusters[1:]
         if not data_clusters:
             continue
         total = data_clusters[-1][0]
@@ -243,6 +219,6 @@ def extract_ftusa_kpis(pdf, max_pages=MAX_PAGES_SCANNED):
             result[f"{row_name} Non-Vie"] = non_vie
         for display_name, value in _extract_branch_premiums(lines, anchors).items():
             result[f"Primes émises par branche (FTUSA) - {display_name}"] = value
-        break  # page de l'annexe trouvee, inutile de continuer a chercher
+        break
 
     return result
