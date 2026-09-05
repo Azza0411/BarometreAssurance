@@ -23,12 +23,12 @@ import unicodedata  # normalisation Unicode (retrait des accents)
 
 # ------------------  Fonction 1 : nettoie un nom (accents, casse) avant comparaison -------------------
 def _normalize_name(name):
-    name = unicodedata.normalize("NFKD", name)  # sépare chaque lettre accentuée de son accent
-    name = "".join(c for c in name if not unicodedata.combining(c))  # ne garde que les lettres, jette les accents
-    return name.strip().upper()  # retire les espaces superflus, met en majuscules
+    name = unicodedata.normalize("NFKD", name)  # sépare lettre et accent
+    name = "".join(c for c in name if not unicodedata.combining(c))  # jette les accents
+    return name.strip().upper()  # espaces + majuscules
 
 
-# Référentiel des 24 sociétés suivies : code court -> nom exact CMF + alias
+# Référentiel des 24 sociétés suivies : nom exact CMF + alias
 # connus sur les autres sources. Données pures, pas de logique ici.
 COMPANY_REGISTRY = {
 
@@ -161,7 +161,7 @@ COMPANY_REGISTRY = {
 # ÉTAPE 2 : CLASSIFICATION CONVENTIONNELLE / TAKAFUL
 # ================================================================================== #
 
-# Compagnies Takaful (assurance participative islamique) : même pattern que
+# Compagnies Takaful  : même pattern que
 # COMPANY_CONTEXT dans extraction/kpi_definitions.py plutôt qu'un champ répété
 # sur chacune des 24 entrées de COMPANY_REGISTRY. AL_AMANAH_TAKAFUL est incluse
 # ici par cohérence de classification même si le pipeline ne la traite jamais
@@ -173,7 +173,7 @@ TAKAFUL_CODES = {"AT_TAKAFULIA", "ZITOUNA_TAKAFUL", "AL_AMANAH_TAKAFUL"}
 # ------------------  Fonction 2 : dit si une société est Takaful ou conventionnelle -------------------
 def get_famille(code):
     """Renvoie "takaful" ou "conventionnelle" pour un code compagnie."""
-    return "takaful" if code in TAKAFUL_CODES else "conventionnelle"  # teste l'appartenance à l'ensemble Takaful
+    return "takaful" if code in TAKAFUL_CODES else "conventionnelle"  # dans TAKAFUL_CODES ?
 
 
 # ================================================================================== #
@@ -189,7 +189,7 @@ _STOPWORDS = {"EL", "AL", "DE", "DU", "DES", "LA", "LE", "LES", "ET", "EN", "D",
 
 # ------------------  Fonction 3 : découpe un texte en mots utiles pour la comparaison -------------------
 def _significant_words(text):
-    return set(_normalize_name(text).split()) - _STOPWORDS  # normalise, découpe en mots, retire les mots-outils
+    return set(_normalize_name(text).split()) - _STOPWORDS  # nettoie et découpe en mots
 
 
 # Poids par mot (1/nombre de sociétés dont un alias contient ce mot) : un mot
@@ -202,15 +202,15 @@ def _significant_words(text):
 # distingue) ne pesant pas plus que "ASSURANCES".
 # ------------------  Fonction 4 : calcule le poids de chaque mot selon sa rareté -------------------
 def _build_word_weights():
-    companies_per_word = {}  # mot -> nombre de sociétés dont un alias le contient
-    for info in COMPANY_REGISTRY.values():  # parcourt les 24 sociétés
-        words_in_company = {w for alias in info.get("aliases", []) for w in _significant_words(alias)}  # mots uniques de ses alias
+    companies_per_word = {}  # mot -> nb de sociétés
+    for info in COMPANY_REGISTRY.values():  # les 24 sociétés
+        words_in_company = {w for alias in info.get("aliases", []) for w in _significant_words(alias)}  # mots de ses alias
         for word in words_in_company:
-            companies_per_word[word] = companies_per_word.get(word, 0) + 1  # incrémente le compteur de ce mot
-    return {word: 1 / count for word, count in companies_per_word.items()}  # poids = 1/fréquence (mot rare -> poids fort)
+            companies_per_word[word] = companies_per_word.get(word, 0) + 1  # +1 pour ce mot
+    return {word: 1 / count for word, count in companies_per_word.items()}  # poids = 1/fréquence
 
 
-_WORD_WEIGHTS = _build_word_weights()  # calculé une seule fois, au chargement du module
+_WORD_WEIGHTS = _build_word_weights()  # calculé une fois au chargement
 
 
 # ================================================================================== #
@@ -226,17 +226,17 @@ def find_code_by_name(name, min_score=0.2):
     _STOPWORDS), contre `aliases` uniquement (pas `cmf_name`, trop verbeux
     et peu comparable d'une source à l'autre). Renvoie None si aucun alias
     n'atteint `min_score`."""
-    target_words = _significant_words(name)  # mots significatifs du nom cherché
-    best_code, best_score = None, min_score  # meilleur candidat trouvé jusqu'ici
-    for code, info in COMPANY_REGISTRY.items():  # teste chaque société du registre
-        for alias in info.get("aliases", []):  # teste chaque alias connu de cette société
-            alias_words = _significant_words(alias)  # mots significatifs de cet alias
-            union = target_words | alias_words  # tous les mots des deux côtés réunis
+    target_words = _significant_words(name)  # mots du nom cherché
+    best_code, best_score = None, min_score  # meilleur trouvé
+    for code, info in COMPANY_REGISTRY.items():  # pour chaque société
+        for alias in info.get("aliases", []):  # pour chaque alias
+            alias_words = _significant_words(alias)  # mots de l'alias
+            union = target_words | alias_words  # tous les mots réunis
             if not union:
-                continue  # rien à comparer (cas vide), ignore ce candidat
+                continue  # rien à comparer
             score = sum(_WORD_WEIGHTS.get(w, 1) for w in target_words & alias_words) / sum(
                 _WORD_WEIGHTS.get(w, 1) for w in union
-            )  # similarité de Jaccard pondérée : poids des mots communs / poids de tous les mots
+            )  # mots communs / mots totaux, pondéré
             if score > best_score:
-                best_code, best_score = code, score  # nouveau meilleur candidat retenu
-    return best_code  # code trouvé, ou None si rien n'a dépassé min_score
+                best_code, best_score = code, score  # nouveau meilleur
+    return best_code  # code trouvé, sinon None
