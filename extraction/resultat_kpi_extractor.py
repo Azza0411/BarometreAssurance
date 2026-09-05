@@ -42,43 +42,13 @@ from extraction.bilan_kpi_extractor import (
     _select_column_value,
 )
 
-MAX_PAGES_SCANNED = 15  # ces tableaux se trouvent systématiquement en tête de document
-# Fenêtre de lignes explorées après le titre de la ligne recherchée, pour y
-# trouver le total (cas où il est sur une ligne séparée plutôt qu'inline).
+MAX_PAGES_SCANNED = 15
 FORWARD_SCAN_WINDOW = 6
 
-# Pas de \b/^ en tête : le code de ligne (CHNV1, CHV1...) est parfois collé
-# sans espace au libellé (ex: "chnv1charge de sinistres" chez STAR) — comme
-# pour les autres tableaux, on cherche une sous-chaîne (voir _find_*_value
-# qui utilisent .search() et non .match()).
-# "sin(is|si)tres" tolère la faute de frappe "sinsitres" (lettres
-# transposées) trouvée dans le document source de GAT.
 CHARGES_SINISTRES_RE = re.compile(r"charges? de sin(is|si)tres")
-# Racine commune aux variantes rencontrées : "Résultat net de l'exercice",
-# "...après modifications comptables", ou juste "Résultat net après
-# modifications comptables" (sans "de l'exercice", ex: ASTREE).
-# "r\s?esultat" tolère un artefact de rendu PDF où le "R" se retrouve séparé
-# du reste du mot par un espace parasite (ex: ZITOUNA_TAKAFUL 2025).
 RESULTAT_NET_RE = re.compile(r"r\s?esultat net\b")
 
-# Titre "résumé" du résultat technique (PAS l'annexe par catégorie, qui a un
-# titre différent contenant "categorie" — voir annexe12/13_kpi_extractor) :
-# "resultat [technique] de l assurance <texte optionnel> vie". Le texte
-# optionnel entre "assurance" et "vie" varie (absent, "non", ou même "et/ou
-# de la réassurance non" chez BH) : on le capture pour vérifier ensuite s'il
-# contient "non", plutôt que d'exiger un enchaînement direct fragile.
-#
-# Gardé pour "Résultat technique Vie"/RESULTAT_GLOBAL_TITLE_RE (inchangés),
-# mais N'EST PLUS utilisé pour disambiguer Vie/Non-Vie sur "Charge de
-# sinistres" (voir _find_sinistres_value ci-dessous) : audit du 2026-08-06
-# (vue par assurance, année 2024) a trouvé 5 formulations de titre
-# différentes qui échappaient toutes à ce motif unique — voir
-# CAS_PARTICULIERS_RESULTAT.md.
 TECH_TITLE_PREFIX_RE = re.compile(r"resultat (technique )?de l assurance(.{0,40}?)vie\b")
-# Résultat global : "etat de resultat" SANS "technique"/"catégorie" dans les
-# 15 caractères qui suivent (contrairement aux tableaux techniques ci-dessus
-# et aux annexes 12/13, dont le titre contient "technique de l'assurance
-# vie/non-vie" ou "par catégorie" juste après "résultat").
 RESULTAT_GLOBAL_TITLE_RE = re.compile(
     r"etat de resultat(?!.{0,20}(technique|categorie|assurance (non )?vie))"
 )
@@ -95,8 +65,6 @@ def _is_resultat_global_page(page):
     return bool(RESULTAT_GLOBAL_TITLE_RE.search(_page_title(page)))
 
 
-# Un espace optionnel peut séparer le préfixe et le chiffre (ex: "chnv 2"
-# chez BH, au lieu de "chnv2" chez GAT/COMAR).
 LINE_CODE_RE = re.compile(r"^([a-z]{2,5})\s*(\d+)")
 
 
@@ -146,9 +114,6 @@ def _find_first_column_value(pdf, page_filter, pattern, max_pages=MAX_PAGES_SCAN
                 return clusters[0][0]
             if fallback is None:
                 fallback = clusters[0][0]
-        # la ligne recherchée n'est pas sur cette page : une autre page peut
-        # aussi correspondre à `page_filter` (ex: faux positif de titre) —
-        # on continue plutôt que d'abandonner.
     return fallback
 
 
@@ -175,7 +140,7 @@ def _find_sinistres_value(pdf, code_prefix, max_pages=MAX_PAGES_SCANNED):
         lines = _page_lines(page)
         if not lines:
             continue
-        page_title_match = None  # calculé au plus une fois par page, seulement si besoin
+        page_title_match = None
         for i, line in enumerate(lines):
             label = _label_text(line)
             if label is None or not CHARGES_SINISTRES_RE.search(label):
@@ -227,7 +192,7 @@ def extract_resultat_kpis(pdf):
 def extract_resultat_kpis_from_url(pdf_url, timeout=30):
     """Télécharge le PDF en mémoire (aucune écriture sur disque) et en
     extrait les 3 KPI ci-dessus."""
-    import pdfplumber  # import local pour éviter la dépendance si non utilisé
+    import pdfplumber
 
     response = requests.get(pdf_url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
     response.raise_for_status()

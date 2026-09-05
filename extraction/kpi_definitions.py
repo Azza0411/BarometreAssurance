@@ -31,9 +31,7 @@ Structure FORMULES_PAR_CONTEXTE :
   "_all" = même formule quel que soit le contexte.
 """
 
-# ── Contexte par compagnie ────────────────────────────────────────────────────
 COMPANY_CONTEXT: dict[str, str] = {
-    # Vie uniquement
     "CARTE_VIE":     "vie",
     "GAT_VIE":       "vie",
     "LLOYD_VIE":     "vie",
@@ -43,16 +41,10 @@ COMPANY_CONTEXT: dict[str, str] = {
     "BNA":           "vie",
     "UIB":           "vie",
     "HAYETT":        "vie",
-    # Réassurance / caution
     "COTUNACE":  "reassurance",
     "TUNIS_RE":  "reassurance",
-    # Takaful participatif (AL_AMANAH_TAKAFUL exclue : PDF en arabe, hors
-    # périmètre pipeline — voir extraction/takaful_kpi_extractor.py.
-    # HAYETT retirée d'ici : c'est une compagnie Vie conventionnelle, pas
-    # Takaful — présence ici avant août 2026 était une erreur de classement.)
     "AT_TAKAFULIA":      "takaful",
     "ZITOUNA_TAKAFUL":   "takaful",
-    # Mixte (défaut) : ASTREE, BH, CARTE, COMAR, GAT, LLOYD_TUNISIEN, MAGHREBIA, STAR
 }
 
 CONTEXT_LABELS = {
@@ -69,10 +61,7 @@ def get_context(code: str) -> str:
     return COMPANY_CONTEXT.get(code.upper(), "mixte")
 
 
-# ── Traçabilité extraction : KPI brut → section PDF ──────────────────────────
-# Sources exactes d'après le DVRB (Data Value Realisation Book - FS Market Intel)
 SOURCE_PAR_KPI: dict[str, dict] = {
-    # ── Charges de prestations ──────────────────────────────────────────────
     "Charges de prestations": {
         "doc": "Annexe 12 + 13",
         "section": "annexe12",
@@ -91,7 +80,6 @@ SOURCE_PAR_KPI: dict[str, dict] = {
         "tableau": "Annexe N°13 : Résultat technique de la catégorie d'Assurance Non-Vie",
         "reference": "Ligne « Charges de prestations » / Colonne « Total »",
     },
-    # ── Charges d'acquisition et de gestion nettes ──────────────────────────
     "Charges d'acquisition et de gestion nettes": {
         "doc": "Annexe 12 + 13",
         "section": "annexe12",
@@ -110,7 +98,6 @@ SOURCE_PAR_KPI: dict[str, dict] = {
         "tableau": "Annexe N°13 : Résultat technique de la catégorie d'Assurance Non-Vie",
         "reference": "Ligne « Charges d'acquisition et de gestion nettes » / Colonne « Total »",
     },
-    # ── Primes émises ────────────────────────────────────────────────────────
     "Primes émises par assurance": {
         "doc": "Annexe 12 + 13",
         "section": "annexe12",
@@ -129,7 +116,6 @@ SOURCE_PAR_KPI: dict[str, dict] = {
         "tableau": "Annexe N°13 : Résultat technique de la catégorie d'Assurance Non-Vie",
         "reference": "Ligne « Primes émises » / Colonne « Total »",
     },
-    # ── Charges de sinistres ─────────────────────────────────────────────────
     "Charge de sinistres": {
         "doc": "Annexe 12 + 13",
         "section": "annexe12",
@@ -148,14 +134,12 @@ SOURCE_PAR_KPI: dict[str, dict] = {
         "tableau": "État de résultat technique de l'assurance Non-Vie",
         "reference": "Ligne « CHV1 – Charges de sinistres » / Colonne « Opérations nettes »",
     },
-    # ── Primes acquises ──────────────────────────────────────────────────────
     "Primes acquises": {
         "doc": "Annexe 13",
         "section": "annexe13",
         "tableau": "Annexe N°13 : Résultat technique de la catégorie d'Assurance Non-Vie",
         "reference": "Ligne « PRIMES ACQUISES » / Colonne « Total »",
     },
-    # ── Résultat technique ───────────────────────────────────────────────────
     "Résultat technique Vie": {
         "doc": "Annexe 12",
         "section": "annexe12",
@@ -168,16 +152,6 @@ SOURCE_PAR_KPI: dict[str, dict] = {
         "tableau": "Annexe N°13 : Résultat technique de la catégorie d'Assurance Non-Vie",
         "reference": "Ligne « Résultat technique » / Colonne « Total »",
     },
-    # ── Bilan ────────────────────────────────────────────────────────────────
-    # Corrigé le 2026-08-17 : les 3 entrées ci-dessous portaient "Bilan/État
-    # de résultat au 30/06" — copié par erreur d'un autre gabarit. Les Bilans
-    # CMF de ce périmètre sont TOUS arrêtés au 31/12 (année pleine), jamais
-    # au 30/06 (vérifié sur les 186 PDF exploités cette session). "Capitaux
-    # propres" pointait aussi vers "avant résultat" comme référence PRINCIPALE,
-    # alors que `_find_capitaux_propres` (bilan_kpi_extractor.py) cherche en
-    # PRIORITÉ "avant affectation" (le vrai total final, incluant le résultat
-    # de l'exercice en cours) et ne se rabat sur "avant résultat" que si cette
-    # ligne est absente du document — voir bilan_kpi_extractor.py:874-880.
     "Résultat Net": {
         "doc": "État de résultat",
         "section": "etat_resultat",
@@ -226,9 +200,6 @@ SOURCE_PAR_KPI: dict[str, dict] = {
         "tableau": "Paragraphe narratif « PRESENTATION DE LA SOCIETE » (notes aux états financiers)",
         "reference": "Ligne à puce « Siège social : {valeur} »",
     },
-    # ── Takaful — Fonds des Participants / Compte de l'Opérateur ────────────
-    # Sourcé lors de la reconstruction du tableau DVRB Takaful (2026-08-17,
-    # voir extraction/takaful_kpi_extractor.py::extract_fonds_participants_kpis).
     "Commission Wakala (TND)": {
         "doc": "État de résultat de l'entreprise Takaful",
         "section": "annexe_takaful_resultat",
@@ -267,7 +238,6 @@ SOURCE_PAR_KPI: dict[str, dict] = {
     },
 }
 
-# ── Formules par KPI et par contexte ─────────────────────────────────────────
 FORMULES_PAR_CONTEXTE: dict[str, dict] = {
 
     "Primes émises par assurance": {
@@ -519,10 +489,6 @@ FORMULES_PAR_CONTEXTE: dict[str, dict] = {
         },
     },
 
-    # ── Ratios ajoutés août 2026 (chantier séparation conventionnel/Takaful) :
-    # dérivés de KPI déjà extraits (Total actif, Capitaux propres, Placements,
-    # Actions et titres de participation) — aucune extraction PDF nouvelle.
-    # Sourcés docs/ratios_takaful_ifsb_aaoifi.md, fiches S4/S5/I1/I2.
     "Dettes/Capitaux propres (%)": {
         "_all": {
             "expr": "(Total actif − Capitaux propres) / Capitaux propres × 100",
@@ -588,16 +554,6 @@ def get_formule(kpi: str, code: str | None = None) -> dict | None:
     return dict(result) if result else None
 
 
-# Plages de plausibilité métier par KPI (détection de valeur aberrante) :
-# source de vérité unique pour api/services/quality.py ET pipeline_audit.py.
-# Avant juillet 2026, chacun définissait sa propre plage pour les mêmes KPI
-# — quality.py : [2 %, 1 000 %] quasi permissif, appliqué à RC/RSP/RF
-# seulement ; pipeline_audit.py : plages plus étroites et spécifiques par
-# KPI (_PLAGES). Les deux fichiers pouvaient donc juger différemment
-# "aberrant" pour la même valeur. Reprend les plages de pipeline_audit.py
-# (plus discriminantes, bien que sans base empirique citée — contrairement
-# au plancher/plafond de bilan_kpi_extractor.MIN/MAX_PLAUSIBLE_VALUE,
-# validé sur 186 PDF réels).
 KPI_PLAGES_PLAUSIBLES: dict[str, tuple[float, float]] = {
     "Ratio combiné (%)":             (30, 500),
     "Ratio de sinistralité (%)":     (10, 400),
@@ -605,32 +561,12 @@ KPI_PLAGES_PLAUSIBLES: dict[str, tuple[float, float]] = {
     "Part de marché (%)":            (0.01, 50),
     "ROE (%)":                       (-200, 200),
     "ROA (%)":                       (-50, 50),
-    # Plage large et volontairement asymétrique par rapport aux autres lignes
-    # ci-dessus : contrairement à ROE/ROA/ratios techniques (bornes resserrées
-    # sur la base de 186 PDF réels), ces 4 ratios sont neufs (août 2026) et
-    # n'ont pas encore d'historique de validation propre. Le plafond n'est PAS
-    # une estimation de plage "normale" — un assureur Vie porte légitimement
-    # des réserves actuarielles représentant plusieurs fois ses capitaux
-    # propres (dette_cp/placements_cp observés jusqu'à ~2 500 % chez
-    # ATTIJARI/HAYETT/GAT_VIE/LLOYD_VIE, valeurs réelles, pas des erreurs).
-    # Le seuil de 5 000 % ne sert qu'à intercepter les erreurs d'extraction
-    # d'un ou deux ordres de grandeur (ex: CTAMA 2018, Capitaux propres
-    # extrait à 25 707 TND au lieu de plusieurs dizaines de millions ->
-    # dette_cp calculé à plus d'un million de %), pas à juger de la
-    # plausibilité économique — voir audit du 2026-08-05.
     "Dettes/Capitaux propres (%)":     (-5_000, 5_000),
     "Dettes/Actif (%)":                (-5_000, 5_000),
     "Actions/Actif (%)":               (-5_000, 5_000),
     "Placements/Capitaux propres (%)": (-5_000, 5_000),
 }
 
-# KPI en valeur absolue qui ne peuvent structurellement jamais être 0 pour
-# une compagnie en activité — pas de plage fixe possible pour un montant
-# (l'échelle varie trop d'une société à l'autre), donc contrôlé séparément.
-# Source unique : avant août 2026, api/services/quality.py et
-# api/services/pipeline_audit.py avaient chacun leur propre copie de cette
-# liste (à ce moment-là identiques, mais exposées au même risque de
-# divergence silencieuse que KPI_PLAGES_PLAUSIBLES avant son unification).
 ZERO_SUSPECT_KPIS = {
     "Total actif",
     "Capitaux propres",
@@ -658,7 +594,6 @@ def filter_reliable(kpi_name: str, value):
     return value
 
 
-# Backward-compat : alias pour quality.py
 FORMULES = {
     kpi: (ctx_defs.get("_all") or ctx_defs.get("mixte") or next(iter(ctx_defs.values())))
     for kpi, ctx_defs in FORMULES_PAR_CONTEXTE.items()

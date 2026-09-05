@@ -107,11 +107,6 @@ def find_label_row(image, label_variants, region=None, min_score=65, exclude_sub
     pour ne rien changer aux appels existants."""
     best, best_score = None, min_score
     for text, box in _ocr_lines(image, region):
-        # Espaces retirés pour la vérification d'exclusion uniquement : l'OCR
-        # insère des espaces parasites de façon imprévisible (ex: "و الخصوم"
-        # au lieu de "والخصوم"), ce qui ferait passer une sous-chaîne à
-        # exclure au travers d'un test `in` naïf - constaté 2026-08-11 sur
-        # AL_AMANAH_TAKAFUL_2022 (voir takaful_kpi_extractor._EXCLUDE_CAPITAUX).
         text_nospace = text.replace(" ", "")
         if exclude_substrings:
             if any(sub.replace(" ", "") in text_nospace for sub in exclude_substrings):
@@ -128,15 +123,6 @@ def find_label_row(image, label_variants, region=None, min_score=65, exclude_sub
 _ROW_DIGITS_CONFIG = "-l eng --psm 11 -c tessedit_char_whitelist=0123456789"
 
 
-# Écart (px, image rendue ~300 dpi) séparant deux groupes de chiffres du
-# MÊME nombre (un séparateur de milliers fin/étroit) d'un écart entre deux
-# nombres DIFFÉRENTS. Calibré 2026-08-11 sur AL_AMANAH_TAKAFUL_2022.pdf :
-# tesseract (mode texte épars) segmente parfois un seul nombre à séparateurs
-# de milliers en plusieurs "mots" OCR - ex. "21587910" détecté comme deux
-# mots adjacents "21587"+"10" (écart 6px) - alors que l'écart entre deux
-# VRAIES colonnes voisines est nettement plus large (20-29px sur le même
-# document). Sans ce regroupement, `float()` sur chaque mot séparément
-# tronque silencieusement le nombre (ex. "21587" au lieu de "21587910").
 _DIGIT_GROUP_MERGE_GAP = 14
 
 
@@ -214,39 +200,6 @@ def extract_cell(image, label_variants, column_index_from_right, n_columns_expec
     return values[idx]
 
 
-# ─────────────────────────────────────────────────────────────────────────
-# Texte réel (pages NON scannées) — plusieurs exercices d'El Amana Takaful
-# (2017, 2019-2022 vérifié) ont en fait du texte PDF réellement extractible,
-# juste en arabe : plus fiable qu'une relecture OCR quand disponible, donc
-# toujours tenté EN PREMIER (voir extract_document_kpis), l'OCR ne servant
-# que de repli pour les pages/exercices réellement scannés (2018, 2023,
-# 2024, 2025 vérifié).
-#
-# Deux défauts SPÉCIFIQUES à l'extraction de texte réel en arabe (absents en
-# français, donc absents de bilan_kpi_extractor._label_text) :
-#   1. Chaque MOT a ses caractères stockés en ordre MIROIR (visuel), pas en
-#      ordre logique Unicode - ex. "الأصول" (assets) est extrait
-#      "لوـــصلأا" (tatweel ـ inclus). Corrigé en retirant le tatweel puis
-#      en inversant la chaîne du mot.
-#   2. Les MOTS eux-mêmes sont physiquement disposés de droite à gauche sur
-#      la page (RTL) : le mot lu EN PREMIER (le plus à droite) a le plus
-#      grand x0, contrairement au français où le premier mot lu est le plus
-#      à gauche. Corrigé en triant par x0 DÉCROISSANT.
-# Les deux corrections vérifiées le 2026-08-11 en reconstruisant "مجموع
-# الأصول" (Total actif) à l'identique depuis les tokens bruts d'un document
-# réel (AL_AMANAH_TAKAFUL_2020.pdf).
-#
-# Les NOMBRES ne sont PAS affectés (jamais mis en miroir, toujours disposés
-# g→d sur la page comme dans un document français) : on réutilise donc
-# _extract_numeric_clusters tel quel.
-# Certaines lignes portent une annotation glissée AU MILIEU du libellé
-# (ex: AL_AMANAH_TAKAFUL_2021, "...الذاتي)7211:dic(ة..." - une note de type
-# date/référence de renvoi, mécanisme non identifié avec certitude mais dont
-# l'effet est net : elle coupe le libellé en deux morceaux, faisant
-# s'effondrer le score de similarité même si le contenu réel correspond
-# parfaitement une fois l'annotation retirée). Comme pour le tatweel, ce
-# n'est pas du contenu porteur de sens pour l'appariement - on le retire
-# avant comparaison.
 _PARENTHETICAL_RE = re.compile(r"\([^()]*\)|\)[^()]*\(")
 
 
@@ -255,15 +208,6 @@ def _rtl_label_from_words(words):
     non_numeric.sort(key=lambda w: -w["x0"])
     raw = " ".join(w["text"].replace("ـ", "")[::-1] for w in non_numeric)
     cleaned = _PARENTHETICAL_RE.sub("", raw)
-    # Certains exercices (constaté : AL_AMANAH_TAKAFUL_2017) encodent le
-    # texte en formes de présentation arabes (Unicode "Arabic Presentation
-    # Forms-B", des points de code DIFFÉRENTS des lettres arabes standard
-    # bien que visuellement identiques une fois affichés) plutôt qu'en
-    # lettres normales - la comparaison échoue totalement (score ~4%) tant
-    # que le texte n'est pas replié vers sa forme standard. NFKC fait
-    # exactement ça (et ne change rien sur du texte déjà en lettres
-    # standard, donc sans risque pour les autres exercices) - vérifié
-    # 2026-08-11, score 100% après normalisation contre 4% avant.
     return unicodedata.normalize("NFKC", cleaned)
 
 
@@ -349,17 +293,6 @@ def page_lines_if_real_text(page):
     return _cluster_lines(words)
 
 
-# ─────────────────────────────────────────────────────────────────────────
-# Recherche document entier, texte réel PUIS OCR en repli — le second passage
-# n'est PAS réservé aux pages détectées "scannées" (is_scanned_page) : au
-# moins un exercice (AL_AMANAH_TAKAFUL_2022) a du texte réellement
-# extractible mais dont la police embarquée mappe certains caractères vers
-# le MAUVAIS point de code Unicode (constaté : "مجموع" ressort "يدًىع" -
-# lettres non correspondantes, pas un simple décalage inversible). Les
-# GLYPHES affichés restent corrects (sinon le document serait illisible à
-# l'œil) : rendre la page en image et OCRiser contourne donc ce défaut
-# d'encodage, quelle que soit sa cause exacte. Le second passage n'est tenté
-# que si le premier échoue partout (l'OCR est nettement plus lent).
 def find_kpi_value(pdf, label_variants, column_index_from_right, max_pages=20,
                     min_score=75, min_row_score=60):
     for page in pdf.pages[:max_pages]:
@@ -407,28 +340,6 @@ def find_kpi_value_sum(pdf, label_variants, column_index_from_right, max_pages=2
     return total
 
 
-# ─────────────────────────────────────────────────────────────────────────
-# Sélecteurs de colonne SENSIBLES AU FORMAT ("nouveau" NCT 43 vs "ancien",
-# voir takaful_kpi_extractor.py) — nécessaires car un `column_index_from_right`
-# FIXE ne suffit plus une fois l'historique complet couvert : AL_AMANAH_TAKAFUL
-# a changé de mise en page du Bilan au moins une fois (vérifié 2026-08-11,
-# comparaison directe AL_AMANAH_TAKAFUL_2017.pdf vs 2020.pdf) :
-#   - "nouveau" (2019+ vérifié) : Bilan Combiné, 3 sous-colonnes par exercice
-#     (Combiné/Entreprise/Fonds des Participants) x 2 exercices comparés,
-#     Entreprise-exercice-courant = avant-dernière valeur de la ligne.
-#   - "ancien" (2017 vérifié) : une seule colonne pour l'exercice PRÉCÉDENT
-#     (pas de scission Fonds/Entreprise cette année-là) + la scission
-#     complète à 3 colonnes pour l'exercice EN COURS seulement -> 4 valeurs
-#     au total, Entreprise-exercice-courant = 3e à partir de la fin (et non
-#     avant-dernière : la dernière valeur de la ligne dans ce format est déjà
-#     le Fonds des Participants de l'exercice en cours, pas un second
-#     exercice complet).
-# Capitaux propres / Résultat net, eux, n'ont JAMAIS de colonne Fonds des
-# Participants (notion qui ne s'applique pas à ces lignes) : "nouveau"
-# duplique simplement Combiné=Entreprise (2 valeurs par exercice, 4 au
-# total), "ancien" n'a qu'une seule valeur par exercice (2 au total) - dans
-# les deux cas l'exercice en cours est le DERNIER groupe, mais sa position
-# absolue diffère (avant-dernière vs dernière valeur).
 def _select_actif_like(values):
     if len(values) >= 5:
         idx = -2
@@ -476,12 +387,6 @@ def _search_realtext(pdf, label_variants, selector, max_pages, min_score=75, exc
     return None
 
 
-# Régions relatives (fraction de largeur de page) plutôt que des pixels
-# fixes : les libellés arabes de ce gabarit de rapport se trouvent toujours
-# dans le dernier ~40% (droite) de la page, les valeurs numériques dans les
-# ~58% suivants en partant de la gauche (une marge est laissée de chaque
-# côté) - vérifié cohérent sur les rendus 2018/2023/2024/2025 malgré de
-# petites variations de largeur de page entre exercices.
 _OCR_LABEL_REGION_FRAC = 0.6
 _OCR_ROW_X_FRAC = (0.04, 0.62)
 

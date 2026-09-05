@@ -35,34 +35,12 @@ from extraction.ftusa_kpi_extractor import _derotate_page_words
 
 MAX_PAGES_SCANNED = 60
 
-# Le libelle exact varie d'une annee a l'autre (ex: "marche d'assurance"
-# en 2022 vs "marche des assurances" en 2020 ; "distribution geographique
-# des agents d'assurance" en 2022 vs "... des intermediaires en assurance"
-# (avec "agents d'assurance" comme sous-section) en 2020) -> motifs
-# tolerants plutot qu'une correspondance exacte.
 ANNEXE1_TITLE_RE = re.compile(r"structure du marche d.{1,4}assurances?")
 ANNEXE2_TITLE_RE = re.compile(r"distribution geographique des (agents d.assurance|intermediaires)")
-# "evolution des primes nettes" seul matche aussi une page narrative
-# d'introduction sur le marche mondial de l'assurance vie, rendue en mode
-# normal (pas tournee) ; le vrai tableau chiffre, lui, est TOUJOURS tourne
-# a 90 degres (voir _find_page_lines(..., require_rotated=True) plus bas) —
-# discriminant plus fiable que le contenu du titre, qui varie trop d'une
-# annee a l'autre ("evolution des primes nettes" en 2022, "evolution du
-# chiffre d affaires par categories d assurance" en 2017/2020...).
 ANNEXE4_1_TITLE_RE = re.compile(r"evolution d.{1,4}(primes nettes|chiffre d.affaires)")
 DIRECT_SECTION_RE = re.compile(r"^societes d.assurance directe$")
 TOTAL_LINE_RE = re.compile(r"^total\b")
 
-# Nom de KPI (stable) -> motif reconnaissant la ligne de branche
-# correspondante dans l'Annexe 4-1 ("Primes émises par branche" est
-# volontairement propre à CGA, sans tentative de correspondance avec les
-# branches FTUSA : les deux nomenclatures ne se recoupent pas exactement,
-# ex: CGA regroupe Incendie et Risques Divers en une seule ligne — voir
-# CAS_PARTICULIERS_CGA.md).
-# Pas d'ancrage "^" : les lignes de sous-branche commencent par une puce
-# ("ــ" tatweel arabe, retiree par la normalisation, mais aussi parfois un
-# simple tiret ASCII "-" qui lui SURVIT a la normalisation - donc "ass..."
-# n'est pas toujours en tout debut de chaine normalisee).
 BRANCH_ROW_PATTERNS = {
     "Vie et Capitalisation": re.compile(r"ass\.? ?vie.{0,3}capitalisation"),
     "Automobile": re.compile(r"ass\w* automobile"),
@@ -75,11 +53,6 @@ BRANCH_ROW_PATTERNS = {
     "Operations Acceptees": re.compile(r"ass\.? ?operations acceptees"),
 }
 
-# Ordre fixe des colonnes de gouvernorats de l'Annexe 2 (liste officielle,
-# stable d'une annee sur l'autre) : "Grand Tunis" (position 5) est un
-# sous-total (Tunis+Ariana+Ben Arous+Manouba), pas un gouvernorat -> None,
-# ignore lors du mappage. La colonne finale (TOTAL) est traitee a part
-# (dernier cluster de la ligne).
 GOVERNORATE_ORDER = [
     "Tunis", "Ariana", "Ben Arous", "Manouba", None,
     "Sfax", "Sousse", "Nabeul", "Monastir", "Médenine", "Bizerte", "Gabès",
@@ -121,10 +94,6 @@ def _find_page_lines(pdf, title_re, max_pages=MAX_PAGES_SCANNED, require_rotated
         lines = _cluster_lines(words, y_tolerance=5)
         if not lines:
             continue
-        # Le titre peut ne pas etre la toute premiere ligne reconstituee
-        # (ex: "Rapport Annuel 2022" precede "ANNEXE 1 STRUCTURE DU
-        # MARCHE...") -> on cherche sur les premieres lignes, pas juste la
-        # premiere.
         title = _normalizer.clean(" ".join(w["text"] for line in lines[:4] for w in line))
         if title_re.search(title):
             return lines
@@ -180,7 +149,7 @@ def _extract_annexe2_rows(pdf):
     rows = {}
     for line in lines:
         clusters = _extract_numeric_clusters(line)
-        if len(clusters) != len(GOVERNORATE_ORDER) + 1:  # +1 pour la colonne TOTAL
+        if len(clusters) != len(GOVERNORATE_ORDER) + 1:
             continue
         label = _row_label(line)
         if label:

@@ -31,9 +31,6 @@ from extraction.bilan_kpi_extractor import _cluster_lines, _normalizer
 
 MAX_PAGES_SCANNED = 40
 
-# Un nom plausible : lettres (accentuées ou non), espaces, points, tirets et
-# apostrophes seulement, sans chiffre -> exclut les faux positifs comme une
-# ligne de sommaire ("....... 5") ou un texte de paragraphe trop long.
 PLAUSIBLE_NAME_RE = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ.\-' ]{2,60}$")
 
 ROLE_INLINE_PATTERNS = {
@@ -74,7 +71,7 @@ def _extract_name_before_role(raw_text, stop_words):
     "M."/"Mme" jusqu'au premier mot contenant l'un de `stop_words`, ou à
     défaut jusqu'au premier nombre (année d'échéance du mandat)."""
     words = raw_text.split()
-    name_words = [words[0]]  # "M." ou "Mme"
+    name_words = [words[0]]
     for word in words[1:]:
         normalized = _normalizer.clean(word)
         if normalized.isdigit() or any(stop in normalized for stop in stop_words):

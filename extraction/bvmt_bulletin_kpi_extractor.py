@@ -40,9 +40,6 @@ from extraction.bilan_kpi_extractor import NUMERIC_TOKEN_RE, _cluster_lines, _ex
 
 MAX_PAGES_SCANNED = 15
 CLOTURE_HEADER_RE = re.compile(r"^cl.tures?$")
-# Tolérance autour de l'x0 de l'en-tête "CLÔTURE" pour rattacher un cluster de
-# la ligne de données à cette colonne (les chiffres ne démarrent pas
-# exactement au même x0 que le mot d'en-tête).
 X0_TOLERANCE = 45
 
 
@@ -75,8 +72,6 @@ def extract_bulletin_cloture(pdf, mnemo_to_code, name_to_code):
     `name_to_code` : {denomination_sociale_normalisee: code} — une entrée par
     société cotée reconnue dans chacun des deux dictionnaires (voir
     scraping.bvmt_scraper pour leur construction)."""
-    # Plus longue denomination en premier, pour qu'"assurances maghrebia vie"
-    # soit teste avant "assurances maghrebia" (qui en est un prefixe).
     name_to_code_by_length = sorted(name_to_code.items(), key=lambda item: -len(item[0]))
 
     result = {}

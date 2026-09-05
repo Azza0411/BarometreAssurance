@@ -19,7 +19,6 @@ from functools import lru_cache
 
 import pandas as pd
 
-# ─── Chemin du fichier ───────────────────────────────────────────────────────
 _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 def _find_xlsx():
@@ -28,7 +27,6 @@ def _find_xlsx():
     return survey[0] if survey else (files[0] if files else None)
 
 
-# ─── Normalisation ───────────────────────────────────────────────────────────
 
 def _norm(v):
     """Nettoie une valeur texte (strip, espaces multiples, minuscules)."""
@@ -36,7 +34,6 @@ def _norm(v):
         return None
     return re.sub(r"\s+", " ", str(v)).strip()
 
-# Mapping Gouvernorat → clé de zone (4 zones enquête)
 GOV_TO_ZONE = {
     "Sfax":       "centre-est",
     "Monastir":   "centre-est",
@@ -71,7 +68,6 @@ GOV_TO_ZONE = {
     "Tataouine":  "sud-est-ouest",
 }
 
-# Mapping segment Excel → clé interne
 SEG_MAP = {
     "A - Particulier":   "particuliers",
     "B - Professionnel": "professionnels",
@@ -80,7 +76,6 @@ SEG_MAP = {
     "E - Retraité":      "retraites",
 }
 
-# Normalisation nom compagnie → code interne
 COMPANY_ALIASES = {
     "assurances star":     "STAR",
     "star":                "STAR",
@@ -110,7 +105,7 @@ COMPANY_ALIASES = {
     "el amana takaful":    "AL_AMANAH_TAKAFUL",
     "el amana":            "AL_AMANAH_TAKAFUL",
     "carte":               "CARTE",
-    "nsp":                 None,  # Non spécifié → ignoré
+    "nsp":                 None,
     "nsp ":                None,
     "autres":              None,
     "autres ":             None,
@@ -146,14 +141,6 @@ def _norm_company(raw):
     return COMPANY_ALIASES.get(key, key.upper() if key else None)
 
 
-# Colonnes identifiant les assureurs RÉELS du répondant (pas une question
-# d'opinion comme "Top of Mind"/"Meilleure"/"Pire") - une même personne peut
-# citer jusqu'à 5 compagnies (multi-équipée). C'est sur CES colonnes que doit
-# se faire le filtrage "Fiche client entreprise" (retour utilisateur
-# 2026-08-21 : le sélecteur de compagnie ne changeait jusqu'ici RIEN aux
-# chiffres affichés - compute_stats() ignorait totalement `company_code` et
-# renvoyait toujours les stats du marché entier, quelle que soit la
-# compagnie choisie dans le menu).
 _COMPANIE_COLS = [f"Assurance - Compagnie {i}" for i in range(1, 6)]
 
 
@@ -168,7 +155,6 @@ def _is_client_of(df, company_code):
     return mask
 
 
-# ─── Helpers stats ───────────────────────────────────────────────────────────
 
 def _pct(n, total):
     if not total:
@@ -204,7 +190,6 @@ def _top_companies(series, n=5):
     total = 0
     for v in series.dropna():
         sv = str(v).strip()
-        # Peut contenir plusieurs séparées par /
         parts = [p.strip() for p in re.split(r"[/,;]", sv) if p.strip()]
         for p in parts:
             code = _norm_company(p)
@@ -323,7 +308,6 @@ def _normalize_revenu(v):
     return sv
 
 
-# ─── Calcul principal ────────────────────────────────────────────────────────
 
 @lru_cache(maxsize=32)
 def compute_stats(company_code="STAR"):
@@ -355,7 +339,6 @@ def compute_stats(company_code="STAR"):
     retail = pd.read_excel(path, sheet_name="BDD Retail")
     corp   = pd.read_excel(path, sheet_name="BDD Corporate")
 
-    # ── Segments Grand Public ─────────────────────────────────────────────────
     retail["_seg"] = retail["Segment"].apply(
         lambda v: SEG_MAP.get(str(v).strip(), None) if not pd.isna(v) else None
     )
@@ -364,15 +347,6 @@ def compute_stats(company_code="STAR"):
     for seg_key in SEG_MAP.values():
         seg_counts[seg_key] = int((retail["_seg"] == seg_key).sum())
 
-    # Sous-ensembles "clients réels de company_code" - utilisés uniquement
-    # pour la fiche par compagnie (voir docstring). Pas de repli sur
-    # l'échantillon entier si vide/faible : afficher un vrai petit
-    # échantillon (voire 0) est plus honnête qu'y substituer en silence les
-    # chiffres du marché entier sous l'étiquette de la compagnie -
-    # `nbRepondants`/`clientCounts` (renvoyés dans `fiche`) permettent au
-    # frontend de signaler un échantillon trop faible plutôt que de le
-    # masquer. Créés APRÈS le calcul de "_seg" ci-dessus (colonne portée par
-    # la vue filtrée) pour permettre la ventilation Particuliers/Pros.
     retail_client = retail[_is_client_of(retail, company_code)]
     corp_client   = corp[_is_client_of(corp, company_code)]
     client_counts = {
@@ -386,14 +360,12 @@ def compute_stats(company_code="STAR"):
         if n == 0:
             return None
 
-        # Genre
         genre_vc = {str(k).strip(): int(v) for k, v in df_seg["Genre"].dropna().value_counts().items()}
         h = genre_vc.get("Homme", 0)
         f = genre_vc.get("Femme", 0)
         tot_gf = h + f
         genre = [_pct(h, tot_gf), _pct(f, tot_gf)] if tot_gf else [0, 0]
 
-        # Tranche d'âge — ordre canonique
         age_order = ["18 – 24 ans", "25– 34 ans", "25 – 34 ans", "35 – 44 ans",
                      "45 – 54 ans", "55–64 ans", "65 ans et plus"]
         age_labels = ["18–24", "25–34", "35–44", "45–54", "55–64", "65+"]
@@ -410,10 +382,8 @@ def compute_stats(company_code="STAR"):
         age_total = sum(age_counts) or 1
         age = [_pct(c, age_total) for c in age_counts]
 
-        # Type de profession (treemap)
         type_pro = _treemap(df_seg["Type de profession"])
 
-        # Véhicule
         veh_col = "Disposez-vous d’un véhicule ?"
         if veh_col in df_seg.columns:
             veh_vc = {str(k).strip().lower(): int(v)
@@ -422,13 +392,11 @@ def compute_stats(company_code="STAR"):
         else:
             vehicule = 0
 
-        # Propriétaire
         log_col = "Statut de logement"
         log_vc = {str(k).strip().lower(): int(v)
                   for k, v in df_seg[log_col].dropna().value_counts().items()}
         proprio = _pct(log_vc.get("propriétaire", 0), n)
 
-        # Professions (pour les professionnels)
         prof_col = "Profession - Pour les professionnels "
         professions = []
         if prof_col in df_seg.columns:
@@ -437,7 +405,6 @@ def compute_stats(company_code="STAR"):
             for k, v in list(pvc.items())[:8]:
                 professions.append([str(k).strip(), _pct(int(v), pt)])
 
-        # Revenu individuel mensuel
         rev_ind_order = [
             "<800 dinars/mois", "[800, 1499] dinars par mois", "[1500,2999] dinars par mois",
             "[3000,4999] dinars par mois", "[5000,10000] dinars par mois", ">10000",
@@ -464,7 +431,6 @@ def compute_stats(company_code="STAR"):
         rev_ind_vals = [_pct(ri_vc[i], ri_total) for i in sorted(ri_vc.keys()) if ri_vc[i] > 0]
         revInd = {"labs": rev_ind_labs, "vals": rev_ind_vals}
 
-        # Revenu familial mensuel
         rev_fam_order = [
             "[1150, 2049] dinars par mois", "[2050, 4599] dinars par mois",
             "[2050,4599] dinars par mois", "≥4600 dinars/mois", ">4600", "Refus",
@@ -486,8 +452,6 @@ def compute_stats(company_code="STAR"):
             clean = rev_fam_labels_clean.get(sv, sv)
             rf_vc[clean] = rf_vc.get(clean, 0) + 1
             rf_total += 1
-        # Trier par ordre croissant de revenu
-        # Fusionner ≥4600 et >4600 (même tranche, libellés variés)
         merged_4600 = rf_vc.pop("≥4600 DT", 0) + rf_vc.pop(">4600 DT", 0)
         if merged_4600:
             rf_vc["≥4600 DT"] = merged_4600
@@ -513,7 +477,6 @@ def compute_stats(company_code="STAR"):
         segments[seg_key] = build_segment(df_s)
     segments["all"] = build_segment(retail)
 
-    # ── Géographie (combiné retail + corporate) ───────────────────────────────
     zone_counts = {z: 0 for z in ["nord-est", "centre-est", "nord-centre-ouest", "sud-est-ouest"]}
     total_geo = 0
     for df in (retail, corp):
@@ -524,8 +487,6 @@ def compute_stats(company_code="STAR"):
                 total_geo += 1
     geo = {z: _pct(c, total_geo) for z, c in zone_counts.items()} if total_geo else None
 
-    # ── Entreprises (corporate) ───────────────────────────────────────────────
-    # Secteur d'activité — nettoyage des doublons avec espaces
     secteur_col = "Secteur d’activité"
     if secteur_col in corp.columns:
         corp["_sect"] = corp[secteur_col].apply(
@@ -535,7 +496,6 @@ def compute_stats(company_code="STAR"):
     else:
         secteurs = []
 
-    # Nombre d'employés — clé de tri
     emp_col = "Nombre d’employés dans votre entreprise"
     emp_order = ["5;19", "20-99", "100-499", "500 et plus"]
     emp_labels = ["5–19", "20–99", "100–499", "500+"]
@@ -553,7 +513,6 @@ def compute_stats(company_code="STAR"):
     employes_vals = [_pct(emp_vc[i], emp_total) for i in sorted(emp_vc.keys())]
     employes = {"labs": employes_labs, "vals": employes_vals}
 
-    # Chiffre d'affaires annuel
     ca_col = "Chiffre d'affaires annuel"
     ca_order = [
         "<500 000 dinars",
@@ -587,8 +546,6 @@ def compute_stats(company_code="STAR"):
 
     entreprises = {"secteurs": secteurs, "employes": employes, "ca": ca}
 
-    # ── Fiche (filtrée sur les clients réels de company_code — voir docstring) ─
-    # Modèle idéal
     modele_col = "Assurance - Modèle idéal"
     modele_counts = {"Digital": 0, "Mixte": 0, "Physique": 0}
     modele_total = 0
@@ -604,7 +561,6 @@ def compute_stats(company_code="STAR"):
                  for k in ["Digital", "Mixte", "Physique"]],
     } if modele_total else {"labs": ["Digital", "Mixte", "Physique"], "vals": []}
 
-    # Perception générale
     perc_col = "Assurance - Perception générale"
     perc_order = ["Très positive", "Plutôt positive", "Neutre", "Plutôt négative", "Très négative"]
     perc_colors = ["#00B86B", "#7BC67A", "#FFE600", "#FF8C42", "#B80C26"]
@@ -619,7 +575,6 @@ def compute_stats(company_code="STAR"):
     perc_vals = [_pct(perc_counts[k], perc_total) for k in perc_labs]
     perception = {"labs": perc_labs, "vals": perc_vals}
 
-    # Degré de confiance
     conf_col = "Assurance - Degré de confiance"
     conf_order = ["Très faible", "Faible", "Moyen", "Fort", "Très fort"]
     conf_counts = {k: 0 for k in conf_order}
@@ -633,18 +588,12 @@ def compute_stats(company_code="STAR"):
     conf_vals = [_pct(conf_counts[k], conf_total) for k in conf_labs]
     confiance = {"labs": conf_labs, "vals": conf_vals}
 
-    # Top of Mind, Meilleure, Pire — volontairement calculés sur le marché
-    # ENTIER (retail, pas retail_client) : question de notoriété/image posée
-    # à tous les répondants, pas seulement aux clients de la compagnie - voir
-    # docstring de compute_stats.
     tom  = _top_companies(retail["Assurance - Top of Mind"])
     meil = _top_companies(retail["Assurance - Meilleure compagnie"])
     pire_col = "Assurance - Pire Compagnie "
     pire_raw = _top_companies(retail[pire_col])
-    # Exclure NSP du classement pire (déjà filtré dans _top_companies)
     pire = pire_raw
 
-    # Canal (filtré clients de la compagnie)
     canal_ops = [
         "Souscrire à un contrat",
         "Déclarer un sinistre",
@@ -676,7 +625,6 @@ def compute_stats(company_code="STAR"):
         ],
     }
 
-    # Satisfaction (filtrée clients de la compagnie)
     sat_ops = [
         "Souscription",
         "Couverture",
