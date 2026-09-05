@@ -13,18 +13,18 @@ Le calcul des mêmes statistiques *à la volée* depuis le fichier Excel
 (pour l'API/dashboard live) est fait ailleurs, dans extraction/enquete_extractor.py.
 """
 
-import json  # sérialiser les listes/dicts en texte JSON pour les stocker en colonne texte
-import os  # construire le chemin racine du projet
-import sys  # modifier le chemin de recherche des modules Python
+import json  # JSON pour la colonne texte
+import os  # chemin racine
+import sys  # chemin des modules
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # ajoute la racine du repo pour importer "database"
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # racine du repo
 
 from database.repository import (
-    get_connection,  # ouvre la connexion MySQL
-    get_or_create_company,  # récupère ou crée l'id de la société (table societes)
-    get_or_create_source,  # récupère ou crée l'id de la source "ENQUETE" (table sources)
-    save_document,  # enregistre le "document" représentant l'enquête (upsert)
-    save_kpi_value,  # insère/actualise un KPI numérique ou texte (upsert)
+    get_connection,  # connexion MySQL
+    get_or_create_company,  # id de la société
+    get_or_create_source,  # id source ENQUETE
+    save_document,  # document de l'enquête
+    save_kpi_value,  # insère un KPI
 )
 
 # ------------------------------------------------------------------ #
@@ -41,10 +41,10 @@ ENQUETE_DATA = {
     },
     # Données par segment (clé = identifiant segment)
     "segments": {
-        "all": {  # segment agrégé : toutes les catégories de répondants confondues
+        "all": {  # toutes catégories confondues
             "genre":    [67, 33],  # % Homme, % Femme
-            "age":      [14, 16, 27, 22, 13, 8],  # % de répondants par tranche d'âge
-            "typePro":  [  # répartition par catégorie socio-professionnelle
+            "age":      [14, 16, 27, 22, 13, 8],  # % par tranche d'âge
+            "typePro":  [  # par catégorie socio-pro
                 {"x": "Profession libérale", "y": 38},
                 {"x": "Secteur privé",       "y": 26},
                 {"x": "Secteur public",      "y": 20},
@@ -52,22 +52,22 @@ ENQUETE_DATA = {
                 {"x": "Étudiants",           "y": 3},
                 {"x": "Sans emploi",         "y": 1},
             ],
-            "vehicule":   78,  # % des répondants possédant un véhicule
-            "proprio":    52,  # % des répondants propriétaires de leur logement
-            "professions": [  # professions les plus citées (nom, % de citations)
+            "vehicule":   78,  # % avec véhicule
+            "proprio":    52,  # % propriétaires
+            "professions": [  # professions les plus citées
                 ["Commerçant", 23], ["Avocat", 23], ["Médecin", 23], ["Taxiste", 23],
                 ["Kiné", 23], ["Expert-comptable", 23], ["Consultant", 23],
             ],
-            "revFam": {  # revenu familial : tranches (labs) + % de répondants (vals)
+            "revFam": {  # revenu familial : tranches/%
                 "labs": ["Refus", "≥4690 TND/Mois", "[2050,4695] TND/Mois", "[1150,2046] TND/Mois", "<1150 TND/Mois"],
                 "vals": [3, 18, 34, 42, 3],
             },
-            "revInd": {  # revenu individuel : tranches (labs) + % de répondants (vals)
+            "revInd": {  # revenu individuel : tranches/%
                 "labs": ["Refus", "≥10000 TND/Mois", "[5000,10000] TND/Mois", "[800,5000] TND/Mois", "<800 TND/Mois"],
                 "vals": [5, 16, 34, 40, 5],
             },
         },
-        "particuliers": {  # segment "Particuliers" (mêmes champs que "all", cf. ci-dessus)
+        "particuliers": {  # segment Particuliers
             "genre":    [55, 45],
             "age":      [10, 20, 30, 25, 12, 3],
             "typePro":  [
@@ -79,7 +79,7 @@ ENQUETE_DATA = {
             "revFam": {"labs": ["Refus","≥4690 TND/Mois","[2050,4695] TND/Mois","[1150,2046] TND/Mois","<1150 TND/Mois"], "vals": [3,15,30,45,7]},
             "revInd": {"labs": ["Refus","≥10000 TND/Mois","[5000,10000] TND/Mois","[800,5000] TND/Mois","<800 TND/Mois"], "vals": [5,10,25,50,10]},
         },
-        "professionnels": {  # segment "Professionnels"
+        "professionnels": {  # segment Professionnels
             "genre":    [72, 28],
             "age":      [3, 15, 35, 30, 14, 3],
             "typePro":  [
@@ -92,7 +92,7 @@ ENQUETE_DATA = {
             "revFam": {"labs": ["Refus","≥4690 TND/Mois","[2050,4695] TND/Mois","[1150,2046] TND/Mois","<1150 TND/Mois"], "vals": [2,30,45,20,3]},
             "revInd": {"labs": ["Refus","≥10000 TND/Mois","[5000,10000] TND/Mois","[800,5000] TND/Mois","<800 TND/Mois"], "vals": [3,25,45,25,2]},
         },
-        "etudiants": {  # segment "Étudiants"
+        "etudiants": {  # segment Étudiants
             "genre":    [48, 52],
             "age":      [65, 30, 5, 0, 0, 0],
             "typePro":  [{"x": "Étudiants", "y": 100}],
@@ -101,7 +101,7 @@ ENQUETE_DATA = {
             "revFam": {"labs": ["Refus","≥4690 TND/Mois","[2050,4695] TND/Mois","[1150,2046] TND/Mois","<1150 TND/Mois"], "vals": [5,5,15,40,35]},
             "revInd": {"labs": ["Refus","≥10000 TND/Mois","[5000,10000] TND/Mois","[800,5000] TND/Mois","<800 TND/Mois"], "vals": [10,2,8,30,50]},
         },
-        "tre": {  # segment "TRE" (Tunisiens Résidents à l'Étranger)
+        "tre": {  # segment TRE (résidents à l'étranger)
             "genre":    [60, 40],
             "age":      [8, 25, 35, 22, 8, 2],
             "typePro":  [
@@ -114,7 +114,7 @@ ENQUETE_DATA = {
             "revFam": {"labs": ["Refus","≥4690 TND/Mois","[2050,4695] TND/Mois","[1150,2046] TND/Mois","<1150 TND/Mois"], "vals": [5,40,35,15,5]},
             "revInd": {"labs": ["Refus","≥10000 TND/Mois","[5000,10000] TND/Mois","[800,5000] TND/Mois","<800 TND/Mois"], "vals": [5,35,40,18,2]},
         },
-        "retraites": {  # segment "Retraités"
+        "retraites": {  # segment Retraités
             "genre":    [70, 30],
             "age":      [0, 0, 2, 18, 45, 35],
             "typePro":  [{"x": "Retraité", "y": 100}],
@@ -124,18 +124,18 @@ ENQUETE_DATA = {
             "revInd": {"labs": ["Refus","≥10000 TND/Mois","[5000,10000] TND/Mois","[800,5000] TND/Mois","<800 TND/Mois"], "vals": [5,15,30,35,15]},
         },
     },
-    "entreprises": {  # bloc séparé : volet "Entreprises" de l'enquête (BDD Corporate)
-        "secteurs": [  # répartition par secteur d'activité
+    "entreprises": {  # volet Entreprises (BDD Corporate)
+        "secteurs": [  # par secteur d'activité
             {"x": "Commerce",           "y": 32}, {"x": "Industrie",          "y": 32},
             {"x": "Santé",              "y": 9},  {"x": "Sociétés de services","y": 8},
             {"x": "Enseignement",       "y": 7},  {"x": "Autre",              "y": 6},
             {"x": "Transport",          "y": 2},
         ],
-        "employes": {  # répartition par tranche d'effectif salarié
+        "employes": {  # par tranche d'effectif
             "labs": ["entre 5 et 19", "entre 20 et 99", "100 et plus"],
             "vals": [39, 36, 25],
         },
-        "ca": {  # répartition par tranche de chiffre d'affaires annuel
+        "ca": {  # par tranche de CA
             "labs": ["Refus", ">10 000 000", "[5 000 000, 10 000 000[", "[500 000, 5 000 000[", "<500 000"],
             "vals": [20, 13, 12, 26, 29],
         },
@@ -148,43 +148,43 @@ ENQUETE_DATA = {
 # ------------------------------------------------------------------ #
 
 # Utilité : point d'entrée unique — crée le référentiel puis insère tous les KPI
-def seed(conn):  # insère tout ENQUETE_DATA en base via une seule connexion
-    source_id = get_or_create_source(conn, "ENQUETE", "Enquête de marché")  # source "ENQUETE" (pas une URL, juste un libellé)
-    cmf_id    = get_or_create_company(conn, "STAR", "Société Tunisienne d'Assurances et de Réassurance")  # rattache l'enquête à la société STAR
-    doc_id    = save_document(conn, source_id, cmf_id, "Enquête de marché STAR 2024", 2024, "")  # "document" = l'enquête elle-même (pas de lien PDF)
-    conn.commit()  # valide la création de source/société/document avant d'insérer les KPI
+def seed(conn):  # insère tout ENQUETE_DATA
+    source_id = get_or_create_source(conn, "ENQUETE", "Enquête de marché")  # source ENQUETE
+    cmf_id    = get_or_create_company(conn, "STAR", "Société Tunisienne d'Assurances et de Réassurance")  # rattache à STAR
+    doc_id    = save_document(conn, source_id, cmf_id, "Enquête de marché STAR 2024", 2024, "")  # document = l'enquête
+    conn.commit()  # valide avant les KPI
 
-    TAB = "Enquête"  # nom d'onglet utilisé pour tous les KPI insérés par ce script
+    TAB = "Enquête"  # onglet des KPI
 
     # Comptages
-    for nom, val in ENQUETE_DATA["counts"].items():  # une ligne de KPI numérique par segment compté
+    for nom, val in ENQUETE_DATA["counts"].items():  # un KPI par segment compté
         save_kpi_value(conn, doc_id, TAB, f"Comptage - {nom}", valeur_nombre=val)
 
     # Segments
-    for seg_key, seg in ENQUETE_DATA["segments"].items():  # parcourt les 6 segments (all + 5 catégories)
-        p = f"Segment {seg_key}"  # préfixe commun du nom de KPI pour ce segment
-        save_kpi_value(conn, doc_id, TAB, f"{p} - genre",      valeur_texte=json.dumps(seg["genre"]))  # liste sérialisée en JSON texte
+    for seg_key, seg in ENQUETE_DATA["segments"].items():  # les 6 segments
+        p = f"Segment {seg_key}"  # préfixe du nom de KPI
+        save_kpi_value(conn, doc_id, TAB, f"{p} - genre",      valeur_texte=json.dumps(seg["genre"]))  # sérialisé en JSON
         save_kpi_value(conn, doc_id, TAB, f"{p} - age",        valeur_texte=json.dumps(seg["age"]))
         save_kpi_value(conn, doc_id, TAB, f"{p} - typePro",    valeur_texte=json.dumps(seg["typePro"]))
-        save_kpi_value(conn, doc_id, TAB, f"{p} - vehicule",   valeur_nombre=seg["vehicule"])  # valeur numérique directe (pas de JSON)
+        save_kpi_value(conn, doc_id, TAB, f"{p} - vehicule",   valeur_nombre=seg["vehicule"])  # valeur numérique directe
         save_kpi_value(conn, doc_id, TAB, f"{p} - proprio",    valeur_nombre=seg["proprio"])
         save_kpi_value(conn, doc_id, TAB, f"{p} - professions",valeur_texte=json.dumps(seg["professions"]))
         save_kpi_value(conn, doc_id, TAB, f"{p} - revFam",     valeur_texte=json.dumps(seg["revFam"]))
         save_kpi_value(conn, doc_id, TAB, f"{p} - revInd",     valeur_texte=json.dumps(seg["revInd"]))
 
     # Entreprises
-    e = ENQUETE_DATA["entreprises"]  # raccourci vers le sous-bloc entreprises
+    e = ENQUETE_DATA["entreprises"]  # sous-bloc entreprises
     save_kpi_value(conn, doc_id, TAB, "Entreprises - secteurs", valeur_texte=json.dumps(e["secteurs"]))
     save_kpi_value(conn, doc_id, TAB, "Entreprises - employes", valeur_texte=json.dumps(e["employes"]))
     save_kpi_value(conn, doc_id, TAB, "Entreprises - ca",       valeur_texte=json.dumps(e["ca"]))
 
-    conn.commit()  # valide l'insertion de tous les KPI
+    conn.commit()  # valide tous les KPI
     print(f"OK - Donnees enquete STAR 2024 inserees (doc_id={doc_id})")  # confirmation console
 
 
-if __name__ == "__main__":  # ne s'exécute que si le script est lancé directement
-    conn = get_connection()  # ouvre la connexion MySQL
+if __name__ == "__main__":  # lancé directement
+    conn = get_connection()  # connexion MySQL
     try:
-        seed(conn)  # lance l'insertion complète (idempotente)
+        seed(conn)  # insertion complète
     finally:
-        conn.close()  # ferme la connexion, même si une erreur est survenue
+        conn.close()  # ferme même en cas d'erreur
