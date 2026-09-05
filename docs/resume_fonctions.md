@@ -4,26 +4,16 @@
 
 ## config/company_registry.py
 
-### `_normalize_name(name)`
+### _normalize_name(name)
 
-```python
-def _normalize_name(name):
-    name = unicodedata.normalize("NFKD", name)
-    name = "".join(c for c in name if not unicodedata.combining(c))
-    return name.strip().upper()
-```
+![config/company_registry.py — lignes 24 à 28 — nettoie un nom avant comparaison](diagrams/code_normalize_name.png)
 
-**Rôle** : nettoyer un nom de société pour que les comparaisons ne soient pas cassées par des accents ou de la casse différente.
+| Ligne | Explication |
+|---|---|
+| 24 | Bannière : Fonction 1, nettoie un nom avant comparaison |
+| 25 | Définition de la fonction, prend un nom en paramètre |
+| 26 | Sépare chaque lettre accentuée de son accent (ex: "é" → "e" + accent) |
+| 27 | Ne garde que les lettres, jette les accents séparés à l'étape précédente |
+| 28 | Retire les espaces en trop, met tout en majuscules |
 
-**Ligne par ligne** :
-- `unicodedata.normalize("NFKD", name)` — sépare chaque lettre accentuée en deux caractères : la lettre de base + l'accent (ex. "é" → "e" + accent séparé).
-- `"".join(c for c in name if not unicodedata.combining(c))` — relit chaque caractère un par un et ne garde que ceux qui ne sont pas des accents ; recolle le tout sans rien garder des accents.
-- `.strip().upper()` — retire les espaces en trop, met en majuscules.
-
-**Exemple** : `"Générale"` → `"Genera´le"` (décomposé) → `"Generale"` (accents retirés) → `"GENERALE"`.
-
-**D'où vient `name`** (vérifié dans le vrai code, 2 appelants réels) :
-- `scraping/bvmt_scraper.py` — un nom de société affiché sur le site de la BVMT, avant recherche du code interne correspondant.
-- `extraction/cga_kpi_extractor.py` — un libellé lu à l'intérieur d'un PDF du CGA (ex. une ligne "Nombre d'agences par assureur - STAR"), pendant l'extraction.
-
-Jamais un texte fixe écrit dans le code — toujours un texte trouvé dynamiquement (site scrapé ou PDF en cours de lecture).
+**Utilité** : uniformiser un nom de société avant de le comparer à un autre — sans ça, "Générale" et "GENERALE" (sans accent) seraient vus comme deux mots différents.
