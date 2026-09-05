@@ -62,11 +62,13 @@ MOIS_FR = {
     "sep":"09","oct":"10","nov":"11","déc":"12",
 }
 
-ASSURANCE_KEYS = [
-    "assur", "cga", "prime", "sinistre", "takaful", "réassur", "reassur",
-    "star ass", "comar", " gat ", "astree", "carte ass", "lloyd", "maghrebia",
-    "bh ass", "bna ass", "ami ass", "compagnie d'assur",
-]
+# Non utilisée (aucun appel dans le code) — conservée en commentaire au cas
+# où un futur filtre "toute actualité liée à l'assurance" en aurait besoin.
+# ASSURANCE_KEYS = [
+#     "assur", "cga", "prime", "sinistre", "takaful", "réassur", "reassur",
+#     "star ass", "comar", " gat ", "astree", "carte ass", "lloyd", "maghrebia",
+#     "bh ass", "bna ass", "ami ass", "compagnie d'assur",
+# ]
 
 
 # ── Helpers communs ────────────────────────────────────────────────────────────
