@@ -42,6 +42,8 @@ SELECT_FIELD_ID = "edit-field-societesape-value"  # id HTML natif du menu de sé
 
 # Le champ "période" contient par exemple "Etats financiers au 31/12" ou
 # "Etats financiers intermédiaires au 30/06". On ne garde que les annuels au 31/12.
+
+
 ANNUAL_31_12_PATTERN = re.compile(r"31\s*/\s*12")  # motif "31/12" (avec espaces optionnels)
 INTERIM_KEYWORDS = ("intermédiaire", "intermediaire")  # mots qui excluent un document (pas annuel)
 
@@ -57,7 +59,7 @@ REQUEST_HEADERS = {
 class CMFPortalScraper:
 
     # ================================================================================== #
-    # ÉTAPE : INITIALISATION
+    # ÉTAPE 1 : INITIALISATION
     # ================================================================================== #
 
     # ------------------  Fonction 1 : configure Chrome, connecte la base, fixe la fenêtre d'années -------------------
@@ -89,7 +91,7 @@ class CMFPortalScraper:
         self.source_id = get_or_create_source(self.db_conn, "CMF", CMF_URL)  # id de la source "CMF"
 
     # ================================================================================== #
-    # ÉTAPE : NAVIGATION À LA PAGE WEB
+    # ÉTAPE 2 : NAVIGATION À LA PAGE WEB
     # ================================================================================== #
 
     # ------------------  Fonction 2 : charge la page du portail CMF -------------------
@@ -194,7 +196,7 @@ class CMFPortalScraper:
         self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".view-content")))  # nouveau contenu chargé
 
     # ================================================================================== #
-    # ÉTAPE : EXTRACTION DES RÉSULTATS
+    # ÉTAPE 3 : EXTRACTION DES RÉSULTATS
     # ================================================================================== #
 
     # ------------------  Fonction 7 : lit les lignes de résultats affichées (année, période, lien PDF) -------------------
@@ -269,7 +271,7 @@ class CMFPortalScraper:
         return collected  # toutes les années retenues avec leur lien PDF
 
     # ================================================================================== #
-    # ÉTAPE : VÉRIFICATION DU LIEN ET ENREGISTREMENT EN BASE
+    # ÉTAPE 4 : VÉRIFICATION DU LIEN ET ENREGISTREMENT EN BASE
     # ================================================================================== #
 
     # ------------------  Fonction 11 : vérifie que le lien PDF répond (HEAD, repli GET) -------------------
@@ -322,7 +324,7 @@ class CMFPortalScraper:
         return saved  # nombre de documents ajoutés lors de ce passage
 
     # ================================================================================== #
-    # ÉTAPE : PIPELINE COMPLET POUR UNE SOCIÉTÉ
+    # ÉTAPE 5 : PIPELINE COMPLET POUR UNE SOCIÉTÉ
     # ================================================================================== #
 
     # ------------------  Fonction 13 : orchestre tout le déroulé, relance ×3 en cas de timeout -------------------
