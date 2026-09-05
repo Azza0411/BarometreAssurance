@@ -346,4 +346,432 @@ fraîche) jusqu'à 3 fois en cas de timeout.
 
 ---
 
-*Fin du trajet pour la source CMF (scraping → stockage). Les 7 autres sources suivront le même principe une fois cette partie validée.*
+*Fin du trajet pour la source CMF (scraping → stockage).*
+
+> **Version interactive** : ce même trajet (CMF + les 7 sources ci-dessous), avec le code complet cliquable de chaque fonction, est disponible en version animée : [Trajet CMF — artefact interactif](https://claude.ai/code/artifact/52f949f2-aee8-49d8-8a1a-af7cb16cfa7b).
+
+---
+
+# Trajet de la donnée — Phase Scraping — Source FTUSA
+
+FTUSA publie des rapports **sectoriels** (pas de société associée, `cmf_id` NULL). Contrairement à CMF, il n'y a pas de sélection dans un menu : le trajet part directement de la liste des PDF sur une page unique.
+
+```
+sync_documents()               -> orchestre tout
+   ├─ _collect_main_pdf_links()  -> liste les PDF de la page
+   │     └─ _get_with_retries()
+   ├─ _get_with_retries()        -> réutilisée pour télécharger chaque PDF
+   ├─ _detect_report_year()      -> lit l'année dans le contenu du PDF
+   └─ save_document()            -> ★ ÉCRITURE EN BASE
+```
+
+## Étape 1 — `sync_documents()`
+
+**Rôle dans le trajet** : point d'entrée unique, appelée par `pipelines/run_pipeline.py`.
+
+![scraping/ftusa_scraper.py — lignes 118 à 165 — orchestrateur](diagrams/trajet_ftusa_01_sync.png)
+
+| Ligne(s) | Explication |
+|---|---|
+| 118-122 | Définition, docstring |
+| 123-126 | Prépare la base, récupère l'id de la source FTUSA |
+| 128-129 | Récupère les liens PDF de la page (du plus récent au plus ancien) |
+| 131-138 | Boucle : télécharge chaque PDF (en mémoire, jamais écrit sur disque) |
+| 139-141 | Si le contenu n'est pas un vrai PDF (page d'erreur) : ignoré |
+| 142-145 | Lit l'année dans le contenu ; si introuvable : ignoré |
+| 146-151 | Garde la 1ère occurrence de chaque année (la plus récente publiée) |
+| 153-158 | Ne garde que les `NB_YEARS` années les plus récentes, écrit en base |
+| 160-165 | Ferme la connexion, journalise le résumé |
+
+**Utilité** : seule fonction à orchestrer toute la chaîne pour cette source.
+
+## Étape 2 — `_collect_main_pdf_links()`
+
+**Rôle dans le trajet** : appelée en premier par `sync_documents()` — liste tous les liens PDF de la zone principale de la page (exclut le bloc « à la une »).
+
+![scraping/ftusa_scraper.py — lignes 83 à 97](diagrams/trajet_ftusa_02_collect.png)
+
+| Ligne(s) | Explication |
+|---|---|
+| 83-86 | Définition, docstring |
+| 87 | Télécharge la page HTML des rapports |
+| 89-90 | Coupe le HTML avant le bloc « à la une » |
+| 91-96 | Extrait tous les liens `.pdf`, sans doublon, dans l'ordre d'apparition |
+| 97 | Renvoie la liste |
+
+**Utilité** : isole les vrais rapports annuels des publications hors-sujet en bas de page.
+
+## Étape 3 — `_get_with_retries()`
+
+**Rôle dans le trajet** : appelée dans `_collect_main_pdf_links()`, puis réutilisée telle quelle par `sync_documents()` pour télécharger chaque PDF candidat.
+
+![scraping/ftusa_scraper.py — lignes 63 à 75](diagrams/trajet_ftusa_03_retries.png)
+
+| Ligne(s) | Explication |
+|---|---|
+| 63-65 | Définition (3 tentatives par défaut), docstring |
+| 66 | Boucle sur les tentatives |
+| 68-70 | Requête GET, lève si erreur HTTP, renvoie si succès |
+| 71-73 | Si dernière tentative épuisée : relève l'erreur |
+| 74-75 | Sinon : journalise et patiente avant de réessayer |
+
+**Utilité** : absorbe les échecs réseau ponctuels sans faire échouer toute la source.
+
+## Étape 4 — `_detect_report_year()`
+
+**Rôle dans le trajet** : appelée par `sync_documents()` sur chaque PDF téléchargé et validé — lit l'année dans le contenu (pas le nom de fichier).
+
+![scraping/ftusa_scraper.py — lignes 101 à 110](diagrams/trajet_ftusa_04_year.png)
+
+| Ligne(s) | Explication |
+|---|---|
+| 101-104 | Définition, docstring |
+| 105-108 | Ouvre le PDF, lit le texte des 2 premières pages |
+| 109 | Cherche le motif "en 2024", sinon une année isolée |
+| 110 | Renvoie l'année trouvée, sinon `None` |
+
+**Utilité** : le nom de fichier n'est pas fiable sur 25 ans d'archives — le contenu, si.
+
+## Étape 5 — `save_document()` — ★ écriture en base
+
+Identique à la fonction utilisée par CMF (fichier `database/repository.py`, lignes 257-283, voir plus haut). `cmf_id=None` ici : c'est une source sectorielle, sans société associée.
+
+---
+
+# Trajet de la donnée — Phase Scraping — Source CGA
+
+Comme FTUSA, le CGA publie des rapports **sectoriels**. Particularité : les rapports récents (2023+) ne sont plus liés en PDF direct mais via une page de news intermédiaire hébergée sur Google Drive.
+
+```
+sync_documents()                -> orchestre tout
+   └─ _fetch_report_links()       -> liens PDF directs + suivi de lien
+         ├─ _get_with_retries()
+         └─ _gdrive_download_url()  -> construit le lien Drive
+   └─ save_document()             -> ★ ÉCRITURE EN BASE
+```
+
+## Étape 1 — `sync_documents()`
+
+![scraping/cga_scraper.py — lignes 119 à 143](diagrams/trajet_cga_01_sync.png)
+
+| Ligne(s) | Explication |
+|---|---|
+| 119-121 | Définition, docstring |
+| 122-125 | Prépare la base, récupère l'id de la source CGA |
+| 127-128 | Récupère `{année: url}` de tous les rapports trouvés |
+| 130-136 | Ne garde que les années les plus récentes, écrit en base |
+| 138-143 | Ferme la connexion, journalise le résumé |
+
+**Utilité** : point d'entrée unique pour la source CGA.
+
+## Étape 2 — `_fetch_report_links()`
+
+**Rôle dans le trajet** : appelée par `sync_documents()` — suit automatiquement la chaîne page principale → page news → Google Drive pour les rapports récents.
+
+![scraping/cga_scraper.py — lignes 80 à 111](diagrams/trajet_cga_02_links.png)
+
+| Ligne(s) | Explication |
+|---|---|
+| 80-86 | Définition, docstring (explique la double convention 2022- / 2023+) |
+| 87-88 | Charge la page principale |
+| 91-93 | Liens PDF directs (2022 et antérieurs) |
+| 96-99 | Pour chaque lien vers une page news récente : ignore si déjà résolu |
+| 100-107 | Décode l'URL, suit le lien, cherche un lien Google Drive dans la page news |
+| 108-109 | Si la page news échoue : journalise, année ignorée |
+| 111 | Renvoie le dictionnaire complet |
+
+**Utilité** : gère les 2 conventions de publication (PDF direct historique / page news + Drive récente) de façon transparente.
+
+## Étape 3 — `_get_with_retries()`
+
+Identique en principe aux autres sources (3 tentatives, voir capture).
+
+![scraping/cga_scraper.py — lignes 39 à 51](diagrams/trajet_cga_03_retries.png)
+
+**Utilité** : même filet de sécurité réseau que les 7 autres sources.
+
+## Étape 4 — `_gdrive_download_url()`
+
+**Rôle dans le trajet** : appelée quand un lien Google Drive est trouvé sur une page news — transforme un lien de visualisation en lien de téléchargement direct.
+
+![scraping/cga_scraper.py — lignes 75 à 76](diagrams/trajet_cga_04_gdrive.png)
+
+**Utilité** : sans cette conversion, le lien stocké en base pointerait vers une page web, pas vers le PDF.
+
+## Étape 5 — `save_document()` — ★ écriture en base
+
+Identique à CMF/FTUSA (`database/repository.py`, lignes 257-283). `cmf_id=None` : source sectorielle.
+
+---
+
+# Trajet de la donnée — Phase Scraping — Source INS
+
+**Cas particulier** : INS n'a **aucun PDF** à extraire plus tard — le trajet se termine directement par l'écriture du KPI (Population, PIB) sur un document « virtuel » sans lien réel.
+
+```
+sync_all()                       -> orchestre tout
+   ├─ _fetch_series()              -> appelée 2× (Population, puis PIB)
+   │     └─ _post_with_retries()    -> seule source en appel POST (API)
+   ├─ _fetch_population_jan()      -> repli HTML pour années manquantes
+   │     └─ _get_with_retries()
+   ├─ save_document()              -> document virtuel (pas de PDF)
+   └─ save_kpi_value()             -> ★ ÉCRITURE DU KPI (fin du trajet)
+```
+
+## Étape 1 — `sync_all()`
+
+![scraping/ins_scraper.py — lignes 150 à 192](diagrams/trajet_ins_01_sync.png)
+
+| Ligne(s) | Explication |
+|---|---|
+| 150-152 | Définition, docstring, prépare la base |
+| 157-158 | Récupère Population et PIB via l'API (2 appels à `_fetch_series`) |
+| 160-169 | Repli HTML : ajoute les années manquantes (tolère un échec) |
+| 173-188 | Pour chaque année couverte : crée un document virtuel, écrit les KPI trouvés |
+| 190-192 | Ferme la connexion, journalise |
+
+**Utilité** : point d'entrée unique — contrairement aux autres sources, écrit directement des valeurs numériques, pas des métadonnées de PDF.
+
+## Étape 2 — `_fetch_series()`
+
+**Rôle dans le trajet** : appelée 2 fois (Population puis PIB) — interroge l'API INS et parse la réponse XML.
+
+![scraping/ins_scraper.py — lignes 100 à 107](diagrams/trajet_ins_02_series.png)
+
+**Utilité** : une seule fonction générique pour les 2 indicateurs macro-économiques.
+
+## Étape 3 — `_post_with_retries()`
+
+**Rôle dans le trajet** : appelée par `_fetch_series()` — seule fonction du projet à interroger une API en **POST** plutôt qu'en GET.
+
+![scraping/ins_scraper.py — lignes 81 à 92](diagrams/trajet_ins_03_post_retries.png)
+
+**Utilité** : même logique de tolérance aux pannes que `_get_with_retries()`, adaptée au POST.
+
+## Étape 4 — `_fetch_population_jan()`
+
+**Rôle dans le trajet** : appelée en repli si l'API ne couvre pas encore l'année la plus récente — scrape un tableau HTML.
+
+![scraping/ins_scraper.py — lignes 111 à 142](diagrams/trajet_ins_04_popjan.png)
+
+**Utilité** : filet de sécurité pour ne pas perdre l'année en cours en attendant la publication API.
+
+## Étape 5 — `_get_with_retries()`
+
+![scraping/ins_scraper.py — lignes 65 à 77](diagrams/trajet_ins_05_retries.png)
+
+**Utilité** : même filet de sécurité réseau que les autres sources (utilisée ici pour la page HTML de repli).
+
+## Étape 6-7 — `save_document()` + `save_kpi_value()` — ★ fin du trajet
+
+`save_document()` crée un document virtuel par année (identique aux autres sources). `save_kpi_value()` (fichier `database/repository.py`, lignes 311-324) écrit ensuite directement la valeur numérique :
+
+**Utilité** : contrairement aux 7 autres sources, INS n'a pas de phase d'extraction séparée — la donnée est finale dès le scraping.
+
+---
+
+# Trajet de la donnée — Phase Scraping — Source ENQUETE
+
+**Cas particulier** : **aucun scraping ici**. Les chiffres (`ENQUETE_DATA`) sont transcrits à la main depuis le fichier Excel de l'enquête terrain STAR (voir docstring du fichier). Le trajet commence directement à l'écriture en base.
+
+```
+seed(conn)                -> point d'entrée unique (lancé une fois, manuellement)
+   ├─ save_document()       -> crée le document "Enquête" (une fois)
+   └─ save_kpi_value()      -> ★ ÉCRITURE EN BASE (appelée ~30 fois)
+```
+
+## Étape unique — `seed()`
+
+![scripts/seed_enquete_marche.py — lignes 151 à 182](diagrams/trajet_enquete_01_seed.png)
+
+| Ligne(s) | Explication |
+|---|---|
+| 151-154 | Crée la source, rattache l'enquête à la société STAR, crée le document |
+| 155 | Valide la création avant d'insérer les KPI |
+| 157-161 | Un KPI par segment compté (Particuliers, Professionnels, etc.) |
+| 164-173 | Pour chacun des 6 segments : 8 KPI (genre, âge, profession, revenus…) |
+| 176-179 | 3 KPI pour le volet Entreprises (secteurs, effectifs, chiffre d'affaires) |
+| 181-182 | Valide tout, confirme en console |
+
+**Utilité** : script à lancer une seule fois (`python scripts/seed_enquete_marche.py`), idempotent grâce aux upserts de `save_kpi_value()`.
+
+---
+
+# Trajet de la donnée — Phase Scraping — Source BVMT
+
+La source la plus riche : **3 volets indépendants** (statut de cotation, rapports ESG, données de marché), qui partagent tous la même reconnaissance de société via le registre CMF (`find_code_by_name`, cross-fichier avec `config/company_registry.py`).
+
+```
+sync_all()
+   ├─ sync_status_cotation()      -> Volet 1 : statut "Cotée"
+   │     ├─ _matched_insurance_companies()   -> réutilisée par les 3 volets
+   │     │     ├─ _fetch_listed_insurance_companies()
+   │     │     │     └─ _get_with_retries()
+   │     │     └─ find_code_by_name()         -> cross-fichier (company_registry.py)
+   │     ├─ save_document()       -> ★ traçabilité
+   │     └─ save_kpi_value()      -> ★ statut "Cotée"
+   ├─ sync_esg_documents()        -> Volet 2 : rapports ESG (réutilise ci-dessus)
+   │     ├─ _fetch_esg_societe_ids()
+   │     ├─ _fetch_esg_report_links()
+   │     └─ _report_year()
+   └─ sync_market_data()          -> Volet 3 : cours, ISIN, bulletin (réutilise ci-dessus)
+         ├─ _bulletin_links_in_range()
+         └─ _last_bulletin_of_year()
+```
+
+## Étape 1 — `sync_all()`
+
+![scraping/bvmt_scraper.py — lignes 356 à 360](diagrams/trajet_bvmt_01_sync_all.png)
+
+**Utilité** : orchestre les 3 volets indépendants.
+
+## Volet 1 — `sync_status_cotation()`
+
+![scraping/bvmt_scraper.py — lignes 166 à 191](diagrams/trajet_bvmt_02_status.png)
+
+| Ligne(s) | Explication |
+|---|---|
+| 166-172 | Définition, docstring, prépare la base |
+| 174-175 | Récupère les sociétés cotées reconnues |
+| 179-187 | Pour chaque société : crée le document de traçabilité, écrit le KPI "Cotée" |
+| 189-191 | Ferme la connexion, journalise |
+
+**Utilité** : le simple fait d'apparaître dans la liste des sociétés cotées Assurance devient un KPI.
+
+### → `_matched_insurance_companies()`
+
+![scraping/bvmt_scraper.py — lignes 148 à 158](diagrams/trajet_bvmt_03_matched.png)
+
+**Utilité** : le pont entre « ce qui est coté en bourse » et « ce que le registre CMF connaît » — réutilisée par les 3 volets.
+
+### → → `_fetch_listed_insurance_companies()`
+
+![scraping/bvmt_scraper.py — lignes 114 à 120](diagrams/trajet_bvmt_04_listed.png)
+
+**Utilité** : liste dynamique, jamais codée en dur.
+
+### → → → `_get_with_retries()`
+
+![scraping/bvmt_scraper.py — lignes 94 à 106](diagrams/trajet_bvmt_05_retries.png)
+
+### → → `find_code_by_name()` (cross-fichier)
+
+![config/company_registry.py — lignes 221 à 242](diagrams/trajet_bvmt_06_findcode.png)
+
+**Utilité** : comparaison par similarité de Jaccard pondérée sur les alias du registre CMF (voir la fiche `config/company_registry.py` pour le détail de l'algorithme).
+
+### → `save_document()` + `save_kpi_value()` — ★ destinations volet 1
+
+![database/repository.py — lignes 257 à 283](diagrams/trajet_bvmt_07_savedoc.png)
+![database/repository.py — lignes 311 à 324](diagrams/trajet_bvmt_08_savekpi.png)
+
+**Utilité** : `save_kpi_value()` est aussi réutilisée par le volet 3 (Mnemo, Dénomination, Nombre d'actions).
+
+## Volet 2 — `sync_esg_documents()`
+
+**Rôle dans le trajet** : réutilise `_matched_insurance_companies()` et `save_document()` déjà vues au volet 1.
+
+![scraping/bvmt_scraper.py — lignes 199 à 230](diagrams/trajet_bvmt_09_esg.png)
+
+**Utilité** : se limite à enregistrer les documents ; l'extraction des KPI de gouvernance est une phase séparée.
+
+### → `_fetch_esg_societe_ids()`
+
+![scraping/bvmt_scraper.py — lignes 124 à 130](diagrams/trajet_bvmt_10_esgids.png)
+
+### → `_fetch_esg_report_links()`
+
+![scraping/bvmt_scraper.py — lignes 134 à 138](diagrams/trajet_bvmt_11_esglinks.png)
+
+### → `_report_year()`
+
+![scraping/bvmt_scraper.py — lignes 142 à 144](diagrams/trajet_bvmt_12_reportyear.png)
+
+**Utilité** : contrairement à FTUSA, le nom de fichier BVMT contient presque toujours une date exploitable.
+
+## Volet 3 — `sync_market_data()`
+
+**Rôle dans le trajet** : réutilise `_matched_insurance_companies()`, `save_document()` et `save_kpi_value()` — le seul volet à combiner 2 destinations (profil société + bulletin sectoriel).
+
+![scraping/bvmt_scraper.py — lignes 266 à 348](diagrams/trajet_bvmt_13_market.png)
+
+### → `_bulletin_links_in_range()`
+
+![scraping/bvmt_scraper.py — lignes 238 à 244](diagrams/trajet_bvmt_14_bulletinrange.png)
+
+### → `_last_bulletin_of_year()`
+
+![scraping/bvmt_scraper.py — lignes 248 à 262](diagrams/trajet_bvmt_15_lastbulletin.png)
+
+**Utilité** : fenêtre de recherche élargie si aucun bulletin trouvé en décembre (jours fériés groupés certaines années).
+
+---
+
+# Trajet de la donnée — Actualités (IlBoursa & Atlas Magazine)
+
+**Cas particulier** : ces 2 sources partagent le même fichier (`api/routes/veille.py`) et les mêmes outils. Autre particularité : la destination finale n'est **pas** la table `documents` mais `actualites_vues` — une simple détection de nouveauté pour la cloche de notification, pas un stockage complet comme les 6 autres sources.
+
+```
+sync_new_items()                  -> point d'entrée réel (appelé par le pipeline)
+   ├─ _scrape_ilboursa()            -> 7 tickers cotés BVMT
+   │     ├─ _get()
+   │     ├─ _article_image()
+   │     ├─ _normalize_date()
+   │     └─ _categorize()
+   ├─ _scrape_atlas()               -> réutilise les 4 fonctions ci-dessus
+   └─ diff_and_mark_actualites()    -> ★ FIN DU TRAJET (table actualites_vues)
+```
+
+## Étape 1 — `sync_new_items()`
+
+**Rôle dans le trajet** : appelée uniquement par le pipeline planifié — jamais par une route HTTP live (`/api/actualites` reste un scrape à cache 1h, inchangé).
+
+![api/routes/veille.py — lignes 577 à 597](diagrams/trajet_veille_01_syncnew.png)
+
+**Utilité** : vrai point d'entrée du trajet — scrape IlBoursa + Atlas, puis diffe contre la base.
+
+## Étape 2 — `_scrape_ilboursa()`
+
+![api/routes/veille.py — lignes 170 à 254](diagrams/trajet_veille_02_ilboursa.png)
+
+**Utilité** : couvre les 7 tickers cotés BVMT (liste vérifiée contre `bvmt_scraper._fetch_listed_insurance_companies`, pas une liste partielle).
+
+## Étape 3 — `_get()`
+
+![api/routes/veille.py — lignes 87 à 93](diagrams/trajet_veille_04_get.png)
+
+**Utilité** : requête HTTP simple, échec silencieux (renvoie `None`) — partagée par IlBoursa et Atlas Magazine.
+
+## Étape 4 — `_article_image()`
+
+![api/routes/veille.py — lignes 140 à 160](diagrams/trajet_veille_05_articleimage.png)
+
+**Utilité** : va chercher l'image + le résumé d'un article en visitant sa page (2e requête HTTP).
+
+## Étape 5 — `_normalize_date()`
+
+![api/routes/veille.py — lignes 100 à 118](diagrams/trajet_veille_06_normdate.png)
+
+**Utilité** : normalise une date de publication au format JJ/MM/AAAA, quel que soit son format d'origine.
+
+## Étape 6 — `_categorize()`
+
+![api/routes/veille.py — lignes 121 à 137](diagrams/trajet_veille_07_categorize.png)
+
+**Utilité** : classement heuristique par mots-clés présents dans le titre (aucun NLP).
+
+## Étape 7 — `_scrape_atlas()`
+
+**Rôle dans le trajet** : réutilise `_get()`, `_article_image()`, `_normalize_date()` et `_categorize()` vus ci-dessus.
+
+![api/routes/veille.py — lignes 264 à 340](diagrams/trajet_veille_03_atlas.png)
+
+## Étape 8 — `diff_and_mark_actualites()` — ★ fin du trajet
+
+![database/repository.py — lignes 670 à 702](diagrams/trajet_veille_08_diffmark.png)
+
+**Utilité** : au premier passage (table vide), peuple la table sans rien renvoyer comme « nouveau » — évite une avalanche de notifications au premier déploiement.
+
+---
+
+*Fin du trajet pour les 8 sources de scraping (jusqu'au stockage, avant extraction). Version interactive avec code complet cliquable : [Trajet CMF — artefact](https://claude.ai/code/artifact/52f949f2-aee8-49d8-8a1a-af7cb16cfa7b).*
