@@ -97,24 +97,24 @@
 
 En cas d'échec à n'importe quelle étape : relance complète (×3), jamais une reprise partielle.
 
-![scraping/cmf_portal_scraper.py — lignes 310 à 328 — mécanisme de nouvelle tentative](diagrams/code_scraping_retry.png)
+![scraping/cmf_portal_scraper.py — lignes 329 à 347 — mécanisme de nouvelle tentative](diagrams/code_scraping_retry.png)
 
 | Ligne(s) | Explication |
 |---|---|
-| 310 | Définition de la méthode, 3 tentatives par défaut |
-| 311-315 | Commentaire : pourquoi on relance tout plutôt qu'une seule étape |
-| 316 | Mémorise la dernière erreur rencontrée |
-| 317 | Boucle sur les tentatives (1 à 3) |
-| 318 | Début du bloc "essayer" |
-| 319 | Ouvre la page du portail CMF |
-| 320 | Sélectionne la société dans le menu |
-| 321 | Clique sur le bouton de recherche |
-| 322 | Si tout est OK : extrait, enregistre, et sort de la fonction |
-| 323 | Intercepte une erreur de timeout |
-| 324 | Mémorise cette erreur |
-| 325 | Journalise la tentative échouée |
-| 326-327 | Si ce n'était pas la dernière tentative, attend 2 secondes |
-| 328 | Si tout a échoué, relève la dernière erreur |
+| 329 | Définition de la méthode, 3 tentatives par défaut |
+| 330-334 | Commentaire : pourquoi on relance tout plutôt qu'une seule étape |
+| 335 | Mémorise la dernière erreur rencontrée |
+| 336 | Boucle sur les tentatives (1 à 3) |
+| 337 | Début du bloc "essayer" |
+| 338 | Ouvre la page du portail CMF |
+| 339 | Sélectionne la société dans le menu |
+| 340 | Clique sur le bouton de recherche |
+| 341 | Si tout est OK : extrait, enregistre, et sort de la fonction |
+| 342 | Intercepte une erreur de timeout |
+| 343 | Mémorise cette erreur |
+| 344 | Journalise la tentative échouée |
+| 345-346 | Si ce n'était pas la dernière tentative, attend 2 secondes |
+| 347 | Si tout a échoué, relève la dernière erreur |
 
 ---
 
@@ -132,26 +132,26 @@ Avant d'enregistrer un document, vérifier qu'il n'existe pas déjà en base (so
 
 ![Exemple de déduplication — cas du scraper CMF](diagrams/dedup_exemple_cmf.png)
 
-![scraping/cmf_portal_scraper.py — lignes 281 à 300 — déduplication et enregistrement](diagrams/code_scraping_dedup.png)
+![scraping/cmf_portal_scraper.py — lignes 299 à 318 — déduplication et enregistrement](diagrams/code_scraping_dedup.png)
 
 | Ligne(s) | Explication |
 |---|---|
-| 281 | Définition de la méthode |
-| 282 | Journalise le début de l'extraction |
-| 283 | Récupère la liste des états financiers annuels déjà filtrés |
-| 285 | Récupère le nom exact de la société attendu par le portail |
-| 286 | Récupère ou crée l'identifiant interne de la société en base |
-| 288 | Compteur de documents nouvellement enregistrés |
-| 289 | Boucle sur chaque année trouvée, dans l'ordre |
-| 290 | Récupère le lien du PDF pour cette année |
-| 291 | Vérifie si le document existe déjà en base (déduplication) |
-| 292-293 | Si oui : journalise et passe à l'année suivante |
-| 294 | Sinon, vérifie que le lien PDF répond bien |
-| 295-296 | Si le lien est invalide : journalise et passe à l'année suivante |
-| 297 | Construit le nom du fichier (société_année.pdf) |
-| 298 | Enregistre les métadonnées en base (pas le PDF) |
-| 299 | Incrémente le compteur |
-| 300 | Journalise la confirmation |
+| 299 | Définition de la méthode |
+| 300 | Journalise le début de l'extraction |
+| 301 | Récupère la liste des états financiers annuels déjà filtrés |
+| 303 | Récupère le nom exact de la société attendu par le portail |
+| 304 | Récupère ou crée l'identifiant interne de la société en base |
+| 306 | Compteur de documents nouvellement enregistrés |
+| 307 | Boucle sur chaque année trouvée, dans l'ordre |
+| 308 | Récupère le lien du PDF pour cette année |
+| 309 | Vérifie si le document existe déjà en base (déduplication) |
+| 310-311 | Si oui : journalise et passe à l'année suivante |
+| 312 | Sinon, vérifie que le lien PDF répond bien |
+| 313-314 | Si le lien est invalide : journalise et passe à l'année suivante |
+| 315 | Construit le nom du fichier (société_année.pdf) |
+| 316 | Enregistre les métadonnées en base (pas le PDF) |
+| 317 | Incrémente le compteur |
+| 318 | Journalise la confirmation |
 
 ---
 
