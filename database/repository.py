@@ -339,6 +339,98 @@ def count_kpi_values(conn, document_id):
         return cur.fetchone()[0]
 
 
+# ── Pipeline complète par annexe (tableau_cellules / tableau_validations) ──
+# Voir extraction/annexe13_pipeline.py — stocke le tableau COMPLET normalisé
+# et validé, séparé de kpi_values (7 KPI narrow, dashboards existants).
+
+def save_tableau_result(conn, document_id, tableau, result):
+    """Enregistre le résultat complet de `annexe13_pipeline.process_annexe13`
+    (ou équivalent pour une autre annexe) : toutes les cellules
+    (ligne normalisée × colonne) et tous les résultats de validation.
+    Remplace intégralement ce qui existait pour ce (document_id, tableau) —
+    un nouveau passage d'extraction ne doit jamais laisser une cellule ou une
+    validation obsolète d'un passage précédent."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM tableau_cellules WHERE document_id = %s AND tableau = %s",
+            (document_id, tableau),
+        )
+        cur.execute(
+            "DELETE FROM tableau_validations WHERE document_id = %s AND tableau = %s",
+            (document_id, tableau),
+        )
+        cellule_rows = [
+            (document_id, tableau, ligne, colonne, valeur)
+            for ligne, valeurs in result["lignes"].items()
+            for colonne, valeur in valeurs.items()
+        ]
+        if cellule_rows:
+            # ON DUPLICATE KEY UPDATE (repli défensif) : les colonnes sont
+            # normalement dédupliquées en amont (full_table_extractor.py),
+            # mais deux centres de colonnes qui se résoudraient malgré tout
+            # au même libellé ne doivent jamais faire échouer tout le
+            # stockage — la dernière valeur rencontrée l'emporte plutôt
+            # qu'un crash sur une contrainte d'unicité.
+            cur.executemany(
+                """
+                INSERT INTO tableau_cellules (document_id, tableau, ligne, colonne, valeur)
+                VALUES (%s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE valeur = VALUES(valeur)
+                """,
+                cellule_rows,
+            )
+        validation_rows = [
+            (document_id, tableau, v["regle_code"], v["regle"], v["colonne"],
+             v["attendu"], v["trouve"], v["ecart"], v["statut"])
+            for v in result["validations"]
+        ]
+        if validation_rows:
+            cur.executemany(
+                """
+                INSERT INTO tableau_validations
+                    (document_id, tableau, regle_code, regle, colonne, attendu, trouve, ecart, statut)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE attendu = VALUES(attendu), trouve = VALUES(trouve),
+                                        ecart = VALUES(ecart), statut = VALUES(statut)
+                """,
+                validation_rows,
+            )
+    conn.commit()
+
+
+def get_tableau_cellules(conn, document_ids, tableau):
+    """Cellules stockées pour un ensemble de documents et une annexe donnée —
+    renvoie [(document_id, ligne, colonne, valeur), ...]."""
+    if not document_ids:
+        return []
+    with conn.cursor() as cur:
+        placeholders = ",".join(["%s"] * len(document_ids))
+        cur.execute(
+            f"""
+            SELECT document_id, ligne, colonne, valeur
+            FROM tableau_cellules
+            WHERE tableau = %s AND document_id IN ({placeholders})
+            """,
+            [tableau] + list(document_ids),
+        )
+        return cur.fetchall()
+
+
+def get_tableau_validation_summary(conn, document_id, tableau):
+    """Résumé des validations pour un document (compte par statut) — utilisé
+    pour afficher un badge de fiabilité dans la page Gestion de données."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT statut, COUNT(*) FROM tableau_validations
+            WHERE document_id = %s AND tableau = %s
+            GROUP BY statut
+            """,
+            (document_id, tableau),
+        )
+        return dict(cur.fetchall())
+
+
 def save_anomaly(conn, source, gravite, code=None, annee=None, kpi=None, details=None):
     """Enregistre une anomalie détectée pendant l'extraction/le nettoyage
     (déséquilibre Bilan, variation YoY implausible...) pour qu'elle soit

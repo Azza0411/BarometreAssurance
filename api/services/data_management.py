@@ -16,7 +16,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import io
 
-from database.repository import get_connection, list_all_documents
+from database.repository import get_connection, list_all_documents, get_tableau_cellules
 from extraction.annexe13_kpi_extractor import (
     _is_target_page as _is_annexe13_page,
     RACCORDEMENT_RE as _ANNEXE13_RACCORDEMENT_RE,
@@ -33,7 +33,7 @@ _DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
 # vient d'un fichier Excel unique fourni par l'utilisateur — pour ces
 # 3 sources, aucun fichier local par document : le lien externe reste la
 # seule référence consultable.
-def _local_pdf_path(source_nom, code, nom_pdf):
+def local_pdf_path(source_nom, code, nom_pdf):
     if source_nom == "CMF" and code:
         return os.path.join(_DATA_DIR, "cmf", code, nom_pdf)
     if source_nom == "FTUSA":
@@ -51,7 +51,7 @@ def list_documents_for_ui(conn):
     "locale" : l'URL externe peut avoir changé ou disparu depuis)."""
     rows = []
     for doc_id, source_nom, code, nom_entreprise, nom_pdf, annee, lien in list_all_documents(conn):
-        local_path = _local_pdf_path(source_nom, code, nom_pdf)
+        local_path = local_pdf_path(source_nom, code, nom_pdf)
         rows.append({
             "id": doc_id,
             "source": source_nom,
@@ -84,7 +84,7 @@ def get_local_pdf_path_for_document(conn, document_id):
     if not row:
         return None
     source_nom, code, nom_pdf = row
-    path = _local_pdf_path(source_nom, code, nom_pdf)
+    path = local_pdf_path(source_nom, code, nom_pdf)
     if path and os.path.isfile(path):
         return path
     return None
@@ -370,9 +370,10 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
         # kpi_values contient déjà) puisque l'extraction complète relit le
         # PDF elle-même plutôt que de réutiliser les KPI déjà stockés.
         annexe13_docs = []
+        annexe13_cellules_by_doc = {}
         if include_annexe13_full:
             q2 = """
-                SELECT c.code, c.nom_entreprise, d.annee, d.nom_pdf
+                SELECT d.id, c.code, c.nom_entreprise, d.annee, d.nom_pdf
                 FROM documents d
                 JOIN sources s ON s.id = d.source_id
                 JOIN societes c ON c.id = d.cmf_id
@@ -391,6 +392,18 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             with conn.cursor() as cur:
                 cur.execute(q2, p2)
                 annexe13_docs = cur.fetchall()
+            # Cellules déjà validées en base (extraction/annexe13_pipeline.py
+            # via api/services/tableau_pipeline_service.py) : chemin rapide,
+            # évite de re-parser le PDF pour les documents déjà traités.
+            # Repli sur l'extraction live (ci-dessous) pour les autres —
+            # jamais d'export vide simplement parce que la validation n'a
+            # pas encore tourné pour ce document.
+            doc_ids = [doc_id for doc_id, *_ in annexe13_docs]
+            for doc_id, ligne, colonne, valeur in get_tableau_cellules(conn, doc_ids, "annexe13"):
+                grid = annexe13_cellules_by_doc.setdefault(doc_id, {"colonnes": [], "lignes": {}})
+                if colonne not in grid["colonnes"]:
+                    grid["colonnes"].append(colonne)
+                grid["lignes"].setdefault(ligne, {})[colonne] = valeur
     finally:
         conn.close()
 
@@ -403,11 +416,15 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
         bloc = soc["blocs"].setdefault(display, {})
         bloc.setdefault(kpi, {})[annee] = valeur
 
-    for code, nom_entreprise, annee, nom_pdf in annexe13_docs:
-        pdf_path = _local_pdf_path("CMF", code, nom_pdf)
+    for doc_id, code, nom_entreprise, annee, nom_pdf in annexe13_docs:
+        soc = par_societe.setdefault(code, {"nom": nom_entreprise, "blocs": {}, "annexe13_grids": {}})
+        cached = annexe13_cellules_by_doc.get(doc_id)
+        if cached is not None:
+            soc["annexe13_grids"][annee] = cached
+            continue
+        pdf_path = local_pdf_path("CMF", code, nom_pdf)
         if not pdf_path or not os.path.isfile(pdf_path):
             continue
-        soc = par_societe.setdefault(code, {"nom": nom_entreprise, "blocs": {}, "annexe13_grids": {}})
         soc["annexe13_grids"][annee] = _extract_annexe13_full_grid(pdf_path)
 
     wb = Workbook()

@@ -32,7 +32,7 @@
         "brutes",
         "cessionset/ou retrocessions 31/12/2018",
         "operations nettes 31/12/2018",
-        "operations",
+        "operations (2)",
         "nettes 2017"
       ]
     },
@@ -73,7 +73,7 @@
         "pecuniaires",
         "total",
         "acceptations",
-        "total"
+        "total (2)"
       ]
     },
     "2024": {
@@ -107,7 +107,7 @@
         "pecuniaires",
         "total",
         "acceptations",
-        "total"
+        "total (2)"
       ]
     },
     "2023": {
@@ -166,7 +166,7 @@
         "loi",
         "total",
         "acceptations",
-        "total"
+        "total (2)"
       ]
     },
     "2020": {
@@ -197,7 +197,7 @@
         "loi",
         "total",
         "acceptations",
-        "total"
+        "total (2)"
       ]
     },
     "2019": {
@@ -225,7 +225,7 @@
         "loi",
         "total",
         "acceptations",
-        "total"
+        "total (2)"
       ]
     },
     "2018": {
@@ -253,7 +253,7 @@
         "loi",
         "total",
         "acceptations",
-        "total"
+        "total (2)"
       ]
     },
     "2017": {
@@ -281,7 +281,7 @@
         "loi",
         "total",
         "acceptations",
-        "total"
+        "total (2)"
       ]
     },
     "2016": {
@@ -309,7 +309,7 @@
         "loi",
         "total",
         "acceptations",
-        "total"
+        "total (2)"
       ]
     }
   },
@@ -358,7 +358,7 @@
         "de",
         "l assurance",
         "et/ou",
-        "de",
+        "de (2)",
         "la",
         "reassurance",
         "operations brutes 31/12/2025",
@@ -379,7 +379,7 @@
         "de",
         "l assurance",
         "et/ou",
-        "de",
+        "de (2)",
         "la",
         "reassurance",
         "non",
@@ -403,7 +403,7 @@
         "de",
         "l assurance",
         "et/ou",
-        "de",
+        "de (2)",
         "la",
         "reassurance",
         "non",
@@ -428,7 +428,7 @@
         "de",
         "l assurance",
         "et/ou",
-        "de",
+        "de (2)",
         "la",
         "reassurance",
         "non",
@@ -454,7 +454,7 @@
         "de",
         "l assurance",
         "et/ou",
-        "de",
+        "de (2)",
         "la",
         "reassurance",
         "non",
@@ -1233,7 +1233,7 @@
         "operations brutes",
         "cessions et/ou retrocessions",
         "operations nettes",
-        "operations nettes"
+        "operations nettes (2)"
       ]
     },
     "2017": {
@@ -1746,10 +1746,10 @@
         "brutes",
         "cessions retrocessions 31/12/2025",
         "et/ou",
-        "operations 31/12/2025",
+        "operations 31/12/2025 (2)",
         "nettes",
         "operations 31/12/2024",
-        "nettes"
+        "nettes (2)"
       ]
     },
     "2024": {
@@ -1853,11 +1853,11 @@
         "brutes",
         "cessions",
         "retrocessions",
-        "31/12/2018",
+        "31/12/2018 (2)",
         "et/ouoperations",
-        "31/12/2018",
+        "31/12/2018 (3)",
         "nette",
-        "operations",
+        "operations (2)",
         "31/12/2017",
         "nettes"
       ]
@@ -1874,12 +1874,12 @@
         "cessions",
         "retrocessions",
         "et/ou 31/12/2017",
-        "operations",
-        "31/12/2017",
+        "operations (2)",
+        "31/12/2017 (2)",
         "nettes",
-        "operations",
+        "operations (3)",
         "31/12/2016",
-        "nettes"
+        "nettes (2)"
       ]
     },
     "2016": {
@@ -1995,7 +1995,7 @@
         "total marines",
         "total non",
         "vie",
-        "vie",
+        "vie (2)",
         "total general"
       ]
     },
@@ -2051,9 +2051,9 @@
         "marines",
         "aviation",
         "total marines",
-        "total non",
+        "total non (2)",
         "vie",
-        "vie",
+        "vie (2)",
         "total general"
       ]
     },
@@ -2089,7 +2089,7 @@
         "transport",
         "aviation",
         "marines",
-        "total",
+        "total (2)",
         "non vie",
         "vie",
         "globale"

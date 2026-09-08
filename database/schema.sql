@@ -115,6 +115,51 @@ CREATE TABLE IF NOT EXISTS actualites_vues (
     INDEX idx_actualites_vues_date (date_ajout)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Pipeline complète par annexe (Phase 1, 2026-09-08 — voir
+-- extraction/annexe13_pipeline.py) : contrairement à kpi_values (7 KPI par
+-- tableau, alimente les dashboards existants), ces 2 tables stockent le
+-- tableau COMPLET (toutes lignes normalisées x toutes colonnes/branches
+-- réelles) une fois validé par les règles métier — pour la page "Gestion de
+-- données" (export flexible rapide, sans re-parser le PDF à chaque
+-- requête). Séparées de kpi_values : ne remplacent PAS le pipeline narrow
+-- existant (dashboards non touchés en Phase 1).
+CREATE TABLE IF NOT EXISTS tableau_cellules (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    document_id INT NOT NULL,
+    tableau     VARCHAR(50)  NOT NULL,   -- ex: 'annexe13' (annexe12/bilan_actif/bilan_passif a venir)
+    ligne       VARCHAR(255) NOT NULL,   -- libelle NORMALISE (poste comptable canonique)
+    colonne     VARCHAR(255) NOT NULL,   -- branche/colonne telle qu'extraite (varie par societe)
+    valeur      DOUBLE NULL,
+    date_ajout  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_tableau_cellule (document_id, tableau, ligne, colonne),
+    CONSTRAINT fk_tableau_cellules_document FOREIGN KEY (document_id) REFERENCES documents(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Resultat de chaque regle de validation (identite comptable) appliquee lors
+-- du traitement d'un document — traçabilite/qualite (pourra alimenter une
+-- page Qualite dediee a cette pipeline), et permet de ne PAS considerer un
+-- document comme fiable silencieusement s'il a des ecarts.
+-- regle_code (court, indexe) plutot que le texte complet de la regle dans la
+-- cle unique : VARCHAR(500) en utf8mb4 (jusqu'a 2000 octets a lui seul)
+-- combine aux autres colonnes de la cle depassait la limite de taille
+-- d'index InnoDB (erreur 1005/150 a la creation) ; le texte complet reste
+-- disponible dans `regle` pour l'affichage, non indexe.
+CREATE TABLE IF NOT EXISTS tableau_validations (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    document_id INT NOT NULL,
+    tableau     VARCHAR(50)  NOT NULL,
+    regle_code  VARCHAR(100) NOT NULL,
+    regle       VARCHAR(500) NOT NULL,
+    colonne     VARCHAR(255) NOT NULL,
+    attendu     DOUBLE NULL,
+    trouve      DOUBLE NULL,
+    ecart       DOUBLE NULL,
+    statut      VARCHAR(20)  NOT NULL,   -- 'ok' | 'ecart' | 'donnees_manquantes'
+    date_ajout  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_tableau_validation (document_id, tableau, regle_code, colonne),
+    CONSTRAINT fk_tableau_validations_document FOREIGN KEY (document_id) REFERENCES documents(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS reglementation_vues (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     doc_key     VARCHAR(64)  NOT NULL,  -- id (hash) ou url du texte source

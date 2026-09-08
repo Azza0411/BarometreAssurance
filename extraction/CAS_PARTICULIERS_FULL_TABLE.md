@@ -1,5 +1,21 @@
 # Cas particuliers — extraction "grille complète" (extraction/full_table_extractor.py)
 
+## 2026-09-08 (Phase 1 — pipeline complète) — colonnes homonymes
+
+En branchant l'extraction complète à `extraction/annexe13_pipeline.py`
+(normalisation + validation + stockage `tableau_cellules`, voir plus bas) et
+en traitant TOUS les documents, un cas jusque-là invisible est apparu :
+`Duplicate entry '...-primes_acquises-31/12/2018'` au stockage, sur les
+années STAR encore sur le gabarit agrégé (page 4, pas de vraie page Annexe
+13 — ex. 2015, 2017, 2018, 2025). Cause : 2-3 centres de colonnes distincts,
+déjà connus pour se scinder (dédoublement documenté plus bas), pouvaient en
+plus se voir attribuer le MÊME libellé nettoyé ("31/12/2018" apparaissant
+sur 2-3 fragments d'en-tête wrappé), invisible tant que rien ne dépendait de
+l'unicité des noms de colonnes (l'export direct depuis le PDF les affichait
+juste côte à côte). Fix : les noms de colonnes dupliqués sont désormais
+désambiguïsés par suffixe (" (2)", " (3)"...) — même principe déjà appliqué
+aux libellés de ligne dupliqués.
+
 Suivi des cas rencontrés en construisant l'extraction complète des tableaux
 annexes (toutes lignes × toutes colonnes) — démarrée le 2026-09-08 sur
 demande explicite de l'utilisateur (la page Gestion de données ne doit pas

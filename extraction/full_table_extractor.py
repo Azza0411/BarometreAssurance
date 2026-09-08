@@ -295,6 +295,22 @@ def extract_full_table(page, min_data_clusters=MIN_DATA_CLUSTERS):
     filtered_columns = [(x, name) for x, name in columns if not re.match(r"^\(colonne \d+\)$", name)]
     if filtered_columns:  # garde-fou : ne jamais tout supprimer si l'en-tête
         columns = filtered_columns  # n'a pu être rattaché à AUCUNE colonne
+
+    # Deux centres distincts peuvent se voir attribuer le MÊME libellé nettoyé
+    # (ex. gabarit STAR agrégé : un en-tête d'unité "31/12/2018" wrappé sur
+    # plusieurs lignes visuelles finit rattaché à 2-3 centres différents) —
+    # les distinguer par suffixe plutôt que de laisser 2 colonnes homonymes
+    # se confondre en aval (silencieusement en Excel, ou en erreur d'unicité
+    # au stockage) ; même principe déjà appliqué aux libellés de ligne
+    # dupliqués ci-dessous.
+    seen_names = {}
+    deduped_columns = []
+    for x, name in columns:
+        n = seen_names.get(name, 0) + 1
+        seen_names[name] = n
+        deduped_columns.append((x, name if n == 1 else f"{name} ({n})"))
+    columns = deduped_columns
+
     col_names = [name for _x, name in columns]
     col_centers_final = [x for x, _name in columns]
 
