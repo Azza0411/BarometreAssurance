@@ -205,6 +205,42 @@ def _thin_border():
     return Border(left=side, right=side, top=side, bottom=side)
 
 
+def _autosize_columns(ws, skip_rows=(1, 2), min_width=10, max_width=32, label_max_width=100):
+    """Largeur de chaque colonne = le CONTENU RÉEL le plus large qu'elle
+    porte (pas une valeur fixe devinée à l'avance, qui coupait le texte dès
+    qu'un libellé ou un nombre dépassait la largeur supposée). Une seule
+    passe sur toute la feuille une fois tout écrit, plutôt que de faire
+    suivre une largeur à chaque site d'écriture séparé (plusieurs blocs
+    différents écrivent dans la même feuille).
+
+    Exclusions volontaires, pour ne pas gonfler la colonne A à cause d'une
+    ligne qui n'est de toute façon jamais coupée (déborde librement dans des
+    cellules vides voisines, sans bordure ni contenu pour l'arrêter) :
+    - `skip_rows` : le bandeau de titre (fusionné, largeur non pertinente).
+    - toute ligne où la colonne A porte un texte seule, sans valeur en
+      colonne B (titres de bloc/sous-titres, ex. "Annexe 13 — Résultat
+      technique...", "2024 — tableau complet (...)") — une vraie ligne de
+      donnée ou d'en-tête a toujours au moins une valeur en colonne B."""
+    widths = {}
+    for row in ws.iter_rows():
+        if row[0].row in skip_rows:
+            continue
+        has_col_b = len(row) > 1 and row[1].value is not None
+        for cell in row:
+            if cell.value is None:
+                continue
+            if cell.column == 1 and not has_col_b:
+                continue
+            if isinstance(cell.value, (int, float)):
+                text = f"{cell.value:,.0f}"
+            else:
+                text = str(cell.value)
+            widths[cell.column] = max(widths.get(cell.column, 0), len(text))
+    for col_idx, max_len in widths.items():
+        cap = label_max_width if col_idx == 1 else max_width
+        ws.column_dimensions[get_column_letter(col_idx)].width = min(max(max_len + 3, min_width), cap)
+
+
 # Libellé "propre" affiché comme titre de section dans chaque feuille, à
 # partir du libellé brut réellement stocké en base (voir la note sur
 # l'hétérogénéité de `tableau` en tête de fichier). "Annexe 12/13" reste
@@ -616,9 +652,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                             row, used_cols = _write_narrow_fallback_block(ws, row, annee, narrow_annexe13)
                         n_cols = max(n_cols, used_cols)
 
-            ws.column_dimensions["A"].width = 42
-            for col_idx in range(2, n_cols + 1):
-                ws.column_dimensions[get_column_letter(col_idx)].width = 14
+            _autosize_columns(ws)
             # Pas de freeze_panes : Excel dessine une ligne de démarcation
             # (souvent perçue comme un "trait" résiduel) à la limite d'un
             # volet figé, même une fois la sélection multi-volets corrigée —
