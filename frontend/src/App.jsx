@@ -15,6 +15,7 @@ import QualiteDonnees         from "./pages/QualiteDonnees";
 import KpiDetail              from "./pages/KpiDetail";
 import RapportPipeline        from "./pages/RapportPipeline";
 import AnomaliesSysteme       from "./pages/AnomaliesSysteme";
+import GestionDonnees         from "./pages/GestionDonnees";
 
 /* ─── palette tokens ─── */
 const C = {
@@ -92,6 +93,14 @@ const MODULES = [
       <path d="M4 4h12v12H4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
       <path d="M7 8h6M7 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       <path d="M13 2v3M7 2v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg> },
+  { to:"/gestion-donnees",      label:"Gestion de données",   tag:"Collecte · Export",
+    desc:"Lancer la collecte, consulter les PDF scrapés et exporter n'importe quel extrait en Excel.",
+    color:"#0D9488",
+    icon:<svg viewBox="0 0 20 20" fill="none" width="16" height="16">
+      <ellipse cx="10" cy="5" rx="7" ry="2.5" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M3 5v5c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M3 10v5c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
     </svg> },
 ];
 
@@ -945,6 +954,7 @@ function AppShell() {
             <Route path="/kpi-detail"            element={<KpiDetail/>}/>
             <Route path="/rapport-pipeline"      element={<RapportPipeline/>}/>
             <Route path="/anomalies-systeme"     element={<AnomaliesSysteme/>}/>
+            <Route path="/gestion-donnees"       element={<GestionDonnees/>}/>
           </Routes>
         </PageTransition>
       </main>

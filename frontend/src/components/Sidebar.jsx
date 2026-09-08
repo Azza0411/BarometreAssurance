@@ -74,6 +74,17 @@ const subPages = [
       </svg>
     ),
   },
+  {
+    to: "/gestion-donnees",
+    label: "Gestion de données",
+    icon: (
+      <svg viewBox="0 0 20 20" fill="none" width="14" height="14">
+        <ellipse cx="10" cy="5" rx="7" ry="2.5" stroke="currentColor" strokeWidth="1.5"/>
+        <path d="M3 5v5c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        <path d="M3 10v5c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
 ];
 
 function FSLogo() {
