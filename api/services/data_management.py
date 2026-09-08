@@ -13,6 +13,8 @@ import os
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.views import Selection
+from openpyxl.drawing.image import Image as XLImage
 import io
 
 from database.repository import get_connection, list_all_documents, get_tableau_cellules
@@ -26,6 +28,32 @@ from extraction.annexe13_pipeline import normalize_table, CANONICAL_ROWS
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
+
+# Logos déjà présents dans le projet (frontend/public/logos, utilisés par la
+# plateforme elle-même) — réutilisés tels quels pour l'export Excel plutôt
+# que de dupliquer des assets. Mapping par code société car les noms de
+# fichiers ne suivent pas exactement la convention des codes CMF.
+_LOGO_DIR = os.path.join(_PROJECT_ROOT, "frontend", "public", "logos")
+_LOGO_FILES = {
+    "STAR": "STAR.png", "GAT": "GAT.png", "GAT_VIE": "GAT-vie.png",
+    "COMAR": "COMAR.png", "ATTIJARI": "Attijari.png", "BH": "BH.png",
+    "BIAT": "BIAT.png", "BNA": "BNA.png", "CARTE": "Carte.png",
+    "CARTE_VIE": "Carte-Vie.png", "COTUNACE": "COTUNACE.png", "CTAMA": "CTAMA.png",
+    "LLOYD_TUNISIEN": "LLOYD.png", "LLOYD_VIE": "LLOYD-Vie.png",
+    "MAGHREBIA": "Maghrebia.png", "MAGHREBIA_VIE": "Maghrebia-Vie.png",
+    "TUNIS_RE": "TunisRe.png", "UIB": "UIB.png", "AMI": "AMI.png",
+    "ASTREE": "astree.png", "HAYETT": "hayett.png",
+    "AT_TAKAFULIA": "At-Takafulia.png", "AL_AMANAH_TAKAFUL": "AlAmanaTakaful.png",
+    "ZITOUNA_TAKAFUL": "Zitouna-Takaful.png",
+}
+
+
+def _logo_path(code):
+    filename = _LOGO_FILES.get(code)
+    if not filename:
+        return None
+    path = os.path.join(_LOGO_DIR, filename)
+    return path if os.path.isfile(path) else None
 
 # Sources dont chaque document correspond à un vrai fichier PDF stocké en
 # local (téléchargé par le scraper), avec son schéma de chemin propre.
@@ -262,36 +290,47 @@ def _sorted_grid_rows(lignes):
     return sorted(lignes.items(), key=lambda kv: (_ROW_DISPLAY_ORDER.get(kv[0], len(CANONICAL_ROWS)), kv[0]))
 
 
+# Charte visuelle de ce bloc spécifiquement (grille complète Annexe 13) —
+# alignée sur le script de référence de l'utilisatrice (FS_Market_Intelligence
+# /B.py::export_to_excel : fond bleu #0070C0, texte blanc, police Arial),
+# plutôt que la charte EY sombre/jaune utilisée pour le bandeau de la feuille
+# et les autres blocs KPI — demande explicite : "le design des couleurs, des
+# noms, des colonnes comme dans le dossier partagé".
+_REF_BLUE = "0070C0"
+_REF_LIGHT = "EAF2FB"
+
+
 def _write_full_grid_block(ws, row, annee, grid):
     cols = grid["colonnes"]
     ws.cell(row=row, column=1, value=f"{annee} — tableau complet ({len(grid['lignes'])} lignes × {len(cols)} colonnes)")
     ws.cell(row=row, column=1).font = Font(italic=True, size=10, color=DARK, name="Calibri")
     row += 1
-    # En majuscules à l'affichage (ex. "A.TRAVAIL", "INCENDIE", "TOTAL") —
-    # c'est la convention réelle des en-têtes de branche dans les documents
-    # source, cohérente avec ce que produit le libellé de ligne (poste
-    # comptable canonique, lui en casse normale).
-    headers = ["Libellé"] + [c.upper() for c in cols]
+    # Libellés de ligne ET d'en-tête en MAJUSCULES — la casse du référentiel
+    # canonique (CANONICAL_ROWS) sert au rattachement/à la validation, pas à
+    # l'affichage ; convention réelle des tableaux source (et du dossier de
+    # référence) pour les deux.
+    headers = ["LIBELLÉ"] + [c.upper() for c in cols]
     for col_idx, header in enumerate(headers, start=1):
         cell = ws.cell(row=row, column=col_idx, value=header)
-        cell.fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
-        cell.font = Font(color=YELLOW, bold=True, name="Calibri", size=10)
+        cell.fill = PatternFill(start_color=_REF_BLUE, end_color=_REF_BLUE, fill_type="solid")
+        cell.font = Font(color="FFFFFF", bold=True, name="Arial", size=10)
         cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = _thin_border()
     row += 1
     for i, (label, values) in enumerate(_sorted_grid_rows(grid["lignes"])):
-        fill = PatternFill(start_color=LIGHT, end_color=LIGHT, fill_type="solid") if i % 2 == 0 else None
-        cell = ws.cell(row=row, column=1, value=label or "")
+        fill = PatternFill(start_color=_REF_LIGHT, end_color=_REF_LIGHT, fill_type="solid") if i % 2 == 0 else None
+        cell = ws.cell(row=row, column=1, value=(label or "").upper())
         cell.border = _thin_border()
-        cell.font = Font(name="Calibri", size=10, color=DARK)
+        cell.font = Font(name="Arial", size=10, color=DARK, bold=True)
         cell.alignment = Alignment(horizontal="left", vertical="center")
         if fill:
             cell.fill = fill
         for col_idx, col in enumerate(cols, start=2):
             val = values.get(col)
             c = ws.cell(row=row, column=col_idx, value=val)
+            c.number_format = "#,##0"
             c.border = _thin_border()
-            c.font = Font(name="Calibri", size=10, color=DARK)
+            c.font = Font(name="Arial", size=10, color=DARK)
             c.alignment = Alignment(horizontal="center", vertical="center")
             if fill:
                 c.fill = fill
@@ -482,6 +521,19 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                   2] if include_annexe13_full else [])
             )
             _write_sheet_title(ws, n_cols, f"{soc['nom'] or code} ({code})", "FS Market Intelligence — Export de données")
+            # Logo de la société (déjà disponible dans le projet, réutilisé
+            # tel quel — voir _LOGO_FILES) — ancré dans le coin supérieur
+            # droit du bandeau de titre, où le texte (aligné à gauche) ne
+            # l'atteint jamais, plutôt qu'au-dessus du nom de la société.
+            logo_path = _logo_path(code)
+            if logo_path:
+                try:
+                    logo_img = XLImage(logo_path)
+                    logo_img.height = 22
+                    logo_img.width = 22
+                    ws.add_image(logo_img, f"{get_column_letter(n_cols)}1")
+                except Exception:
+                    pass  # image illisible/corrompue : ne doit jamais faire échouer l'export
 
             row = 4
             for display_tableau in sorted(soc["blocs"].keys()):
@@ -544,6 +596,15 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             for col_idx in range(2, n_cols + 1):
                 ws.column_dimensions[get_column_letter(col_idx)].width = 14
             ws.freeze_panes = "B4"
+            # openpyxl génère par défaut une sélection multi-volets où
+            # CHAQUE volet (topLeft/topRight/bottomLeft/bottomRight) pointe
+            # sur "A1" — incohérent pour les volets qui ne contiennent même
+            # pas A1 une fois le figement appliqué. Excel rend ça comme un
+            # rectangle de sélection résiduel visible au-dessus du bandeau de
+            # titre (repéré comme "trait" par l'utilisatrice). Fixé en ne
+            # déclarant qu'UNE sélection propre, dans le volet réellement
+            # visible (bottomRight), sur la première cellule de données.
+            ws.sheet_view.selection = [Selection(pane="bottomRight", activeCell="B4", sqref="B4")]
 
     buffer = io.BytesIO()
     wb.save(buffer)
