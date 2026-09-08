@@ -152,13 +152,74 @@ def _thin_border():
     return Border(left=side, right=side, top=side, bottom=side)
 
 
+# Libellé "propre" affiché comme titre de section dans chaque feuille, à
+# partir du libellé brut réellement stocké en base (voir la note sur
+# l'hétérogénéité de `tableau` en tête de fichier). "Annexe 12/13" reste
+# affiché tel quel (Vie + Non-Vie combinés) plutôt que rattaché arbitrairement
+# à l'un des deux, pour ne pas laisser croire que la section "Annexe 12"
+# d'une feuille est un Vie pur si une partie de ses lignes vient en fait de
+# ce libellé combiné.
+_RAW_TO_DISPLAY = {
+    "Annexe12": "Annexe 12 — Résultat technique Vie",
+    "Annexe 12 - Resultat technique Vie": "Annexe 12 — Résultat technique Vie",
+    "Annexe13": "Annexe 13 — Résultat technique Non-Vie",
+    "Annexe 13 - Resultat technique Non-Vie": "Annexe 13 — Résultat technique Non-Vie",
+    "Annexe 12/13": "Annexe 12/13 — Résultat technique (Vie + Non-Vie combinés)",
+    "Bilan": "Bilan (Actif / Passif)",
+    "Etat de resultat (technique / global)": "État de résultat",
+    "Calcul interne": "Ratios calculés (interne)",
+    "Presentation de la societe": "Présentation de la société",
+}
+
+
+def _display_tableau(raw):
+    return _RAW_TO_DISPLAY.get(raw, raw)
+
+
+_INVALID_SHEET_CHARS = set('[]:*?/\\')
+
+
+def _safe_sheet_name(code, used):
+    name = "".join(c for c in (code or "?") if c not in _INVALID_SHEET_CHARS)[:31] or "Feuille"
+    base, i = name, 2
+    while name.lower() in used:
+        suffix = f" ({i})"
+        name = base[: 31 - len(suffix)] + suffix
+        i += 1
+    used.add(name.lower())
+    return name
+
+
+def _write_sheet_title(ws, last_col, title, subtitle):
+    last_col = max(last_col, 2)
+    for col_idx in range(1, last_col + 1):
+        ws.cell(row=1, column=col_idx).fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_col)
+    ws.cell(row=1, column=1, value=title)
+    ws.cell(row=1, column=1).font = Font(color="FFFFFF", bold=True, size=13, name="Calibri")
+    ws.cell(row=1, column=1).alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.row_dimensions[1].height = 26
+    if subtitle:
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_col)
+        ws.cell(row=2, column=1, value=subtitle)
+        ws.cell(row=2, column=1).font = Font(color=YELLOW, size=10, name="Calibri")
+        ws.cell(row=2, column=1).alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.row_dimensions[2].height = 18
+    ws.sheet_view.showGridLines = False
+    ws.sheet_properties.tabColor = DARK
+
+
 def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
-    """Génère un export Excel "brut" (format long : une ligne par valeur de
-    KPI) filtré sur n'importe quelle combinaison de tableaux/sociétés/années
-    — chaque filtre vide/absent signifie "tous". C'est la fonction derrière
-    les cas d'usage : "tous les Annexe 12 de toutes les compagnies en 2024",
-    "tous les tableaux financiers de COMAR", "tous les tableaux par années
-    de toutes les entreprises", etc."""
+    """Génère un export Excel filtré sur n'importe quelle combinaison de
+    tableaux/sociétés/années — chaque filtre vide/absent signifie "tous".
+    Une feuille par société, et dans chaque feuille, un vrai tableau
+    (KPI en lignes, année en colonnes) par tableau source demandé — pas une
+    liste plate. C'est la fonction derrière les cas d'usage : "tous les
+    Annexe 12 de toutes les compagnies en 2024" (une feuille par société,
+    chacune avec son Annexe 12 2024), "tous les tableaux financiers de
+    COMAR" (une feuille COMAR avec un bloc par tableau), "tous les tableaux
+    par années de toutes les entreprises" (une feuille par société, un bloc
+    par tableau, une colonne par année)."""
     raw_tableaux = _raw_tableaux_for_groups(tableau_keys)
 
     conn = get_connection()
@@ -185,7 +246,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             placeholders = ",".join(["%s"] * len(annees))
             query += f" AND d.annee IN ({placeholders})"
             params.extend(annees)
-        query += " ORDER BY c.code, d.annee, k.tableau, k.kpi"
+        query += " ORDER BY c.code, k.tableau, k.kpi, d.annee"
 
         with conn.cursor() as cur:
             cur.execute(query, params)
@@ -193,51 +254,76 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
     finally:
         conn.close()
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Export données"
-
-    headers = ["Code compagnie", "Compagnie", "Année", "Tableau", "KPI", "Valeur (nombre)", "Valeur (texte)"]
-
-    for r in (1,):
-        for col_idx in range(1, len(headers) + 1):
-            ws.cell(row=r, column=col_idx).fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
-    ws.merge_cells(f"A1:{get_column_letter(len(headers))}1")
-    ws["A1"] = f"FS Market Intelligence — Export de données ({len(rows)} valeurs)"
-    ws["A1"].font = Font(color="FFFFFF", bold=True, size=13, name="Calibri")
-    ws["A1"].alignment = Alignment(horizontal="left", vertical="center", indent=1)
-    ws.row_dimensions[1].height = 26
-    ws.row_dimensions[2].height = 6
-    ws.sheet_view.showGridLines = False
-    ws.sheet_properties.tabColor = DARK
-
-    header_row = 3
-    for col_idx, value in enumerate(headers, start=1):
-        cell = ws.cell(row=header_row, column=col_idx, value=value)
-        cell.fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
-        cell.font = Font(color=YELLOW, bold=True, name="Calibri", size=10)
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-        cell.border = _thin_border()
-    ws.row_dimensions[header_row].height = 22
-
-    row_idx = header_row + 1
+    # ── Regroupement société → tableau affiché → kpi → année → valeur ──────
+    par_societe = {}  # code -> {"nom": ..., "blocs": {display_tableau: {kpi: {annee: valeur}}}}
     for code, nom_entreprise, annee, tableau, kpi, valeur_nombre, valeur_texte in rows:
-        values = [code, nom_entreprise, annee, tableau, kpi, valeur_nombre, valeur_texte]
-        fill = PatternFill(start_color=LIGHT, end_color=LIGHT, fill_type="solid") if row_idx % 2 == 0 else None
-        for col_idx, value in enumerate(values, start=1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=value)
-            cell.border = _thin_border()
-            cell.font = Font(name="Calibri", size=10, color=DARK)
-            cell.alignment = Alignment(horizontal="left" if col_idx in (2, 4, 5) else "center", vertical="center")
-            if fill:
-                cell.fill = fill
-        row_idx += 1
+        valeur = valeur_nombre if valeur_nombre is not None else valeur_texte
+        soc = par_societe.setdefault(code, {"nom": nom_entreprise, "blocs": {}})
+        display = _display_tableau(tableau)
+        bloc = soc["blocs"].setdefault(display, {})
+        bloc.setdefault(kpi, {})[annee] = valeur
 
-    widths = [16, 32, 9, 26, 34, 15, 20]
-    for col_idx, width in enumerate(widths, start=1):
-        ws.column_dimensions[get_column_letter(col_idx)].width = width
+    wb = Workbook()
+    wb.remove(wb.active)  # une vraie feuille par société ci-dessous ; pas de feuille "Sheet" vide
 
-    ws.freeze_panes = f"A{header_row + 1}"
+    if not par_societe:
+        ws = wb.create_sheet("Export données")
+        _write_sheet_title(ws, 4, "FS Market Intelligence — Export de données", "Aucune donnée pour cette sélection.")
+    else:
+        used_names = set()
+        for code in sorted(par_societe.keys()):
+            soc = par_societe[code]
+            sheet_name = _safe_sheet_name(code, used_names)
+            ws = wb.create_sheet(sheet_name)
+
+            # Largeur de bandeau par défaut ; réévaluée au fil des blocs
+            # ci-dessous (chacun peut avoir un nombre de colonnes différent).
+            n_cols = 2
+            _write_sheet_title(ws, 6, f"{soc['nom'] or code} ({code})", "FS Market Intelligence — Export de données")
+
+            row = 4
+            for display_tableau in sorted(soc["blocs"].keys()):
+                bloc = soc["blocs"][display_tableau]
+                annees_bloc = sorted({a for kpi_annees in bloc.values() for a in kpi_annees.keys()})
+                cols = ["KPI"] + [str(a) for a in annees_bloc]
+
+                ws.cell(row=row, column=1, value=display_tableau).font = Font(bold=True, size=12, color=DARK, name="Calibri")
+                row += 1
+
+                for col_idx, header in enumerate(cols, start=1):
+                    cell = ws.cell(row=row, column=col_idx, value=header)
+                    cell.fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
+                    cell.font = Font(color=YELLOW, bold=True, name="Calibri", size=10)
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+                    cell.border = _thin_border()
+                header_row_idx = row
+                row += 1
+
+                for i, kpi in enumerate(sorted(bloc.keys())):
+                    fill = PatternFill(start_color=LIGHT, end_color=LIGHT, fill_type="solid") if i % 2 == 0 else None
+                    cell = ws.cell(row=row, column=1, value=kpi)
+                    cell.border = _thin_border()
+                    cell.font = Font(name="Calibri", size=10, color=DARK)
+                    cell.alignment = Alignment(horizontal="left", vertical="center")
+                    if fill:
+                        cell.fill = fill
+                    for col_idx, annee in enumerate(annees_bloc, start=2):
+                        val = bloc[kpi].get(annee)
+                        c = ws.cell(row=row, column=col_idx, value=val)
+                        c.border = _thin_border()
+                        c.font = Font(name="Calibri", size=10, color=DARK)
+                        c.alignment = Alignment(horizontal="center", vertical="center")
+                        if fill:
+                            c.fill = fill
+                    row += 1
+
+                row += 2  # espacement avant le bloc suivant
+                n_cols = max(n_cols, len(cols))
+
+            ws.column_dimensions["A"].width = 42
+            for col_idx in range(2, n_cols + 1):
+                ws.column_dimensions[get_column_letter(col_idx)].width = 14
+            ws.freeze_panes = "B4"
 
     buffer = io.BytesIO()
     wb.save(buffer)
