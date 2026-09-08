@@ -20,6 +20,7 @@ from api.services.data_management import (
     list_documents_for_ui, get_local_pdf_path_for_document,
     get_filter_options, build_flexible_export_xlsx,
 )
+from api.services import tableau_pipeline_service
 
 bp = Blueprint("gestion_donnees", __name__)
 
@@ -93,6 +94,62 @@ def statut_collecte():
         "demarree_le": demarree_le,
         "derniere_execution": derniere,
     })
+
+
+# État de la pipeline de validation Annexe 13 (extraction + normalisation +
+# règles métier, voir extraction/annexe13_pipeline.py) — même schéma
+# thread + verrou que la collecte ci-dessus, sur un état séparé (les deux
+# traitements sont indépendants et peuvent tourner l'un sans l'autre).
+_validation_lock = threading.Lock()
+_validation_state = {"en_cours": False, "demarree_le": None, "progression": None, "derniere": None}
+
+
+def _run_validation_background(codes, annees):
+    def _progress(done, total):
+        with _validation_lock:
+            _validation_state["progression"] = {"fait": done, "total": total}
+    try:
+        summary = tableau_pipeline_service.process_all(codes, annees, progress_callback=_progress)
+        with _validation_lock:
+            _validation_state["derniere"] = {
+                **summary, "terminee_le": datetime.now().isoformat(timespec="seconds"),
+            }
+    except Exception as exc:
+        print(f"[gestion_donnees] échec validation Annexe 13 : {exc}")
+    finally:
+        with _validation_lock:
+            _validation_state["en_cours"] = False
+            _validation_state["progression"] = None
+
+
+@bp.route("/api/gestion-donnees/valider-annexe13", methods=["POST"])
+def valider_annexe13():
+    """Lance (en tâche de fond) l'extraction complète + normalisation +
+    validation Annexe 13 pour les documents CMF filtrés (tous par défaut) et
+    stocke le résultat en base (tableau_cellules/tableau_validations) — un
+    passage nécessaire avant que l'export Excel puisse servir ces documents
+    depuis la base plutôt que re-parser leur PDF à chaque requête."""
+    codes = request.args.getlist("societe") or None
+    annees_raw = request.args.getlist("annee")
+    try:
+        annees = [int(a) for a in annees_raw] or None
+    except ValueError:
+        return jsonify({"error": "Paramètre 'annee' invalide"}), 400
+
+    with _validation_lock:
+        if _validation_state["en_cours"]:
+            return jsonify({"lancee": False, "raison": "deja_en_cours"}), 409
+        _validation_state["en_cours"] = True
+        _validation_state["demarree_le"] = datetime.now().isoformat(timespec="seconds")
+        _validation_state["progression"] = None
+    threading.Thread(target=_run_validation_background, args=(codes, annees), daemon=True).start()
+    return jsonify({"lancee": True})
+
+
+@bp.route("/api/gestion-donnees/statut-validation-annexe13")
+def statut_validation_annexe13():
+    with _validation_lock:
+        return jsonify(dict(_validation_state))
 
 
 @bp.route("/api/gestion-donnees/documents")

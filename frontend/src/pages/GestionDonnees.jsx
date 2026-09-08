@@ -211,6 +211,91 @@ function DocumentsSection() {
   );
 }
 
+/* ═══════════════════════════ Validation Annexe 13 ═══════════════════════════ */
+function ValidationSection() {
+  const [statut, setStatut] = useState(null);
+  const [lancement, setLancement] = useState(false);
+  const [erreur, setErreur] = useState(null);
+  const pollRef = useRef(null);
+
+  const fetchStatut = useCallback(() => {
+    fetch(`${API}/api/gestion-donnees/statut-validation-annexe13`)
+      .then(r => r.json())
+      .then(setStatut)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchStatut();
+    return () => clearInterval(pollRef.current);
+  }, [fetchStatut]);
+
+  useEffect(() => {
+    if (statut?.en_cours) {
+      pollRef.current = setInterval(fetchStatut, 3000);
+    } else {
+      clearInterval(pollRef.current);
+    }
+    return () => clearInterval(pollRef.current);
+  }, [statut?.en_cours, fetchStatut]);
+
+  const lancer = () => {
+    setErreur(null);
+    setLancement(true);
+    fetch(`${API}/api/gestion-donnees/valider-annexe13`, { method: "POST" })
+      .then(async r => {
+        if (r.status === 409) { setErreur("Une validation est déjà en cours."); return; }
+        if (!r.ok) { setErreur("Échec du lancement."); return; }
+        fetchStatut();
+      })
+      .catch(() => setErreur("Échec du lancement (API injoignable)."))
+      .finally(() => setLancement(false));
+  };
+
+  const enCours = statut?.en_cours;
+  const progression = statut?.progression;
+  const derniere = statut?.derniere;
+
+  return (
+    <Card>
+      <SectionTitle
+        eyebrow="Étape 3"
+        title="Validation Annexe 13"
+        desc="Extrait le tableau complet (toutes branches) de chaque document, normalise les libellés de ligne contre le référentiel comptable, vérifie les identités métier (Primes acquises = Primes émises + Variation…) et stocke le résultat validé en base — l'export Excel ci-dessous s'en sert directement (instantané) au lieu de re-lire chaque PDF."
+      />
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+        <button
+          onClick={lancer}
+          disabled={enCours || lancement}
+          style={{
+            padding: "12px 22px", borderRadius: 10, fontSize: 13.5, fontWeight: 700,
+            cursor: enCours ? "not-allowed" : "pointer", border: "none",
+            background: enCours ? "#D1D5DB" : DARK, color: enCours ? "#6B7280" : YELLOW,
+            display: "flex", alignItems: "center", gap: 8,
+          }}>
+          {enCours ? "⏳ Validation en cours…" : "▶ Lancer la validation Annexe 13"}
+        </button>
+
+        <div style={{ fontSize: 12, color: MUTED }}>
+          {enCours ? (
+            <span>{progression ? `${progression.fait} / ${progression.total} documents traités…` : "Démarrage…"}</span>
+          ) : derniere ? (
+            <span>
+              Dernière exécution : <b style={{ color: DARK }}>{derniere.terminee_le?.replace("T", " ").slice(0, 16)}</b>
+              {" · "}<span style={{ color: "#16A34A", fontWeight: 700 }}>{derniere.ok} validé(s)</span>
+              {derniere.page_introuvable ? <span> · {derniere.page_introuvable} sans page Annexe 13 identifiable</span> : null}
+              {derniere.erreur ? <span style={{ color: "#C8102E", fontWeight: 700 }}> · {derniere.erreur} erreur(s)</span> : null}
+            </span>
+          ) : (
+            <span>Aucune exécution enregistrée pour l'instant — l'export utilisera l'extraction directe du PDF en attendant.</span>
+          )}
+        </div>
+      </div>
+      {erreur && <div style={{ marginTop: 10, fontSize: 12, color: "#C8102E", fontWeight: 600 }}>{erreur}</div>}
+    </Card>
+  );
+}
+
 /* ═══════════════════════════ Export Excel ═══════════════════════════ */
 function toggleInSet(set, value) {
   const next = new Set(set);
@@ -246,7 +331,7 @@ function ExportSection() {
   return (
     <Card>
       <SectionTitle
-        eyebrow="Étape 3"
+        eyebrow="Étape 4"
         title="Export Excel flexible"
         desc={'Ne cochez rien dans un groupe pour dire "tous" — ex. laisser Société et Année vides mais cocher "Annexe 12" exporte l\'Annexe 12 de toutes les compagnies, toutes années confondues.'}
       />
@@ -314,6 +399,7 @@ export default function GestionDonnees() {
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 32px", display: "flex", flexDirection: "column", gap: 20 }}>
         <CollecteSection />
         <DocumentsSection />
+        <ValidationSection />
         <ExportSection />
       </div>
     </div>
