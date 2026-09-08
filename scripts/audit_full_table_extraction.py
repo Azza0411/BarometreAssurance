@@ -16,8 +16,6 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import pdfplumber
-
 from extraction.annexe13_kpi_extractor import _is_target_page, RACCORDEMENT_RE, KPI_PATTERNS
 from extraction.full_table_extractor import locate_and_extract_full_table, relaxed_is_annexe13_page
 
@@ -35,11 +33,10 @@ def audit_one(code, annee):
     if not os.path.isfile(path):
         return {"statut": "pas_de_pdf"}
     try:
-        with pdfplumber.open(path) as pdf:
-            page_num, result = locate_and_extract_full_table(
-                pdf, _is_target_page, KPI_PATTERNS, RACCORDEMENT_RE,
-                extra_page_predicate=relaxed_is_annexe13_page,
-            )
+        page_num, result = locate_and_extract_full_table(
+            path, _is_target_page, KPI_PATTERNS, RACCORDEMENT_RE,
+            extra_page_predicate=relaxed_is_annexe13_page,
+        )
     except Exception as exc:
         return {"statut": "erreur", "detail": str(exc)}
     if result is None:

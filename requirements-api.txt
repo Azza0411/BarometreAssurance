@@ -4,6 +4,7 @@ pymysql>=1.1.0
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 pdfplumber>=0.10.0
+camelot-py>=1.0.0  # extraction/full_table_extractor.py (grille complète Annexe 13, Gestion de données) — nécessite Ghostscript installé sur le système (flavor='stream')
 reportlab>=4.3.0
 openpyxl>=3.1.0
 gunicorn>=21.2.0

@@ -1,5 +1,51 @@
 # Cas particuliers — extraction "grille complète" (extraction/full_table_extractor.py)
 
+## 2026-09-09 — migration du moteur d'extraction : pdfplumber → camelot
+
+Suite à un retour utilisateur montrant un script de référence (camelot,
+dossier `FS_Market_Intelligence`) dont la sortie STAR était nettement plus
+propre : comparaison côte à côte sur GAT (16 colonnes/branche), STAR (page
+"Annexe 13" réelle ET page agrégée à libellés repliés), BIAT et ASTREE.
+Résultat sans ambiguïté en faveur de camelot :
+
+- **GAT, STAR, BIAT** : grille correctement reconstruite nativement, **0
+  écart** sur les 7 identités comptables de validation (`annexe13_pipeline.
+  VALIDATION_RULES`), toutes colonnes/branches confondues — alors que
+  l'approche pdfplumber nécessitait une pile de correctifs (regroupement de
+  centres de colonnes par tolérance `COL_GAP`, marge gauche d'en-tête,
+  dédoublement de colonnes, ancre "en dinar"...) pour arriver au même
+  résultat.
+- **ASTREE** : camelot **résout** le bug de rendu texte à lettres
+  individuellement espacées ("s p o n s a b i e c e n n a l e" →
+  "Responsabilité" lisible) que l'approche pdfplumber n'avait pas réussi à
+  corriger. Quelques colonnes restent sans libellé détecté
+  ("(colonne N)") et quelques écarts de validation subsistent sur cette
+  société précise — amélioration nette mais pas encore parfaite, non
+  creusé plus avant (voir tableau de couverture ci-dessous).
+
+**Le module a été entièrement réécrit autour de camelot** (voir docstring
+en tête de fichier) : `extract_full_table_camelot()` remplace l'ancien
+`extract_full_table()` (positions X pdfplumber). Toute la couche en aval
+(normalisation, validation, stockage, export — `annexe13_pipeline.py`,
+`tableau_pipeline_service.py`, `data_management.py`) n'a pas eu besoin de
+changer : le contrat de sortie (`{"colonnes": [...], "lignes": {...}}`)
+reste identique.
+
+**Couverture brute (sweep 10 ans, `scripts/audit_full_table_extraction.py`)
+: 86/130 (66%) contre 89/130 (68%) avec pdfplumber — légère baisse en
+apparence, mais pas une vraie régression.** Vérifié cas par cas : les
+documents perdus sont soit (a) des pages où l'ancienne heuristique
+"réussissait" par accident sur la MAUVAISE page (même symptôme que le bug
+BIAT documenté plus bas — un dédoublement de colonnes gonflait
+artificiellement le score de vraisemblance sur une page qui n'est pas le
+vrai tableau), soit (b) des documents dont la vraie page Annexe 13 n'est,
+de toute façon, trouvable par AUCUN moteur (le titre recherché n'existe
+tout simplement pas dans le document cette année-là — ex. ASTREE 2022/2023,
+BH 2020 dont la seule page candidate est un tableau de raccordement à 1
+colonne, en plus OCR-corrompu). Camelot refuse honnêtement ces pages plutôt
+que de produire un résultat plausible mais faux — un résultat plus
+correct, même si le chiffre de couverture brute baisse légèrement.
+
 ## 2026-09-08 (Phase 1 — pipeline complète) — colonnes homonymes
 
 En branchant l'extraction complète à `extraction/annexe13_pipeline.py`
