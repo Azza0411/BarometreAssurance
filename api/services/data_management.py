@@ -55,6 +55,24 @@ def _logo_path(code):
     path = os.path.join(_LOGO_DIR, filename)
     return path if os.path.isfile(path) else None
 
+
+def _logo_dimensions(logo_path, target_height=40, max_width=90):
+    """Taille (largeur, hauteur) en pixels pour l'export Excel — hauteur
+    cible, largeur déduite du ratio RÉEL de l'image (les logos ne sont pas
+    tous carrés) et plafonnée pour ne jamais empiéter sur le texte du
+    bandeau. 40px de haut (contre 22px avant, jugé trop petit) tient sur les
+    2 lignes du bandeau (30 + 16 = 46px) sans les déborder."""
+    try:
+        from PIL import Image as PILImage
+        with PILImage.open(logo_path) as im:
+            w, h = im.size
+        width = w * (target_height / h)
+        if width > max_width:
+            return max_width, h * (max_width / w)
+        return width, target_height
+    except Exception:
+        return target_height, target_height
+
 # Sources dont chaque document correspond à un vrai fichier PDF stocké en
 # local (téléchargé par le scraper), avec son schéma de chemin propre.
 # BVMT/INS sont des scrapes de pages HTML (pas de PDF individuel) et ENQUETE
@@ -226,20 +244,27 @@ def _safe_sheet_name(code, used):
 
 
 def _write_sheet_title(ws, last_col, title, subtitle):
+    """Bandeau de titre — un seul bloc sombre sur 2 lignes (pas de jaune,
+    hiérarchie par le poids/la couleur du texte seulement) : nom de la
+    société en blanc gras, sous-titre en gris clair discret en dessous.
+    Design volontairement sobre suite au retour "plus minimaliste, simple et
+    élégant" — le jaune EY reste utilisé ailleurs (en-têtes des autres
+    blocs) mais pas ici, sur ce bandeau."""
     last_col = max(last_col, 2)
-    for col_idx in range(1, last_col + 1):
-        ws.cell(row=1, column=col_idx).fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
+    for r in (1, 2):
+        for col_idx in range(1, last_col + 1):
+            ws.cell(row=r, column=col_idx).fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_col)
     ws.cell(row=1, column=1, value=title)
-    ws.cell(row=1, column=1).font = Font(color="FFFFFF", bold=True, size=13, name="Calibri")
-    ws.cell(row=1, column=1).alignment = Alignment(horizontal="left", vertical="center", indent=1)
-    ws.row_dimensions[1].height = 26
+    ws.cell(row=1, column=1).font = Font(color="FFFFFF", bold=True, size=14, name="Calibri")
+    ws.cell(row=1, column=1).alignment = Alignment(horizontal="left", vertical="bottom", indent=1)
+    ws.row_dimensions[1].height = 30
     if subtitle:
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_col)
         ws.cell(row=2, column=1, value=subtitle)
-        ws.cell(row=2, column=1).font = Font(color=YELLOW, size=10, name="Calibri")
-        ws.cell(row=2, column=1).alignment = Alignment(horizontal="left", vertical="center", indent=1)
-    ws.row_dimensions[2].height = 18
+        ws.cell(row=2, column=1).font = Font(color="9AA0AC", size=9.5, name="Calibri")
+        ws.cell(row=2, column=1).alignment = Alignment(horizontal="left", vertical="top", indent=1)
+    ws.row_dimensions[2].height = 16
     ws.sheet_view.showGridLines = False
     ws.sheet_properties.tabColor = DARK
 
@@ -529,8 +554,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             if logo_path:
                 try:
                     logo_img = XLImage(logo_path)
-                    logo_img.height = 22
-                    logo_img.width = 22
+                    logo_img.width, logo_img.height = _logo_dimensions(logo_path)
                     ws.add_image(logo_img, f"{get_column_letter(n_cols)}1")
                 except Exception:
                     pass  # image illisible/corrompue : ne doit jamais faire échouer l'export
@@ -595,16 +619,12 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             ws.column_dimensions["A"].width = 42
             for col_idx in range(2, n_cols + 1):
                 ws.column_dimensions[get_column_letter(col_idx)].width = 14
-            ws.freeze_panes = "B4"
-            # openpyxl génère par défaut une sélection multi-volets où
-            # CHAQUE volet (topLeft/topRight/bottomLeft/bottomRight) pointe
-            # sur "A1" — incohérent pour les volets qui ne contiennent même
-            # pas A1 une fois le figement appliqué. Excel rend ça comme un
-            # rectangle de sélection résiduel visible au-dessus du bandeau de
-            # titre (repéré comme "trait" par l'utilisatrice). Fixé en ne
-            # déclarant qu'UNE sélection propre, dans le volet réellement
-            # visible (bottomRight), sur la première cellule de données.
-            ws.sheet_view.selection = [Selection(pane="bottomRight", activeCell="B4", sqref="B4")]
+            # Pas de freeze_panes : Excel dessine une ligne de démarcation
+            # (souvent perçue comme un "trait" résiduel) à la limite d'un
+            # volet figé, même une fois la sélection multi-volets corrigée —
+            # supprimé entièrement plutôt que de continuer à chercher à
+            # neutraliser un rendu natif d'Excel.
+            ws.sheet_view.selection = [Selection(pane="topLeft", activeCell="A1", sqref="A1")]
 
     buffer = io.BytesIO()
     wb.save(buffer)
