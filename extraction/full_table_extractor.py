@@ -41,9 +41,30 @@ import re
 
 from extraction.bilan_kpi_extractor import _cluster_lines, _extract_numeric_clusters, _normalizer, ROW_CODE_PREFIX_RE
 from extraction.annexe13_kpi_extractor import (
-    PAGE_TITLE_RE as _A13_PAGE_TITLE_RE,
     NON_VIE_RE as _A13_NON_VIE_RE, VIE_RE as _A13_VIE_RE,
     _LEADING_BULLET_RE as _A13_LEADING_BULLET_RE,
+)
+
+# Titre élargi par rapport à annexe13_kpi_extractor.PAGE_TITLE_RE (non
+# modifié, partagé avec le pipeline 7-KPI existant) : accepte aussi le
+# connecteur "de la catégorie" en plus de "par catégorie" entre "résultat
+# technique" et "catégorie" — découvert sur STAR, dont la VRAIE page Annexe
+# 13 (par branche : Groupe/A.Travail/Incendie/Risques Divers/Transport/
+# Aviation/Automobile/Acceptation/Total, page 32 du document 2024) est
+# titrée "Résultat technique DE LA catégorie d'Assurance Non-Vie" — un
+# titre que le module partagé ne reconnaît pas (regex ancrée sur "par
+# catégorie"), ce qui faisait retomber la localisation de page sur "L'état
+# de résultat technique de l'assurance non-vie" (page 4), une page de
+# RECONCILIATION brut/cessions/net à 4 colonnes agrégées, pas la vraie
+# grille par branche demandée. Les 7 KPI du pipeline existant restent
+# corrects dans les deux cas (même total, présenté différemment) donc le
+# module partagé n'a pas besoin d'être touché ; mais pour la grille
+# complète, seule la vraie page Annexe 13 a la bonne structure.
+_FULL_TABLE_PAGE_TITLE_RE = re.compile(
+    r"resultat technique (?:non.?vie |vie )?(?:par|de la) categorie"
+    r"|resultat technique (?:non.?vie|vie) de\b"
+    r"|raccordement du resultat technique"
+    r"|etat de resultat technique de l.?assurance"
 )
 
 # Un mot-token pdfplumber purement numérique entre parenthèses (notation
@@ -94,7 +115,7 @@ def relaxed_is_annexe13_page(page, lines_checked=4):
     if not text:
         return False
     normalized = _normalizer.clean(" ".join(text.split("\n")[:lines_checked]))
-    if not _A13_PAGE_TITLE_RE.search(normalized):
+    if not _FULL_TABLE_PAGE_TITLE_RE.search(normalized):
         return False
     if _A13_NON_VIE_RE.search(normalized):
         return True
@@ -205,16 +226,34 @@ def extract_full_table(page, min_data_clusters=MIN_DATA_CLUSTERS):
     # frontière de tableau). Repli sur l'ancienne heuristique positionnelle
     # si ce marqueur, jamais garanti à 100%, est absent d'un gabarit non
     # encore rencontré.
-    # "en dinars" (pas la phrase complète "exprimé en dinars tunisiens") :
-    # ancre volontairement plus large — variantes déjà rencontrées "chiffres
-    # arrondis en dinars" (STAR), "unité en dinars" (BH/BIAT), "chiffres en
-    # dinars tunisiens" (ASTREE). Toutes contiennent "en dinars".
+    # "en dinar" (sans le "s" final, pas la phrase complète "exprimé en
+    # dinars tunisiens") : ancre volontairement plus large — variantes déjà
+    # rencontrées "chiffres arrondis en dinars" (STAR, page "état de résultat
+    # technique"), "unité en dinars" (BH/BIAT), "chiffres en dinars
+    # tunisiens" (ASTREE), et "(Exprimé en dinar tunisien)" — SINGULIER, sans
+    # "s" — sur la vraie page Annexe 13 de STAR (page 32, gabarit par
+    # branche). "en dinars" (pluriel) manquait ce dernier cas puisque
+    # "dinars" n'y est jamais présent avec un "s" ; "en dinar" reste un
+    # sous-ensemble de "en dinars" donc couvre les deux formes sans rien
+    # perdre.
     header_start = None
     for idx in range(min(first_data_idx, 6)):
         norm = _normalizer.clean(" ".join(w["text"] for w in lines[idx]))
-        if "en dinars" in norm:
+        if "en dinar" in norm:
             header_start = idx + 1
             break
+    # Repli : certains gabarits (ex. BIAT, Annexe 13) n'ont AUCUNE ligne
+    # d'unité monétaire — le titre de page enchaîne directement sur l'en-tête
+    # de colonnes ("ANNEXE N°13 : RESULTAT TECHNIQUE NON VIE PAR CATEGORIE
+    # D'ASSURANCE" / "Total" / "AUTO TRANSPORT INCENDIE..."). On reconnaît
+    # alors le titre lui-même (même motif que celui qui a servi à repérer la
+    # page — `_FULL_TABLE_PAGE_TITLE_RE`) et on démarre l'en-tête juste
+    # après, plutôt que de laisser le titre polluer les libellés de colonnes.
+    if header_start is None:
+        for idx in range(min(first_data_idx, 4)):
+            norm = _normalizer.clean(" ".join(w["text"] for w in lines[idx]))
+            if _FULL_TABLE_PAGE_TITLE_RE.search(norm):
+                header_start = idx + 1
     if header_start is None:
         header_start = 0
         for idx in range(first_data_idx - 1, -1, -1):
@@ -244,6 +283,18 @@ def extract_full_table(page, min_data_clusters=MIN_DATA_CLUSTERS):
     ]
 
     columns = _build_columns(header_words, data_centers)
+    # Un centre de colonne déduit des valeurs mais sans AUCUN mot d'en-tête à
+    # portée (placeholder "(colonne N)") signale presque toujours un même
+    # poste scindé en 2 centres proches par la tolérance COL_GAP (ex. une
+    # colonne à valeurs souvent nulles/étroites dont les x0 varient trop d'une
+    # ligne à l'autre) plutôt qu'une vraie colonne distincte — une vraie
+    # colonne a toujours au moins un mot d'en-tête au-dessus d'elle. On le
+    # supprime : ses valeurs se rattacheront alors au centre voisin réellement
+    # étiqueté (le plus proche) lors de l'extraction des lignes ci-dessous,
+    # au lieu de laisser une colonne fantôme vide dans le résultat.
+    filtered_columns = [(x, name) for x, name in columns if not re.match(r"^\(colonne \d+\)$", name)]
+    if filtered_columns:  # garde-fou : ne jamais tout supprimer si l'en-tête
+        columns = filtered_columns  # n'a pu être rattaché à AUCUNE colonne
     col_names = [name for _x, name in columns]
     col_centers_final = [x for x, _name in columns]
 
@@ -368,6 +419,9 @@ def _sanity_ok(rows, kpi_patterns, min_matches=2):
     return False
 
 
+_ANNEXE_TITLE_RE = re.compile(r"\bannexe\b")
+
+
 def locate_and_extract_full_table(pdf, is_target_page, kpi_patterns, raccordement_re=None,
                                    max_pages=120, min_data_clusters=MIN_DATA_CLUSTERS, min_sanity_matches=2,
                                    extra_page_predicate=None):
@@ -394,11 +448,22 @@ def locate_and_extract_full_table(pdf, is_target_page, kpi_patterns, raccordemen
     for i, page in enumerate(pdf.pages[:max_pages]):
         if is_target_page(page) or (extra_page_predicate and extra_page_predicate(page)):
             candidates.append((i, page))
+
+    def _norm_head(page):
+        return _normalizer.clean((page.extract_text() or "")[:300])
+
     if raccordement_re is not None:
-        def _norm_head(page):
-            return _normalizer.clean((page.extract_text() or "")[:300])
         candidates.sort(key=lambda t: bool(raccordement_re.search(_norm_head(t[1]))))
 
+    # Une page effectivement titrée "Annexe N°X" est LA page officielle du
+    # tableau — à préférer sur toute autre page qui se contente d'évoquer un
+    # "résultat technique" en passant (ex. BIAT : une page de sommaire/renvoi
+    # sans rapport avec le tableau produisait, par accident de reconstruction
+    # d'en-tête, PLUS de "colonnes" que la vraie page Annexe 13 — 49 colonnes
+    # fragmentées/inexploitables contre 15 colonnes propres — et gagnait donc
+    # à tort le départage "le plus de colonnes"). On départage d'abord sur ce
+    # signal, robuste car indépendant de la reconstruction elle-même, puis
+    # seulement ensuite sur le nombre de colonnes.
     best = None
     for i, page in candidates:
         result = extract_full_table(page, min_data_clusters=min_data_clusters)
@@ -406,8 +471,10 @@ def locate_and_extract_full_table(pdf, is_target_page, kpi_patterns, raccordemen
             continue
         if not _sanity_ok(result["lignes"], kpi_patterns, min_sanity_matches):
             continue
-        if best is None or len(result["colonnes"]) > len(best[1]["colonnes"]):
-            best = (i, result)
+        is_annexe_titled = bool(_ANNEXE_TITLE_RE.search(_norm_head(page)))
+        rank = (is_annexe_titled, len(result["colonnes"]))
+        if best is None or rank > best[2]:
+            best = (i, result, rank)
     if best is None:
         return None, None
     return best[0] + 1, best[1]

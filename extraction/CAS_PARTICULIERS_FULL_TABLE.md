@@ -6,6 +6,49 @@ demande explicite de l'utilisateur (la page Gestion de données ne doit pas
 se limiter aux 7 KPI déjà extraits pour les dashboards — voir
 annexe13_kpi_extractor.py::KPI_PATTERNS).
 
+## 2026-09-08 (suite) — mauvaise page sélectionnée pour plusieurs sociétés
+
+Déclencheur : l'utilisatrice a fourni un script de référence (camelot,
+`C:\Users\HP\Music\AzzaStage25-26\FS_Market_Intelligence\A.py`/`B.py`) dont
+la sortie pour STAR/2024/Annexe13 est une grille propre à 9 colonnes
+(GROUPE, A.TRAVAIL, INCENDIE, RISQUES DIVERS, TRANSPORT, AVIATION,
+AUTOMOBILE, ACCEPTATION, TOTAL) — très différente du résultat produit par ce
+module (page 4, table de réconciliation brut/cessions/net à 4 colonnes,
+libellés fragmentés). En comparant : la page 4 ("L'état de résultat
+technique de l'assurance non-vie...") n'est PAS l'Annexe 13 — c'est une
+table de réconciliation différente qui satisfait accidentellement le motif
+de titre existant. La vraie page Annexe 13 de STAR (page 32, titrée "Annexe
+N°13 : Résultat technique de la catégorie d'Assurance Non-Vie") était
+invisible au localisateur de page. Deux bugs de localisation/reconstruction
+trouvés et corrigés (généraux, pas spécifiques à STAR) :
+
+| Bug | Cause | Fix |
+|---|---|---|
+| Titre "Annexe 13" de STAR non reconnu comme page cible | Le titre dit "Résultat technique **DE LA** catégorie" — le motif existant (partagé avec le pipeline 7-KPI, `annexe13_kpi_extractor.PAGE_TITLE_RE`) n'accepte que "**PAR** catégorie". Les 7 KPI dashboard restent corrects malgré tout (même total, présenté en Brut sur les deux pages) donc le module partagé n'a pas été touché — un motif de titre local et élargi (`_FULL_TABLE_PAGE_TITLE_RE`) a été créé pour ce module uniquement. | Connecteur "par" OU "de la" accepté entre "résultat technique" et "catégorie". |
+| Ancre d'en-tête "en dinars" absente sur la vraie page Annexe 13 de STAR | Cette page dit "(Exprimé en dinar tunisien)" — SINGULIER, sans "s" — alors que l'ancre ne reconnaissait que "en dinars" (pluriel). Sans ancre trouvée, le repli incluait le titre de page entier comme "en-tête", polluant les libellés de colonnes. | Ancre élargie à "en dinar" (sans "s") — sous-ensemble de "en dinars", ne perd aucun cas déjà couvert. |
+| Colonnes fantômes vides ("(colonne N)") | Un centre de colonne déduit des valeurs peut n'avoir AUCUN mot d'en-tête à portée (même symptôme que le dédoublement de colonnes déjà documenté pour STAR page 4) — laissait des entrées vides inutiles dans la liste de colonnes. | Colonnes au libellé placeholder supprimées après coup (garde-fou : jamais si ça viderait tout). |
+| BIAT : page correcte trouvée mais mauvaise page RETENUE | `locate_and_extract_full_table` départageait uniquement sur "le plus de colonnes" — une page de sommaire non pertinente pouvait produire PLUS de colonnes (fragmentées, inexploitables : 49) que la vraie page Annexe 13 (15 colonnes propres) et gagnait donc à tort. | Départage en 2 temps : d'abord la page réellement titrée "Annexe..." (signal robuste, indépendant de la reconstruction), puis seulement le nombre de colonnes parmi des candidats à égalité sur ce premier critère. |
+| BIAT : page Annexe 13 sans AUCUNE ligne d'unité monétaire | Le titre enchaîne directement sur l'en-tête de colonnes ("ANNEXE N°13 : ..." / "Total" / "AUTO TRANSPORT INCENDIE...") — aucune ancre "en dinar" à trouver, donc repli sur l'ancienne heuristique positionnelle qui incluait le titre. | Nouveau repli intermédiaire : si aucune ancre monétaire, chercher la ligne de TITRE elle-même (même motif que la détection de page) et démarrer l'en-tête juste après. |
+
+**Résultat** : GAT (déjà correct) inchangé ; STAR passe de la mauvaise page
+(4, réconciliation) à la vraie page (32, grille par branche) — valeurs
+vérifiées ligne par ligne identiques au script de référence de
+l'utilisatrice ; BIAT passe de la mauvaise page (23, sommaire, 49 colonnes
+fragmentées) à la vraie page (33, 12 colonnes propres). Sweep complet
+(10 ans) : toujours 89/130 (68%) — le taux OK/ECHEC ne bouge pas (ces
+sociétés passaient déjà `_sanity_ok`, juste avec la MAUVAISE page/des
+colonnes cassées), mais la qualité structurelle du résultat est
+nettement meilleure pour les documents concernés.
+
+**Nouveau cas identifié, non résolu** : ASTREE — la page correcte est bien
+trouvée (39, "annexe" dans le titre) mais le texte d'en-tête de certaines
+colonnes est rendu par le PDF avec des lettres individuellement espacées et
+entremêlées ("s p o n s a b i e c e n n a l e" pour un texte qui devrait
+être "RESPONSABILITE CIVILE..."), cassant la reconstruction mot-par-mot.
+Ressemble à un artefact de rendu/police plutôt qu'à un problème de logique —
+non creusé plus avant (limite du PDF source, catégorie déjà rencontrée pour
+d'autres sociétés/pages ailleurs dans le projet).
+
 ## Principe validé
 
 Colonnes déduites de la position X des VALEURS numériques des lignes de
