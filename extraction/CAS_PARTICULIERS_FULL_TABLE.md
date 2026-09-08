@@ -1,10 +1,10 @@
 # Cas particuliers — extraction "grille complète" (extraction/full_table_extractor.py)
 
 Suivi des cas rencontrés en construisant l'extraction complète des tableaux
-annexes (toutes lignes × toutes colonnes par branche), démarrée le
-2026-09-08 sur demande explicite de l'utilisateur (la page Gestion de
-données ne doit pas se limiter aux 7 KPI déjà extraits pour les
-dashboards — voir annexe13_kpi_extractor.py::KPI_PATTERNS).
+annexes (toutes lignes × toutes colonnes) — démarrée le 2026-09-08 sur
+demande explicite de l'utilisateur (la page Gestion de données ne doit pas
+se limiter aux 7 KPI déjà extraits pour les dashboards — voir
+annexe13_kpi_extractor.py::KPI_PATTERNS).
 
 ## Principe validé
 
@@ -12,36 +12,39 @@ Colonnes déduites de la position X des VALEURS numériques des lignes de
 données (fiable, une seule ligne visuelle) plutôt que des libellés d'en-tête
 (souvent repliés sur 2-3 lignes visuelles). Chaque mot d'en-tête est ensuite
 rattaché à la colonne la plus proche (x0), triés par position verticale pour
-restituer l'ordre de lecture d'un libellé replié.
+restituer l'ordre de lecture d'un libellé replié. La page cible est
+localisée en réutilisant le prédicat déjà validé de l'extracteur 7-KPI
+correspondant (`annexe13_kpi_extractor._is_target_page`, etc.) plutôt qu'une
+détection indépendante — `locate_and_extract_full_table()` essaie TOUTES
+les pages candidates et retient celle dont la grille passe un contrôle de
+vraisemblance (au moins 2 lignes reconnues par les regex KPI existantes) et
+compte le plus de colonnes.
 
-**Validé le 2026-09-08 sur GAT_2024.pdf, Annexe 13 (page 34, table "par
-catégorie", 16 colonnes/branches, 21 lignes)** : toutes les valeurs
-recoupées avec la capture d'écran déjà utilisée pour l'audit du Ratio
-Combiné dans cette même session (Primes émises Total = 256 808 761,
-Automobile = 112 362 101, etc.) — exactes au chiffre près.
+## Couverture réelle — Annexe 13 (Non-Vie), exercice 2024, 14 sociétés testées (hors Vie-only/Takaful/PDF absent)
 
-## Cas résolus
+**8/14 OK, grille complète extraite et vraisemblance vérifiée** : ASTREE,
+BH, BIAT, CARTE, COMAR, GAT, MAGHREBIA, TUNIS_RE.
 
-| Société / cas | Problème | Solution |
+**6/14 en échec, chacun diagnostiqué individuellement :**
+
+| Société | Cause diagnostiquée | Piste |
 |---|---|---|
-| GAT — préambule confondu avec des colonnes | La ligne "Société GAT... / Annexe N°13 / titre / (exprimé en dinars tunisiens)" se mêlait aux vraies colonnes (première version, avant ancrage explicite) | Ancrage sur le marqueur "exprimé en dinars" (présent sur tous les gabarits Annexe/Bilan/Résultat rencontrés jusqu'ici) pour délimiter précisément le bloc d'en-tête |
-| GAT — mot court "aux" mal rattaché ("Autres dommages **aux** biens") | Rattachement par CENTRE du mot ambigu entre 2 colonnes proches | Rattachement par x0 (bord gauche) du mot plutôt que son centre — corrige ce cas sans heuristique dédiée |
-| GAT — colonne "Autres" totalement vide (aucune valeur nulle part sur la page) | Sans données, aucun centre de colonne déductible → le mot d'en-tête restait "non assigné" et disparaissait | Les mots d'en-tête non assignés sont réinsérés comme colonne à part entière (valeurs = None) à leur position x réelle |
+| ATTIJARI | Le document 2024 ne contient une page "résultat technique" que côté **Vie**, aucune page Non-Vie trouvée sur les 8 premières pages — cohérent avec le commentaire déjà présent dans `api/routes/comparative.py` ("ATTIJARI 2024... aucun des 4 KPI de primes") : limite déjà connue du document source, pas de l'extraction. | Vérifier si l'annexe Non-Vie existe plus loin dans le document avant de conclure à une absence totale. |
+| BNA | Aucune occurrence de "résultat technique" nulle part dans les 54 pages du document (texte natif) — cohérent avec les pages scannées déjà documentées pour BNA ailleurs dans le projet. | Repli OCR (déjà exploré pour d'autres sociétés dans `bilan_kpi_extractor.py`) — non tenté ici. |
+| COTUNACE | Page trouvée (68) mais 45 "colonnes" détectées au lieu de ~16 — texte natif corrompu à la source (déjà documenté : `api/services/quality.py::PROBLEMATIC_CODES["COTUNACE"]`, "texte corrompu par un OCR de mauvaise qualité à la source"). Limite pré-existante du document, pas de ce module. | Aucune (société déjà exclue par le reste de la plateforme pour la même raison). |
+| UIB | Titre de page contient un artefact d'encodage brut `(cid 4666)`/`(cid 4667)` à la place des parenthèses — casse la détection de page. | Nettoyer/ignorer les séquences `(cid N)` avant normalisation ; à vérifier si ce même artefact affecte d'autres sociétés. |
+| LLOYD_TUNISIEN | La vraie page (33, confirmée manuellement — en-têtes de branches bien présents : "Acceptation, Acc R.D, Auto, Acctrav, Incendie, Transport, Grêle...") est intitulée par le document "IV.7 **Notes sur** le résultat technique par catégorie..." — exclue par `annexe13_kpi_extractor._is_target_page` via `NOTES_SECTION_RE` (`\bnotes sur\b`), une exclusion volontaire du module existant (probablement ajoutée pour écarter un autre faux positif ailleurs dans le projet). | Ne pas toucher `_is_target_page` (partagé avec le pipeline 7-KPI existant, risque de régression) — construire un prédicat parallèle, légèrement moins strict, réservé à la localisation "grille complète". |
+| STAR | Page trouvée (4) mais c'est un gabarit à structure plus complexe : chaque ligne "logique" (ex. "Charges de prestations") est en réalité éclatée sur PLUSIEURS lignes visuelles portant des codes internes (`chnv2`, `chnv3`, `chnv44`...) — la fusion actuelle (`full_table_extractor.py`, fusion libellé-seul + valeurs-seules sur 1 ligne suivante) ne couvre qu'un décalage simple de 2 lignes, pas une vraie hiérarchie multi-lignes. Un seul libellé sur 18 lignes matche une regex KPI connue. | Reconnaître les préfixes de code de ligne (`ac|pa|cp|prv|prnv|chv|chnv` + chiffres, déjà définis dans `ROW_CODE_PREFIX_RE`) pour regrouper les sous-lignes d'un même poste avant extraction — chantier à part, plus proche de la logique déjà présente dans `bilan_kpi_extractor.py` pour le Bilan que de l'algorithme actuel. |
 
-## Cas non résolus (à reprendre)
+## Cas résolus en cours de route (pour mémoire)
 
-| Société / cas | Problème | Piste envisageable |
+| Cas | Symptôme | Fix |
 |---|---|---|
-| **Localisation de la bonne page — problème central, bloque la généralisation** | La page "Annexe 13 par catégorie" (titre + tableau réel) n'est pas la seule à contenir la phrase "par catégorie" + "non-vie" dans son texte : des pages de sommaire/notes ("F.2 Informations diverses...", "F.2.6 Tableaux de raccordement... sont présentés au niveau de...") la contiennent aussi en prose, sans être le tableau. Un ancrage strict sur le préambule "état(s) financiers au ... / Annexe N°X" en tout début de page (premiers ~120 caractères) élimine les faux positifs mais est **trop strict** : passé de "OK" sur 6 sociétés testées (ASTREE, BH, BIAT, CARTE, GAT, LLOYD_TUNISIEN) à seulement 2 (GAT, CARTE) une fois l'ancrage resserré — signe que le libellé exact du préambule varie légèrement d'une société à l'autre (ordre des mots, ponctuation...), comme documenté partout ailleurs dans CAS_PARTICULIERS*.txt pour les 7 KPI déjà extraits. | Élargir l'ancrage avec plusieurs variantes de préambule connues (comme PAGE_TITLE_RE le fait déjà pour les 7 KPI), société par société si besoin — travail itératif, pas un correctif générique unique. |
-| STAR — pas de page "par catégorie" du tout pour Non-Vie | STAR (et vraisemblablement d'autres sociétés) ne publie dans son PDF que le tableau AGRÉGÉ "État de résultat technique de l'assurance Non-Vie" (4 colonnes : Opérations brutes / Cessions et/ou rétrocessions / Opérations nettes N / Opérations nettes N-1), sans détail par branche — ce n'est pas une limite de l'extraction, la donnée par branche n'existe simplement pas dans ce document source. | Traiter ce gabarit agrégé comme une variante légitime de "grille complète" pour ces sociétés (4 colonnes au lieu de 16), pas comme un échec — mais voir cas suivant, ce gabarit a son propre problème d'alignement. |
-| STAR — libellé de ligne et ses valeurs sur 2 lignes visuelles distinctes | Sur le tableau agrégé 4 colonnes, `_cluster_lines` sépare parfois le libellé ("Primes acquises") et sa ligne de valeurs numériques en deux "lignes" visuelles différentes (décalage vertical > tolérance) — la ligne de libellé seule (0 valeur) et la ligne de valeurs seule (label=None) ne se recollent pas avec l'algorithme actuel, qui suppose libellé+valeurs sur la même ligne. | Fusionner une ligne sans libellé (values only) avec la ligne de libellé la plus proche juste au-dessus, si celle-ci n'a elle-même aucune valeur — même famille de correctif que `_words_with_bracket_negatives_resolved`/`_split_glued_negative` déjà présents dans bilan_kpi_extractor.py pour d'autres écarts de mise en page. |
-| COMAR, COTUNACE, TUNIS_RE — page candidate trouvée mais extraction rejetée (< 6 colonnes ou < 5 lignes) | Non diagnostiqué en détail — probablement un gabarit encore différent (nombre de branches différent, ou tableau scindé sur 2 pages) | Inspecter manuellement `data/cmf/<CODE>/<CODE>_2024.pdf` à la page candidate identifiée par le scan (COMAR: 37/39, COTUNACE: 67/68, TUNIS_RE: 15/92) |
-| ATTIJARI, BNA, MAGHREBIA, UIB | Aucune page candidate trouvée du tout (même le tableau agrégé n'a pas été repéré) | À investiguer — possible troisième gabarit non couvert par PAGE_TITLE_RE (annexe13_kpi_extractor.py), ou annexe simplement absente du PDF déposé cette année-là (cas déjà documenté ailleurs pour d'autres sociétés/années) |
+| Ancrage d'en-tête trop strict | "exprimé en dinars tunisiens" (GAT) n'est qu'une des variantes ("chiffres arrondis en dinars" STAR, "unité en dinars" BH/BIAT...) | Ancrage relâché sur la sous-chaîne commune "en dinars" |
+| GAT — faux positif page "F.2.6 Tableaux de raccordement... sont présentés au niveau de..." (prose citant le titre recherché) | Cette page de sommaire satisfaisait `_is_target_page` et produisait assez de colonnes/lignes pour paraître valide | `locate_and_extract_full_table()` essaie toutes les pages candidates et vérifie que ≥2 lignes matchent une regex KPI réellement attendue avant d'accepter |
+| COMAR — ligne société/date (3 nombres : jour + mois + année) prise pour la première ligne de données | Seuil `MIN_DATA_CLUSTERS` trop bas (3) | Relevé à 4 |
+| GAT — mot court "aux" ("Autres dommages **aux** biens") mal rattaché | Rattachement par centre du mot plutôt que par bord gauche (x0) | Rattachement par x0 |
+| GAT — colonne "Autres" totalement vide sur la page (aucune donnée nulle part) | Mot d'en-tête sans centre de colonne déductible, disparaissait silencieusement | Réinséré comme colonne à part entière (valeurs = None) à sa position x réelle |
+| STAR — libellé et valeurs d'une même ligne logique séparés en 2 lignes visuelles | `_cluster_lines` scinde parfois libellé et valeurs si leur alignement vertical diffère légèrement | Fusion d'une ligne "libellé seul" avec la ligne suivante si celle-ci est "valeurs seules" (ne couvre qu'un décalage simple — voir cas STAR non résolu ci-dessus pour la structure plus complexe restante) |
 
-## Couverture réelle au 2026-09-08 (Annexe 13 Non-Vie, exercice 2024, 19 sociétés conventionnelles hors Vie-only/Takaful)
-
-- **Grille complète extraite avec confiance (16 colonnes validées) : GAT, CARTE** (2/19)
-- **Page localisée mais extraction rejetée (à déboguer) : COMAR, COTUNACE, TUNIS_RE** (3/19)
-- **Aucune page candidate trouvée avec l'ancrage actuel (probablement présente mais phrasée différemment, ou gabarit agrégé sans "par catégorie") : ASTREE, ATTIJARI, BH, BIAT, BNA, LLOYD_TUNISIEN, MAGHREBIA, STAR, UIB** (9/19)
-
-Ce fichier de suivi doit être mis à jour à chaque société diagnostiquée, comme les autres CAS_PARTICULIERS*.txt du projet.
+Ce fichier doit être mis à jour à chaque société/tableau diagnostiqué, comme les autres CAS_PARTICULIERS*.txt du projet. Prochaine étape naturelle une fois Annexe 13 stabilisée : appliquer le même module à Annexe 12 (Vie), puis Bilan (structure différente — Brut/Amortissement/Net, pas de branches — non couvert par l'algorithme actuel).

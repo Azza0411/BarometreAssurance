@@ -40,7 +40,10 @@ l'instant."""
 from extraction.bilan_kpi_extractor import _cluster_lines, _extract_numeric_clusters, _normalizer
 from extraction.annexe13_kpi_extractor import _label_text
 
-MIN_DATA_CLUSTERS = 3   # une vraie ligne de donnees a au moins 3 colonnes remplies
+MIN_DATA_CLUSTERS = 4   # une vraie ligne de donnees a au moins 4 colonnes remplies (la
+# ligne société/date du préambule ("Société X, États financiers au 31
+# décembre 2024") peut déjà contenir jusqu'à 3 nombres — jour, mois si
+# chiffré, année — sans être une ligne de données, ex. COMAR 2024).
 COL_GAP = 6             # tolerance (pt) pour regrouper des x0 de valeurs en une colonne
 ASSIGN_MAX_DIST = 25    # distance max (pt) pour rattacher un mot d'entete a une colonne
 
@@ -129,16 +132,20 @@ def extract_full_table(page, min_data_clusters=MIN_DATA_CLUSTERS):
     # frontière de tableau). Repli sur l'ancienne heuristique positionnelle
     # si ce marqueur, jamais garanti à 100%, est absent d'un gabarit non
     # encore rencontré.
+    # "en dinars" (pas la phrase complète "exprimé en dinars tunisiens") :
+    # ancre volontairement plus large — variantes déjà rencontrées "chiffres
+    # arrondis en dinars" (STAR), "unité en dinars" (BH/BIAT), "chiffres en
+    # dinars tunisiens" (ASTREE). Toutes contiennent "en dinars".
     header_start = None
     for idx in range(min(first_data_idx, 6)):
         norm = _normalizer.clean(" ".join(w["text"] for w in lines[idx]))
-        if "exprime en dinars" in norm:
+        if "en dinars" in norm:
             header_start = idx + 1
             break
     if header_start is None:
         header_start = 0
         for idx in range(first_data_idx - 1, -1, -1):
-            if _extract_numeric_clusters(lines[idx]):
+            if len(_extract_numeric_clusters(lines[idx])) >= min_data_clusters:
                 header_start = idx + 1
                 break
     header_words = [w for line in lines[header_start:first_data_idx] for w in line]
@@ -150,8 +157,29 @@ def extract_full_table(page, min_data_clusters=MIN_DATA_CLUSTERS):
     col_names = [name for _x, name in columns]
     col_centers_final = [x for x, _name in columns]
 
+    # Une ligne de tableau (libellé + valeurs) peut être scindée en deux
+    # "lignes visuelles" par _cluster_lines si le libellé et ses valeurs ne
+    # sont pas exactement à la même hauteur (constaté sur STAR, gabarit
+    # agrégé 4 colonnes) : une ligne "libellé seul, aucune valeur" suivie
+    # d'une ligne "valeurs seules, aucun libellé". Fusionnées ici avant
+    # extraction plutôt que perdues.
+    data_lines = list(lines[first_data_idx:])
+    merged_lines, i = [], 0
+    while i < len(data_lines):
+        line = data_lines[i]
+        label_now = _label_text(line)
+        clusters_now = _extract_numeric_clusters(line)
+        if label_now and not clusters_now and i + 1 < len(data_lines):
+            nxt = data_lines[i + 1]
+            if not _label_text(nxt) and _extract_numeric_clusters(nxt):
+                merged_lines.append(line + nxt)
+                i += 2
+                continue
+        merged_lines.append(line)
+        i += 1
+
     rows = {}
-    for line in lines[first_data_idx:]:
+    for line in merged_lines:
         clusters = _extract_numeric_clusters(line)
         if not clusters:
             continue
@@ -175,3 +203,54 @@ def extract_full_table(page, min_data_clusters=MIN_DATA_CLUSTERS):
             rows[key] = row_values
 
     return {"colonnes": [c for c in col_names if c.strip()], "lignes": rows}
+
+
+def _sanity_ok(rows, kpi_patterns, min_matches=2):
+    """Vérifie qu'au moins `min_matches` lignes extraites correspondent à un
+    libellé de KPI réellement attendu sur ce tableau (réutilise les regex
+    déjà validées de l'extracteur 7-KPI existant) — filtre les pages qui
+    satisfont le titre recherché mais sont en réalité une page de sommaire/
+    notes mentionnant ce titre en prose (ex: GAT "F.2.6 Tableaux de
+    raccordement... sont présentés au niveau de..."), pas le vrai tableau."""
+    n = 0
+    for label in rows:
+        norm = _normalizer.clean(label)
+        if any(pat.search(norm) for pat in kpi_patterns.values()):
+            n += 1
+            if n >= min_matches:
+                return True
+    return False
+
+
+def locate_and_extract_full_table(pdf, is_target_page, kpi_patterns, raccordement_re=None,
+                                   max_pages=120, min_data_clusters=MIN_DATA_CLUSTERS, min_sanity_matches=2):
+    """Localise la bonne page dans `pdf` (réutilise le prédicat
+    `is_target_page` déjà validé par l'extracteur 7-KPI correspondant —
+    ex. annexe13_kpi_extractor._is_target_page — plutôt qu'une détection de
+    page indépendante) puis y extrait la grille complète. Essaie TOUTES les
+    pages candidates (une page peut à tort sembler correspondre — sommaire,
+    notes en prose citant le même titre) et retient celle dont la grille
+    extraite est la plus riche (le plus de colonnes) parmi celles qui
+    passent le contrôle de vraisemblance (`_sanity_ok`). Renvoie
+    (numero_page_1_indexe, grille) ou (None, None) si aucune page valide."""
+    candidates = []
+    for i, page in enumerate(pdf.pages[:max_pages]):
+        if is_target_page(page):
+            candidates.append((i, page))
+    if raccordement_re is not None:
+        def _norm_head(page):
+            return _normalizer.clean((page.extract_text() or "")[:300])
+        candidates.sort(key=lambda t: bool(raccordement_re.search(_norm_head(t[1]))))
+
+    best = None
+    for i, page in candidates:
+        result = extract_full_table(page, min_data_clusters=min_data_clusters)
+        if not result or len(result["colonnes"]) < 3 or len(result["lignes"]) < min_sanity_matches:
+            continue
+        if not _sanity_ok(result["lignes"], kpi_patterns, min_sanity_matches):
+            continue
+        if best is None or len(result["colonnes"]) > len(best[1]["colonnes"]):
+            best = (i, result)
+    if best is None:
+        return None, None
+    return best[0] + 1, best[1]
