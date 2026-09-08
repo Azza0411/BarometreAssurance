@@ -10,12 +10,19 @@ valeur de KPI), pas une mise en page métier avec formules recalculables.
 
 import os
 
+import pdfplumber
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import io
 
 from database.repository import get_connection, list_all_documents
+from extraction.annexe13_kpi_extractor import (
+    _is_target_page as _is_annexe13_page,
+    RACCORDEMENT_RE as _ANNEXE13_RACCORDEMENT_RE,
+    KPI_PATTERNS as _ANNEXE13_KPI_PATTERNS,
+)
+from extraction.full_table_extractor import locate_and_extract_full_table, relaxed_is_annexe13_page
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
@@ -209,6 +216,104 @@ def _write_sheet_title(ws, last_col, title, subtitle):
     ws.sheet_properties.tabColor = DARK
 
 
+# ── Annexe 13 — tableau complet (toutes lignes × toutes colonnes) ──────────
+# Contrairement aux autres tableaux ci-dessus (lus depuis kpi_values, donc
+# limités aux 7 KPI déjà extraits pour les dashboards), l'Annexe 13 est
+# ré-extraite directement depuis le PDF source via
+# extraction/full_table_extractor.py — la grille réelle par branche, telle
+# qu'elle apparaît dans le document. Couverture actuelle : ~68% des
+# documents CMF Non-Vie sur 2016-2025 (voir
+# extraction/CAS_PARTICULIERS_FULL_TABLE.md pour le détail par société/
+# année) ; quand l'extraction complète échoue pour un document donné, le
+# sous-ensemble à 7 KPI déjà utilisé par les dashboards est affiché à la
+# place, clairement signalé comme tel plutôt que de faire disparaître
+# l'année silencieusement.
+def _extract_annexe13_full_grid(pdf_path):
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            _page_num, result = locate_and_extract_full_table(
+                pdf, _is_annexe13_page, _ANNEXE13_KPI_PATTERNS, _ANNEXE13_RACCORDEMENT_RE,
+                extra_page_predicate=relaxed_is_annexe13_page,
+            )
+    except Exception:
+        return None
+    return result
+
+
+def _write_full_grid_block(ws, row, annee, grid):
+    cols = grid["colonnes"]
+    ws.cell(row=row, column=1, value=f"{annee} — tableau complet ({len(grid['lignes'])} lignes × {len(cols)} colonnes)")
+    ws.cell(row=row, column=1).font = Font(italic=True, size=10, color=DARK, name="Calibri")
+    row += 1
+    headers = ["Libellé"] + cols
+    for col_idx, header in enumerate(headers, start=1):
+        cell = ws.cell(row=row, column=col_idx, value=header)
+        cell.fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
+        cell.font = Font(color=YELLOW, bold=True, name="Calibri", size=10)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = _thin_border()
+    row += 1
+    for i, (label, values) in enumerate(grid["lignes"].items()):
+        fill = PatternFill(start_color=LIGHT, end_color=LIGHT, fill_type="solid") if i % 2 == 0 else None
+        cell = ws.cell(row=row, column=1, value=label.capitalize() if label else "")
+        cell.border = _thin_border()
+        cell.font = Font(name="Calibri", size=10, color=DARK)
+        cell.alignment = Alignment(horizontal="left", vertical="center")
+        if fill:
+            cell.fill = fill
+        for col_idx, col in enumerate(cols, start=2):
+            val = values.get(col)
+            c = ws.cell(row=row, column=col_idx, value=val)
+            c.border = _thin_border()
+            c.font = Font(name="Calibri", size=10, color=DARK)
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            if fill:
+                c.fill = fill
+        row += 1
+    row += 2
+    return row, len(headers)
+
+
+def _write_narrow_fallback_block(ws, row, annee, narrow_annexe13):
+    vals = {kpi: v[annee] for kpi, v in narrow_annexe13.items() if annee in v}
+    ws.cell(
+        row=row, column=1,
+        value=f"{annee} — tableau complet non disponible pour ce document : "
+              f"sous-ensemble utilisé par les dashboards affiché à la place",
+    )
+    ws.cell(row=row, column=1).font = Font(italic=True, size=10, color="B00020", name="Calibri")
+    row += 1
+    if not vals:
+        ws.cell(row=row, column=1, value="(aucune donnée disponible)")
+        ws.cell(row=row, column=1).font = Font(italic=True, size=10, color=DARK, name="Calibri")
+        row += 2
+        return row, 1
+    headers = ["KPI", str(annee)]
+    for col_idx, header in enumerate(headers, start=1):
+        cell = ws.cell(row=row, column=col_idx, value=header)
+        cell.fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
+        cell.font = Font(color=YELLOW, bold=True, name="Calibri", size=10)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = _thin_border()
+    row += 1
+    for i, kpi in enumerate(sorted(vals.keys())):
+        fill = PatternFill(start_color=LIGHT, end_color=LIGHT, fill_type="solid") if i % 2 == 0 else None
+        cell = ws.cell(row=row, column=1, value=kpi)
+        cell.border = _thin_border()
+        cell.font = Font(name="Calibri", size=10, color=DARK)
+        if fill:
+            cell.fill = fill
+        c = ws.cell(row=row, column=2, value=vals[kpi])
+        c.border = _thin_border()
+        c.font = Font(name="Calibri", size=10, color=DARK)
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        if fill:
+            c.fill = fill
+        row += 1
+    row += 2
+    return row, len(headers)
+
+
 def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
     """Génère un export Excel filtré sur n'importe quelle combinaison de
     tableaux/sociétés/années — chaque filtre vide/absent signifie "tous".
@@ -221,6 +326,14 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
     par années de toutes les entreprises" (une feuille par société, un bloc
     par tableau, une colonne par année)."""
     raw_tableaux = _raw_tableaux_for_groups(tableau_keys)
+    # Annexe 13 est ré-extraite en grille complète directement depuis le PDF
+    # (voir _extract_annexe13_full_grid) dès qu'elle fait partie de la
+    # sélection — y compris quand tableau_keys est vide/absent ("tous les
+    # tableaux"). Le sous-ensemble à 7 KPI reste quand même récupéré via
+    # kpi_values ci-dessous : il sert de repli pour les documents où la
+    # grille complète échoue (voir extraction/CAS_PARTICULIERS_FULL_TABLE.md).
+    include_annexe13_full = not tableau_keys or "annexe13" in tableau_keys
+    _ANNEXE13_DISPLAY = _display_tableau("Annexe13")
 
     conn = get_connection()
     try:
@@ -251,17 +364,51 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
         with conn.cursor() as cur:
             cur.execute(query, params)
             rows = cur.fetchall()
+
+        # Documents CMF candidats pour la grille complète Annexe 13 — repose
+        # directement sur la table documents (indépendant de ce que
+        # kpi_values contient déjà) puisque l'extraction complète relit le
+        # PDF elle-même plutôt que de réutiliser les KPI déjà stockés.
+        annexe13_docs = []
+        if include_annexe13_full:
+            q2 = """
+                SELECT c.code, c.nom_entreprise, d.annee, d.nom_pdf
+                FROM documents d
+                JOIN sources s ON s.id = d.source_id
+                JOIN societes c ON c.id = d.cmf_id
+                WHERE s.nom = 'CMF'
+            """
+            p2 = []
+            if codes:
+                placeholders = ",".join(["%s"] * len(codes))
+                q2 += f" AND c.code IN ({placeholders})"
+                p2.extend(codes)
+            if annees:
+                placeholders = ",".join(["%s"] * len(annees))
+                q2 += f" AND d.annee IN ({placeholders})"
+                p2.extend(annees)
+            q2 += " ORDER BY c.code, d.annee"
+            with conn.cursor() as cur:
+                cur.execute(q2, p2)
+                annexe13_docs = cur.fetchall()
     finally:
         conn.close()
 
     # ── Regroupement société → tableau affiché → kpi → année → valeur ──────
-    par_societe = {}  # code -> {"nom": ..., "blocs": {display_tableau: {kpi: {annee: valeur}}}}
+    par_societe = {}  # code -> {"nom": ..., "blocs": {display_tableau: {kpi: {annee: valeur}}}, "annexe13_grids": {annee: grille_ou_None}}
     for code, nom_entreprise, annee, tableau, kpi, valeur_nombre, valeur_texte in rows:
         valeur = valeur_nombre if valeur_nombre is not None else valeur_texte
-        soc = par_societe.setdefault(code, {"nom": nom_entreprise, "blocs": {}})
+        soc = par_societe.setdefault(code, {"nom": nom_entreprise, "blocs": {}, "annexe13_grids": {}})
         display = _display_tableau(tableau)
         bloc = soc["blocs"].setdefault(display, {})
         bloc.setdefault(kpi, {})[annee] = valeur
+
+    for code, nom_entreprise, annee, nom_pdf in annexe13_docs:
+        pdf_path = _local_pdf_path("CMF", code, nom_pdf)
+        if not pdf_path or not os.path.isfile(pdf_path):
+            continue
+        soc = par_societe.setdefault(code, {"nom": nom_entreprise, "blocs": {}, "annexe13_grids": {}})
+        soc["annexe13_grids"][annee] = _extract_annexe13_full_grid(pdf_path)
 
     wb = Workbook()
     wb.remove(wb.active)  # une vraie feuille par société ci-dessous ; pas de feuille "Sheet" vide
@@ -283,6 +430,8 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
 
             row = 4
             for display_tableau in sorted(soc["blocs"].keys()):
+                if display_tableau == _ANNEXE13_DISPLAY and include_annexe13_full:
+                    continue  # remplacé par la grille complète ci-dessous
                 bloc = soc["blocs"][display_tableau]
                 annees_bloc = sorted({a for kpi_annees in bloc.values() for a in kpi_annees.keys()})
                 cols = ["KPI"] + [str(a) for a in annees_bloc]
@@ -319,6 +468,22 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
 
                 row += 2  # espacement avant le bloc suivant
                 n_cols = max(n_cols, len(cols))
+
+            if include_annexe13_full:
+                grids = soc.get("annexe13_grids", {})
+                narrow_annexe13 = soc["blocs"].get(_ANNEXE13_DISPLAY, {})
+                annees_a_rendre = sorted(grids.keys())
+                if annees_a_rendre:
+                    ws.cell(row=row, column=1, value=f"{_ANNEXE13_DISPLAY} (tableau complet, toutes branches)")
+                    ws.cell(row=row, column=1).font = Font(bold=True, size=12, color=DARK, name="Calibri")
+                    row += 1
+                    for annee in annees_a_rendre:
+                        grid = grids[annee]
+                        if grid and grid.get("lignes"):
+                            row, used_cols = _write_full_grid_block(ws, row, annee, grid)
+                        else:
+                            row, used_cols = _write_narrow_fallback_block(ws, row, annee, narrow_annexe13)
+                        n_cols = max(n_cols, used_cols)
 
             ws.column_dimensions["A"].width = 42
             for col_idx in range(2, n_cols + 1):

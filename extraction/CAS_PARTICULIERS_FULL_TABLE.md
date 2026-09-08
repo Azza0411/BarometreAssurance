@@ -67,11 +67,34 @@ régression sur aucune société entre les deux relevés.
 | STAR (2022, 2024, 2025 + gains BH/CARTE/CTAMA en ricochet) | Page trouvée mais gabarit à libellé replié sur 2 lignes visuelles avec les valeurs intercalées au milieu (ex. "Variation de la provision pour" / [valeurs] / "primes non acquises"). Une première fusion "toujours consommer la ligne suivante comme suffixe" corrigeait ce cas MAIS fusionnait aussi à tort deux postes comptables bien DISTINCTS quand la ligne de valeurs avait déjà son propre libellé complet (ex. "Primes émises et acceptées" + [valeurs] absorbait à tort le début du poste suivant "Variation de la provision pour..."). | Le suffixe n'est désormais consommé QUE si le libellé propre de la ligne de valeurs est vide/junk (symbole isolé "+"/"-"/"+/-") — sinon la ligne suivante est traitée comme le début du poste logique suivant, jamais comme la suite du poste courant. |
 | Vraisemblance (`_sanity_ok`) trop stricte pour les gabarits à formulation différente | Les regex étroites de l'extracteur 7-KPI (ancrées en tout début de libellé, ex. `^primes emises\b`) ne matchaient qu'1 ligne sur 18 pour STAR 2024 même une fois le tableau correctement reconstruit, faute de correspondre à des formulations légèrement différentes ("Variation de la provision pour primes non acquises" vs "Provisions pour primes non acquises" attendu par le dashboard). | Vocabulaire générique additionnel propre au tableau résultat technique (`_GENERIC_LINE_ITEM_TERMS` — "primes emises", "charge de sinistres", "commissions", "resultat technique"...), utilisé en complément des regex étroites (jamais à leur place) ; conserve le filtrage des pages de prose (ex. faux positif GAT déjà documenté) car ce vocabulaire reste spécifique au poste comptable, pas des mots génériques. |
 
+**Branchement à l'export Excel (2026-09-08) et bugs trouvés en le testant "en
+vrai" sur `api/services/data_management.py::build_flexible_export_xlsx`** —
+jusqu'ici la grille complète n'était que testée en script, jamais rendue
+dans un vrai fichier téléchargé : deux défauts invisibles au simple contrôle
+de vraisemblance (compte de lignes/colonnes) sont apparus à l'ouverture du
+fichier réel :
+
+| Défaut | Symptôme | Fix |
+|---|---|---|
+| Valeurs négatives entre parenthèses fuyant dans le libellé | `_label_text` du module partagé (annexe13_kpi_extractor) ne reconnaît comme "numérique" qu'un mot-token *entièrement* chiffres — un token scindé par pdfplumber avec sa parenthèse ("(4", "562)") lui échappe et reste dans le libellé. Invisible sur les gabarits à 1 seule colonne de valeurs sur la ligne du libellé, mais sur GAT (16 colonnes/branche, toutes les valeurs de la ligne — donc jusqu'à 16 nombres entre parenthèses — sur la même ligne physique que le libellé) ça produisait des libellés illisibles du type "Variation des primes non acquises (4 562) (246 203) (75 965)...". | `_label_text` local à `full_table_extractor.py` (ne touche pas le module partagé) avec un filtre élargi aux fragments entre parenthèses (`_BRACKET_NUMERIC_RE`) — généralisable à tout gabarit à valeurs négatives entre parenthèses, pas propre à GAT. |
+| Ligne de sous-titre de section confondue avec l'en-tête de colonnes | Sur STAR, la ligne "PRNV1 Primes acquises" (intitulé de section sans valeur propre, juste avant "PRNV11 Primes émises et acceptées + [valeurs]") tombe dans la plage de lignes considérée comme "en-tête" (entre l'ancre "en dinars" et la première ligne de données) — ses mots ("PRNV1", "Primes", "acquises") polluaient les libellés de colonnes déduits. | Les mots d'en-tête ne sont retenus que s'ils sont positionnés à droite du début réel des colonnes de données (`HEADER_LEFT_MARGIN`) — un intitulé de section démarre dans la zone du libellé de ligne (tout à gauche), pas au-dessus des valeurs. |
+
+**Essai infructueux, annulé (documenté pour ne pas le retenter à l'identique) :**
+le dédoublement de colonnes de STAR (voir cas non résolu ci-dessous) semblait
+venir d'un seuil de regroupement de colonnes (`COL_GAP=6pt`) trop strict pour
+un gabarit à colonnes larges alignées à droite (une même colonne peut avoir
+des x0 différents de ~17pt selon le nombre de chiffres de la valeur). Élargir
+`COL_GAP` à 20pt corrigeait bien STAR mais fusionnait à tort de VRAIES
+colonnes voisines distinctes sur le gabarit à 16 colonnes/branche (ex. GAT :
+"Automobile"/"Transport" fusionnées en une seule colonne) — un seuil global
+unique ne peut pas satisfaire les deux gabarits à la fois. Remis à 6pt.
+
 **Nouveau cas identifié, non traité (gabarit distinct, pas un bug) :**
 
 | Société/année | Constat |
 |---|---|
 | STAR 2023 | La page trouvée (38) est un "Tableau de raccordement du Résultat technique" à **UNE SEULE colonne de valeurs** (structure Libellé + 1 montant total), pas la grille 4 colonnes par branche des autres années. `extract_full_table()` cible spécifiquement les tableaux multi-colonnes (`MIN_DATA_CLUSTERS=4` valeurs numériques par ligne pour repérer le début des données) — une ligne de ce tableau raccordement n'a jamais que 1 valeur, donc aucune ligne de données n'est jamais détectée. Ce n'est pas un défaut de reconstruction comme le cas STAR ci-dessus : c'est un gabarit de tableau à une colonne, hors périmètre de l'algorithme actuel (conçu pour les grilles par branche). Piste pour plus tard : un chemin d'extraction séparé pour les tableaux "raccordement" à 1 colonne, plutôt que de complexifier `extract_full_table()` pour couvrir les deux formes. |
+| STAR (années "OK") — dédoublement de colonnes | Le gabarit STAR (4 colonnes larges, valeurs alignées à droite) attend 4 colonnes ("Opérations brutes", "Cessions et/ou rétrocessions", "Opérations nettes 2024", "Opérations nettes 2023") mais l'extraction en produit jusqu'à 7-8 : une même colonne logique se scinde en 2 quand ses valeurs, d'une ligne à l'autre, ont des nombres de chiffres différents (donc des x0 différents une fois alignées à droite) au-delà de la tolérance `COL_GAP`. **Les VALEURS restent correctement rattachées à des colonnes cohérentes** (rien n'est perdu ni mal assigné) — seul le REGROUPEMENT des libellés d'en-tête en une colonne unique par concept est imparfait. Un correctif global (`COL_GAP` élargi) a été essayé et rejeté car il casse le gabarit à 16 colonnes/branche (voir "Essai infructueux" ci-dessus) ; accepté comme limitation connue plutôt que de risquer une régression sur le gabarit majoritaire. |
 
 ## Cas résolus en cours de route (pour mémoire)
 
