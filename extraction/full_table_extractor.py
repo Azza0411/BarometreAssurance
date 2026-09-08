@@ -39,11 +39,46 @@ l'instant."""
 
 import re
 
-from extraction.bilan_kpi_extractor import _cluster_lines, _extract_numeric_clusters, _normalizer
+from extraction.bilan_kpi_extractor import _cluster_lines, _extract_numeric_clusters, _normalizer, ROW_CODE_PREFIX_RE
 from extraction.annexe13_kpi_extractor import (
-    _label_text, PAGE_TITLE_RE as _A13_PAGE_TITLE_RE,
+    PAGE_TITLE_RE as _A13_PAGE_TITLE_RE,
     NON_VIE_RE as _A13_NON_VIE_RE, VIE_RE as _A13_VIE_RE,
+    _LEADING_BULLET_RE as _A13_LEADING_BULLET_RE,
 )
+
+# Un mot-token pdfplumber purement numérique entre parenthèses (notation
+# comptable standard des montants négatifs) — ex. "(4" et "562)" quand la
+# valeur "(4 562)" est scindée en 2 tokens par un espace interne. Le filtre
+# NUMERIC_TOKEN_RE du module partagé (annexe13_kpi_extractor._label_text) ne
+# reconnaît pas ces fragments (il n'admet pas la parenthèse), ce qui les
+# laissait fuiter dans le libellé de ligne reconstruit sur les gabarits où
+# TOUTES les valeurs (plusieurs branches) sont sur la même ligne physique que
+# le libellé (ex. GAT, 16 colonnes/branche — "Variation des primes non
+# acquises (4 562) (246 203)..." au lieu du libellé seul). Ce n'est pas un
+# cas isolé à GAT : tout gabarit à valeurs négatives entre parenthèses sur la
+# ligne de libellé est concerné, d'où un filtre local plus large plutôt qu'un
+# correctif propre à une société.
+_BRACKET_NUMERIC_RE = re.compile(r"^\(?[+\-]?\d[\d.,]*\)?$")
+
+
+def _label_text(line):
+    """Variante locale (module "grille complète") de
+    annexe13_kpi_extractor._label_text — même logique (retire les tokens
+    numériques, le tiret de tête, le préfixe de code de ligne) mais avec un
+    filtre numérique élargi aux fragments entre parenthèses. Volontairement
+    séparée du module partagé pour ne jamais risquer de régression sur le
+    pipeline 7-KPI existant."""
+    label_words = [w for w in line if not _BRACKET_NUMERIC_RE.match(w["text"])]
+    if not label_words:
+        return None
+    label = _normalizer.clean(" ".join(w["text"] for w in label_words))
+    label = _A13_LEADING_BULLET_RE.sub("", label)
+    label = ROW_CODE_PREFIX_RE.sub("", label, count=1)
+    # Symboles de signe isolés ("-", "+", "+/-") résiduels en fin de libellé
+    # — vestiges de la colonne "signe" typographique du tableau source
+    # (visible entre le libellé et les valeurs), sans valeur informative une
+    # fois le libellé reconstruit.
+    return re.sub(r"(?:\s+[+\-/]+)+$", "", label).strip() or None
 
 
 def relaxed_is_annexe13_page(page, lines_checked=4):
@@ -71,7 +106,18 @@ MIN_DATA_CLUSTERS = 4   # une vraie ligne de donnees a au moins 4 colonnes rempl
 # ligne société/date du préambule ("Société X, États financiers au 31
 # décembre 2024") peut déjà contenir jusqu'à 3 nombres — jour, mois si
 # chiffré, année — sans être une ligne de données, ex. COMAR 2024).
-COL_GAP = 6             # tolerance (pt) pour regrouper des x0 de valeurs en une colonne
+COL_GAP = 6             # tolerance (pt) pour regrouper des x0 de valeurs en une colonne —
+# volontairement étroit : élargi (essayé jusqu'à 20pt) pour absorber le
+# dédoublement de colonne observé sur le gabarit à 4 colonnes larges de
+# STAR (une même colonne alignée à droite ayant des x0 différents d'une
+# ligne à l'autre selon le nombre de chiffres), mais ça fusionnait à tort de
+# VRAIES colonnes voisines distinctes sur le gabarit à 16 colonnes/branche
+# (ex. GAT : "Automobile"/"Transport" fusionnées) — remis à 6pt, la marge de
+# sécurité pour ce gabarit majoritaire est trop faible pour un seuil global
+# unique. Voir CAS_PARTICULIERS_FULL_TABLE.md : le dédoublement de colonne
+# de STAR (4 colonnes attendues, jusqu'à 8 obtenues) reste un défaut connu,
+# non traité — les VALEURS restent correctement assignées à des colonnes
+# cohérentes, seul le regroupement de libellés d'en-tête en est affecté.
 ASSIGN_MAX_DIST = 25    # distance max (pt) pour rattacher un mot d'entete a une colonne
 
 
@@ -175,11 +221,28 @@ def extract_full_table(page, min_data_clusters=MIN_DATA_CLUSTERS):
             if len(_extract_numeric_clusters(lines[idx])) >= min_data_clusters:
                 header_start = idx + 1
                 break
-    header_words = [w for line in lines[header_start:first_data_idx] for w in line]
-
     data_centers = _find_column_centers(lines, first_data_idx)
     if not data_centers:
         return None
+
+    # Une ligne entre l'en-tête et la première ligne de données peut être un
+    # sous-titre de section SANS valeur plutôt qu'une suite de l'en-tête de
+    # colonnes (ex. STAR : "PRNV1 Primes acquises" juste avant "PRNV11
+    # Primes émises et acceptées + [valeurs]" — un intitulé de poste, pas un
+    # libellé de colonne). Un tel intitulé démarre dans la zone de la
+    # colonne de LIBELLÉ (même x0 que les libellés de ligne, tout à gauche),
+    # pas au-dessus des colonnes de valeurs — on ne garde donc, comme mots
+    # d'en-tête de colonnes, que ceux positionnés à droite du début réel des
+    # colonnes de données (avec une marge, l'en-tête étant souvent aligné à
+    # gauche de sa colonne alors que les centres ci-dessus viennent des
+    # valeurs, plutôt centrées/alignées à droite).
+    HEADER_LEFT_MARGIN = 80
+    header_left_bound = min(data_centers) - HEADER_LEFT_MARGIN
+    header_words = [
+        w for line in lines[header_start:first_data_idx] for w in line
+        if w["x0"] >= header_left_bound
+    ]
+
     columns = _build_columns(header_words, data_centers)
     col_names = [name for _x, name in columns]
     col_centers_final = [x for x, _name in columns]
