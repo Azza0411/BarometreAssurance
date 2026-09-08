@@ -123,14 +123,20 @@ CREATE TABLE IF NOT EXISTS actualites_vues (
 -- données" (export flexible rapide, sans re-parser le PDF à chaque
 -- requête). Séparées de kpi_values : ne remplacent PAS le pipeline narrow
 -- existant (dashboards non touchés en Phase 1).
+-- colonne_ordre : position gauche->droite de la colonne TELLE QU'ELLE
+-- APPARAIT DANS LE PDF (0, 1, 2...) — un SELECT sans ORDER BY explicite ne
+-- garantit aucun ordre (constaté : MySQL scannait via l'index unique,
+-- donc triait les colonnes ALPHABETIQUEMENT — "Transport" après "Total").
+-- Colonne indispensable pour restituer l'ordre physique reel du tableau.
 CREATE TABLE IF NOT EXISTS tableau_cellules (
-    id          INT AUTO_INCREMENT PRIMARY KEY,
-    document_id INT NOT NULL,
-    tableau     VARCHAR(50)  NOT NULL,   -- ex: 'annexe13' (annexe12/bilan_actif/bilan_passif a venir)
-    ligne       VARCHAR(255) NOT NULL,   -- libelle NORMALISE (poste comptable canonique)
-    colonne     VARCHAR(255) NOT NULL,   -- branche/colonne telle qu'extraite (varie par societe)
-    valeur      DOUBLE NULL,
-    date_ajout  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    document_id   INT NOT NULL,
+    tableau       VARCHAR(50)  NOT NULL,   -- ex: 'annexe13' (annexe12/bilan_actif/bilan_passif a venir)
+    ligne         VARCHAR(255) NOT NULL,   -- libelle NORMALISE (poste comptable canonique)
+    colonne       VARCHAR(255) NOT NULL,   -- branche/colonne telle qu'extraite (varie par societe)
+    colonne_ordre INT NOT NULL DEFAULT 0,
+    valeur        DOUBLE NULL,
+    date_ajout    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_tableau_cellule (document_id, tableau, ligne, colonne),
     CONSTRAINT fk_tableau_cellules_document FOREIGN KEY (document_id) REFERENCES documents(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

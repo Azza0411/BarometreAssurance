@@ -226,14 +226,12 @@ def process_annexe13(pdf_path, is_target_page, kpi_patterns, raccordement_re, re
     (full_table_extractor), normalise les libellés de ligne, valide par
     règles métier. Renvoie None si aucune page valide n'a été trouvée, sinon
     {"page", "colonnes", "lignes", "non_reconnues", "validations"}."""
-    import pdfplumber
     from extraction.full_table_extractor import locate_and_extract_full_table
 
-    with pdfplumber.open(pdf_path) as pdf:
-        page_num, grid = locate_and_extract_full_table(
-            pdf, is_target_page, kpi_patterns, raccordement_re,
-            extra_page_predicate=relaxed_page_predicate,
-        )
+    page_num, grid = locate_and_extract_full_table(
+        pdf_path, is_target_page, kpi_patterns, raccordement_re,
+        extra_page_predicate=relaxed_page_predicate,
+    )
     if grid is None:
         return None
 

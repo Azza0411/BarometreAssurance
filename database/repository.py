@@ -73,6 +73,31 @@ def _migrate_kpi_values_schema(conn):
             cur.execute("ALTER TABLE kpi_values ADD COLUMN valeur_texte VARCHAR(500) NULL AFTER valeur_nombre")
 
 
+def _migrate_tableau_cellules_schema(conn):
+    """Ajoute `colonne_ordre` à une table `tableau_cellules` créée avant son
+    introduction (2026-09-08) — sans quoi l'ordre physique des colonnes du
+    tableau source est perdu (un SELECT sans ORDER BY explicite ne le
+    garantit pas ; MySQL s'est avéré trier alphabétiquement via l'index
+    unique). Les lignes déjà en base gardent la valeur par défaut 0 (ordre
+    non garanti pour elles tant qu'un nouveau passage de la pipeline ne les
+    réécrit pas — pas une perte de données, juste un ré-ordonnancement à
+    refaire)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COLUMN_NAME FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'tableau_cellules'
+            """
+        )
+        columns = {row[0] for row in cur.fetchall()}
+        if not columns:
+            return
+        if "colonne_ordre" not in columns:
+            cur.execute(
+                "ALTER TABLE tableau_cellules ADD COLUMN colonne_ordre INT NOT NULL DEFAULT 0 AFTER colonne"
+            )
+
+
 def _migrate_documents_schema(conn):
     """Fait évoluer une table `documents` déjà existante (ancien schéma
     100% CMF : `cmf_id NOT NULL`, sans notion de source) vers un schéma
@@ -214,6 +239,7 @@ def init_schema(conn):
     _migrate_kpi_values_schema(conn)
     _migrate_documents_schema(conn)
     _migrate_kpi_values_unique_key(conn)
+    _migrate_tableau_cellules_schema(conn)
 
 
 def get_or_create_source(conn, nom, lien):
@@ -359,8 +385,13 @@ def save_tableau_result(conn, document_id, tableau, result):
             "DELETE FROM tableau_validations WHERE document_id = %s AND tableau = %s",
             (document_id, tableau),
         )
+        # Position gauche->droite de chaque colonne telle qu'elle apparaît
+        # réellement dans le tableau source (`result["colonnes"]` vient de
+        # full_table_extractor.py, déjà dans cet ordre) — indispensable pour
+        # la restituer plus tard (voir colonne_ordre, schema.sql).
+        col_order = {nom: i for i, nom in enumerate(result["colonnes"])}
         cellule_rows = [
-            (document_id, tableau, ligne, colonne, valeur)
+            (document_id, tableau, ligne, colonne, col_order.get(colonne, 999), valeur)
             for ligne, valeurs in result["lignes"].items()
             for colonne, valeur in valeurs.items()
         ]
@@ -373,9 +404,9 @@ def save_tableau_result(conn, document_id, tableau, result):
             # qu'un crash sur une contrainte d'unicité.
             cur.executemany(
                 """
-                INSERT INTO tableau_cellules (document_id, tableau, ligne, colonne, valeur)
-                VALUES (%s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE valeur = VALUES(valeur)
+                INSERT INTO tableau_cellules (document_id, tableau, ligne, colonne, colonne_ordre, valeur)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE valeur = VALUES(valeur), colonne_ordre = VALUES(colonne_ordre)
                 """,
                 cellule_rows,
             )
@@ -400,7 +431,10 @@ def save_tableau_result(conn, document_id, tableau, result):
 
 def get_tableau_cellules(conn, document_ids, tableau):
     """Cellules stockées pour un ensemble de documents et une annexe donnée —
-    renvoie [(document_id, ligne, colonne, valeur), ...]."""
+    renvoie [(document_id, ligne, colonne, valeur), ...], colonnes triées
+    selon leur ORDRE PHYSIQUE réel dans le tableau source (colonne_ordre) —
+    un SELECT sans ORDER BY ne le garantit pas (MySQL a été constaté
+    scannant via l'index unique, donc triant "Transport" après "Total")."""
     if not document_ids:
         return []
     with conn.cursor() as cur:
@@ -410,6 +444,7 @@ def get_tableau_cellules(conn, document_ids, tableau):
             SELECT document_id, ligne, colonne, valeur
             FROM tableau_cellules
             WHERE tableau = %s AND document_id IN ({placeholders})
+            ORDER BY colonne_ordre
             """,
             [tableau] + list(document_ids),
         )

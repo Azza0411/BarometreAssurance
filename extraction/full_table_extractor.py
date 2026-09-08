@@ -8,41 +8,47 @@ doit pouvoir montrer le tableau annexe tel qu'il existe réellement dans le
 PDF source (toutes les branches — Automobile, Transport, Incendie...), pas
 seulement le sous-ensemble déjà utilisé par les dashboards.
 
-Principe (vérifié manuellement le 2026-09-08 sur GAT_2024.pdf, Annexe 13 —
-16 colonnes par branche, valeurs recoupées avec la capture d'écran déjà
-utilisée pour l'audit du Ratio Combiné dans cette session) :
-  1. Repérer les positions X des VALEURS NUMÉRIQUES de toutes les lignes de
-     données (fiables : une seule ligne de texte, jamais scindées sur
-     plusieurs lignes visuelles) → ce sont les vrais centres de colonnes.
-     Bien plus robuste que de partir des libellés d'en-tête, qui eux sont
-     souvent repliés sur 2-3 lignes visuelles ("Responsabilité" / "civile",
-     "Autres" / "dommages" / "aux" / "biens"...).
-  2. Rattacher chaque MOT de l'en-tête (qui peut être réparti sur plusieurs
-     lignes visuelles) à la colonne dont le centre est le plus proche de son
-     x0, puis reconstituer le libellé de chaque colonne en triant ses mots
-     par position verticale (haut → bas) — restitue l'ordre de lecture réel
-     d'un libellé replié sur 2-3 lignes.
-  3. Toute colonne du tableau totalement vide sur cette page (aucune valeur
-     nulle part, ex. "Autres" chez GAT) n'a pas de centre déductible de
-     l'étape 1 — son mot d'en-tête reste alors "non assigné" ; il est
-     réinséré comme colonne à part entière (toutes valeurs = None) à sa
-     position x réelle, pour ne pas la faire disparaître silencieusement du
-     tableau restitué.
+Moteur : camelot (flavor='stream'), pas pdfplumber (2026-09-08, remplace une
+première version bâtie sur le repositionnement de mots pdfplumber — voir
+historique git pour cette approche). Comparé côte à côte sur GAT (16
+colonnes/branche), STAR (page "Annexe 13" réelle ET page agrégée à libellés
+repliés), BIAT et ASTREE : camelot restitue une vraie grille alignée
+nativement (détection de tableau par blancs/lignes, via Ghostscript) là où
+l'approche pdfplumber nécessitait une pile d'heuristiques fragiles
+(regroupement de centres de colonnes par tolérance, marge gauche d'en-tête,
+dédoublement de colonnes...) et échouait encore sur certains gabarits — ex.
+ASTREE, dont le texte d'en-tête était rendu par pdfplumber avec des lettres
+individuellement espacées ("s p o n s a b i e c e n n a l e"), un problème
+que camelot n'a simplement pas.
+
+Principe :
+  1. Repérer, sur la première ligne de données réelle (≥ MIN_DATA_CELLS
+     cellules numériques), l'index de colonne où commencent les valeurs —
+     tout ce qui précède est la zone "libellé" (parfois 1 seule colonne,
+     parfois 2 quand le tableau porte un code de ligne interne en plus du
+     libellé, ex. "PRNV11" — voir gabarit STAR agrégé ci-dessous).
+  2. Construire le libellé de chaque colonne de valeur en concaténant
+     verticalement ses cellules non vides dans les lignes d'en-tête (bien
+     plus simple qu'un rattachement par position X : camelot aligne déjà
+     chaque fragment d'en-tête replié dans la bonne colonne).
+  3. Un libellé de LIGNE trop long pour tenir sur une seule ligne physique
+     peut se replier sur 2 lignes avec les valeurs "sandwichées" entre les
+     deux moitiés (gabarit STAR agrégé — page "Etat de résultat technique",
+     PAS la vraie page Annexe 13) : les lignes sans aucune valeur sont
+     accumulées comme préfixe ; si la ligne de valeurs n'a elle-même aucun
+     libellé exploitable, la ligne suivante (si elle-même sans valeur) est
+     consommée comme suffixe.
 
 Limite connue : cette heuristique cible la mise en page des tableaux
-Annexe 12/13 (et gabarits proches — même préambule "Société... / Annexe
-N°X / titre / (exprimé en dinars tunisiens)" observé aussi sur les pages
-"raccordement"/Etat de résultat technique). Le Bilan (Brut/Amortissement/
-Net/Net N-1, pas de branches) et les tableaux Takaful (Annexes 14/15) ont
-une structure différente et ne sont pas couverts par ce module pour
-l'instant."""
+Annexe 12/13 (et gabarits proches). Le Bilan (Brut/Amortissement/Net/
+Net N-1, pas de branches) et les tableaux Takaful (Annexes 14/15) ont une
+structure différente et ne sont pas couverts par ce module pour l'instant."""
 
 import re
 
-from extraction.bilan_kpi_extractor import _cluster_lines, _extract_numeric_clusters, _normalizer, ROW_CODE_PREFIX_RE
+from extraction.bilan_kpi_extractor import _normalizer, ROW_CODE_PREFIX_RE
 from extraction.annexe13_kpi_extractor import (
     NON_VIE_RE as _A13_NON_VIE_RE, VIE_RE as _A13_VIE_RE,
-    _LEADING_BULLET_RE as _A13_LEADING_BULLET_RE,
 )
 
 # Titre élargi par rapport à annexe13_kpi_extractor.PAGE_TITLE_RE (non
@@ -67,40 +73,6 @@ _FULL_TABLE_PAGE_TITLE_RE = re.compile(
     r"|etat de resultat technique de l.?assurance"
 )
 
-# Un mot-token pdfplumber purement numérique entre parenthèses (notation
-# comptable standard des montants négatifs) — ex. "(4" et "562)" quand la
-# valeur "(4 562)" est scindée en 2 tokens par un espace interne. Le filtre
-# NUMERIC_TOKEN_RE du module partagé (annexe13_kpi_extractor._label_text) ne
-# reconnaît pas ces fragments (il n'admet pas la parenthèse), ce qui les
-# laissait fuiter dans le libellé de ligne reconstruit sur les gabarits où
-# TOUTES les valeurs (plusieurs branches) sont sur la même ligne physique que
-# le libellé (ex. GAT, 16 colonnes/branche — "Variation des primes non
-# acquises (4 562) (246 203)..." au lieu du libellé seul). Ce n'est pas un
-# cas isolé à GAT : tout gabarit à valeurs négatives entre parenthèses sur la
-# ligne de libellé est concerné, d'où un filtre local plus large plutôt qu'un
-# correctif propre à une société.
-_BRACKET_NUMERIC_RE = re.compile(r"^\(?[+\-]?\d[\d.,]*\)?$")
-
-
-def _label_text(line):
-    """Variante locale (module "grille complète") de
-    annexe13_kpi_extractor._label_text — même logique (retire les tokens
-    numériques, le tiret de tête, le préfixe de code de ligne) mais avec un
-    filtre numérique élargi aux fragments entre parenthèses. Volontairement
-    séparée du module partagé pour ne jamais risquer de régression sur le
-    pipeline 7-KPI existant."""
-    label_words = [w for w in line if not _BRACKET_NUMERIC_RE.match(w["text"])]
-    if not label_words:
-        return None
-    label = _normalizer.clean(" ".join(w["text"] for w in label_words))
-    label = _A13_LEADING_BULLET_RE.sub("", label)
-    label = ROW_CODE_PREFIX_RE.sub("", label, count=1)
-    # Symboles de signe isolés ("-", "+", "+/-") résiduels en fin de libellé
-    # — vestiges de la colonne "signe" typographique du tableau source
-    # (visible entre le libellé et les valeurs), sans valeur informative une
-    # fois le libellé reconstruit.
-    return re.sub(r"(?:\s+[+\-/]+)+$", "", label).strip() or None
-
 
 def relaxed_is_annexe13_page(page, lines_checked=4):
     """Variante de annexe13_kpi_extractor._is_target_page SANS l'exclusion
@@ -121,271 +93,200 @@ def relaxed_is_annexe13_page(page, lines_checked=4):
         return True
     return not _A13_VIE_RE.search(normalized)
 
+
 _JUNK_LABEL_RE = re.compile(r"^[+\-/\s]+$")
 
-MIN_DATA_CLUSTERS = 4   # une vraie ligne de donnees a au moins 4 colonnes remplies (la
-# ligne société/date du préambule ("Société X, États financiers au 31
-# décembre 2024") peut déjà contenir jusqu'à 3 nombres — jour, mois si
-# chiffré, année — sans être une ligne de données, ex. COMAR 2024).
-COL_GAP = 6             # tolerance (pt) pour regrouper des x0 de valeurs en une colonne —
-# volontairement étroit : élargi (essayé jusqu'à 20pt) pour absorber le
-# dédoublement de colonne observé sur le gabarit à 4 colonnes larges de
-# STAR (une même colonne alignée à droite ayant des x0 différents d'une
-# ligne à l'autre selon le nombre de chiffres), mais ça fusionnait à tort de
-# VRAIES colonnes voisines distinctes sur le gabarit à 16 colonnes/branche
-# (ex. GAT : "Automobile"/"Transport" fusionnées) — remis à 6pt, la marge de
-# sécurité pour ce gabarit majoritaire est trop faible pour un seuil global
-# unique. Voir CAS_PARTICULIERS_FULL_TABLE.md : le dédoublement de colonne
-# de STAR (4 colonnes attendues, jusqu'à 8 obtenues) reste un défaut connu,
-# non traité — les VALEURS restent correctement assignées à des colonnes
-# cohérentes, seul le regroupement de libellés d'en-tête en est affecté.
-ASSIGN_MAX_DIST = 25    # distance max (pt) pour rattacher un mot d'entete a une colonne
+MIN_DATA_CELLS = 4  # une vraie ligne de donnees a au moins 4 cellules numeriques (la
+# ligne société/date du préambule peut déjà contenir jusqu'à 3 nombres —
+# jour, mois si chiffré, année — sans être une ligne de données).
+
+# Une cellule camelot entière (pas un mot-token pdfplumber) : "126 336 369",
+# "(4 086 562)" (négatif comptable), "0", "-" (case vide/néant). Les espaces
+# internes sont des séparateurs de milliers, jamais un espace de mise en
+# page (camelot a déjà isolé chaque valeur dans sa propre cellule).
+_CELL_NUMERIC_RE = re.compile(r"^\(?-?\d[\d\s.,]*\)?$")
 
 
-def _find_column_centers(lines, data_start_idx, gap=COL_GAP):
-    all_x0 = []
-    for line in lines[data_start_idx:]:
-        for _val, x0 in _extract_numeric_clusters(line):
-            all_x0.append(x0)
-    all_x0.sort()
-    centers, current = [], []
-    for x in all_x0:
-        if current and abs(x - current[-1]) <= gap:
-            current.append(x)
-        else:
-            if current:
-                centers.append(sum(current) / len(current))
-            current = [x]
-    if current:
-        centers.append(sum(current) / len(current))
-    return centers
+def _looks_numeric_cell(text):
+    text = (text or "").strip()
+    if text in ("-", "–", "—"):
+        return True  # case "néant" du tableau — compte comme une valeur structurelle
+    return bool(_CELL_NUMERIC_RE.match(text))
 
 
-def _nearest_index(x, centers, max_dist):
-    best_i, best_d = None, max_dist + 1
-    for i, c in enumerate(centers):
-        d = abs(x - c)
-        if d < best_d:
-            best_d, best_i = d, i
-    return best_i if best_d <= max_dist else None
-
-
-def _build_columns(header_words, data_centers, max_dist=ASSIGN_MAX_DIST):
-    """Rattache chaque mot d'en-tête à une colonne (centres déduits des
-    données), reconstitue le libellé de chaque colonne, réinsère les
-    colonnes sans aucune donnée (mot d'en-tête non assigné) à leur position
-    réelle. Renvoie [(x_centre, libelle), ...] trié de gauche à droite."""
-    from collections import defaultdict
-    assigned = defaultdict(list)
-    unassigned = []
-    for w in header_words:
-        idx = _nearest_index(w["x0"], data_centers, max_dist)
-        if idx is not None:
-            assigned[idx].append(w)
-        else:
-            unassigned.append(w)
-
-    columns = []
-    for i, c in enumerate(data_centers):
-        ws = sorted(assigned.get(i, []), key=lambda w: (w["top"], w["x0"]))
-        label = _normalizer.clean(" ".join(w["text"] for w in ws)) if ws else f"(colonne {i + 1})"
-        columns.append((c, label))
-    for w in unassigned:
-        columns.append((w["x0"], _normalizer.clean(w["text"])))
-    columns.sort(key=lambda t: t[0])
-    return columns
-
-
-def extract_full_table(page, min_data_clusters=MIN_DATA_CLUSTERS):
-    """Extrait la grille complète (toutes lignes × toutes colonnes) d'une
-    page de tableau annexe. Renvoie {"colonnes": [labels...], "lignes":
-    {libelle_ligne: {colonne: valeur, ...}, ...}} ou None si la page ne
-    ressemble pas à ce gabarit (aucune ligne multi-colonnes trouvée)."""
-    words = page.extract_words()
-    if not words:
+def _clean_cell_value(text):
+    """Convertit une cellule camelot en float, ou None si vide/non numérique
+    (y compris un tiret seul "néant" — présent structurellement mais sans
+    valeur). Parenthèses = négatif (notation comptable standard) ; espaces
+    internes = séparateur de milliers."""
+    text = (text or "").strip()
+    if not text or text in ("-", "–", "—"):
         return None
-    lines = _cluster_lines(words)
+    negative = text.startswith("(") and text.endswith(")")
+    if not _CELL_NUMERIC_RE.match(text):
+        return None
+    # Espaces normaux ET insécables \xa0/  (courants dans les nombres au
+    # format français rendus par certains PDF) : tous des séparateurs de
+    # milliers, jamais un espace de mise en page (camelot isole déjà chaque
+    # valeur dans sa propre cellule).
+    core = re.sub(r"\s+", "", text.strip("()"), flags=re.UNICODE).replace(",", ".")
+    try:
+        value = float(core)
+    except ValueError:
+        return None
+    return -value if negative else value
+
+
+def _find_table_camelot(pdf_path, page_num):
+    import camelot
+    try:
+        tables = camelot.read_pdf(pdf_path, flavor="stream", pages=str(page_num))
+    except Exception:
+        return None
+    if tables.n == 0:
+        return None
+    # Une page peut produire plusieurs détections (légendes, notes de bas de
+    # page...) — le vrai tableau est presque toujours celui qui a le plus de
+    # lignes.
+    return max((t.df for t in tables), key=lambda df: df.shape[0])
+
+
+def extract_full_table_camelot(pdf_path, page_num, min_data_cells=MIN_DATA_CELLS):
+    """Extrait la grille complète (toutes lignes × toutes colonnes) de la
+    page `page_num` (1-indexée) via camelot. Renvoie {"colonnes":
+    [labels...], "lignes": {libelle_ligne: {colonne: valeur, ...}, ...}} ou
+    None si la page ne ressemble pas à ce gabarit."""
+    df = _find_table_camelot(pdf_path, page_num)
+    if df is None or df.empty:
+        return None
+    rows_raw = df.values.tolist()
+    n_cols_total = df.shape[1]
 
     first_data_idx = None
-    for idx, line in enumerate(lines):
-        if len(_extract_numeric_clusters(line)) >= min_data_clusters:
+    for idx, row in enumerate(rows_raw):
+        if sum(1 for cell in row if _looks_numeric_cell(cell)) >= min_data_cells:
             first_data_idx = idx
             break
     if first_data_idx is None or first_data_idx == 0:
         return None
 
-    # Bloc d'en-tête = les lignes juste avant la première ligne de données,
-    # en excluant le préambule fixe (société/date, "Annexe N°X", titre,
-    # unité) — sans quoi ses mots ("Annexe", "13", "exprime", "dinars"...)
-    # se mêlent aux vraies colonnes. Ce préambule se termine de façon très
-    # régulière par la ligne d'unité "(exprimé en dinars tunisiens)",
-    # identique sur tous les gabarits Annexe/Bilan/Etat de résultat déjà
-    # rencontrés — ancre bien plus fiable qu'une heuristique positionnelle
-    # (la ligne société/date contient elle-même 2 nombres — jour + année —
-    # qu'un simple "recule tant qu'il n'y a pas de nombre" confond avec une
-    # frontière de tableau). Repli sur l'ancienne heuristique positionnelle
-    # si ce marqueur, jamais garanti à 100%, est absent d'un gabarit non
-    # encore rencontré.
-    # "en dinar" (sans le "s" final, pas la phrase complète "exprimé en
-    # dinars tunisiens") : ancre volontairement plus large — variantes déjà
-    # rencontrées "chiffres arrondis en dinars" (STAR, page "état de résultat
-    # technique"), "unité en dinars" (BH/BIAT), "chiffres en dinars
-    # tunisiens" (ASTREE), et "(Exprimé en dinar tunisien)" — SINGULIER, sans
-    # "s" — sur la vraie page Annexe 13 de STAR (page 32, gabarit par
-    # branche). "en dinars" (pluriel) manquait ce dernier cas puisque
-    # "dinars" n'y est jamais présent avec un "s" ; "en dinar" reste un
-    # sous-ensemble de "en dinars" donc couvre les deux formes sans rien
-    # perdre.
+    # Colonne à partir de laquelle commencent les VALEURS, déterminée sur la
+    # première VRAIE ligne de données (fiable — une ligne d'en-tête repliée
+    # sur plusieurs lignes physiques ne l'est pas). Tout ce qui précède est
+    # la zone "libellé" — 1 seule colonne en général (GAT, BIAT, vraie page
+    # Annexe 13 de STAR), 2 quand le tableau porte un code de ligne interne
+    # à part du libellé (ex. "PRNV11", gabarit STAR agrégé).
+    numeric_col_idxs = [i for i, cell in enumerate(rows_raw[first_data_idx]) if _looks_numeric_cell(cell)]
+    if not numeric_col_idxs:
+        return None
+    label_col_end = min(numeric_col_idxs)
+
+    # Ancre "en dinar" (sans le "s" final — variantes déjà rencontrées
+    # "chiffres arrondis en dinars", "unité en dinars", "(Exprimé en dinar
+    # tunisien)" singulier) : le préambule (société/date, "Annexe N°X",
+    # titre, unité) se termine régulièrement par cette ligne, bien plus
+    # fiable qu'une heuristique positionnelle pour délimiter le bloc d'en-tête.
     header_start = None
     for idx in range(min(first_data_idx, 6)):
-        norm = _normalizer.clean(" ".join(w["text"] for w in lines[idx]))
+        norm = _normalizer.clean(" ".join(rows_raw[idx]))
         if "en dinar" in norm:
             header_start = idx + 1
             break
     # Repli : certains gabarits (ex. BIAT, Annexe 13) n'ont AUCUNE ligne
     # d'unité monétaire — le titre de page enchaîne directement sur l'en-tête
-    # de colonnes ("ANNEXE N°13 : RESULTAT TECHNIQUE NON VIE PAR CATEGORIE
-    # D'ASSURANCE" / "Total" / "AUTO TRANSPORT INCENDIE..."). On reconnaît
-    # alors le titre lui-même (même motif que celui qui a servi à repérer la
-    # page — `_FULL_TABLE_PAGE_TITLE_RE`) et on démarre l'en-tête juste
-    # après, plutôt que de laisser le titre polluer les libellés de colonnes.
+    # de colonnes. On reconnaît alors le titre lui-même (même motif que celui
+    # qui a servi à repérer la page) et démarre l'en-tête juste après.
     if header_start is None:
         for idx in range(min(first_data_idx, 4)):
-            norm = _normalizer.clean(" ".join(w["text"] for w in lines[idx]))
+            norm = _normalizer.clean(" ".join(rows_raw[idx]))
             if _FULL_TABLE_PAGE_TITLE_RE.search(norm):
                 header_start = idx + 1
     if header_start is None:
         header_start = 0
         for idx in range(first_data_idx - 1, -1, -1):
-            if len(_extract_numeric_clusters(lines[idx])) >= min_data_clusters:
+            if sum(1 for cell in rows_raw[idx] if _looks_numeric_cell(cell)) >= min_data_cells:
                 header_start = idx + 1
                 break
-    data_centers = _find_column_centers(lines, first_data_idx)
-    if not data_centers:
-        return None
 
-    # Une ligne entre l'en-tête et la première ligne de données peut être un
-    # sous-titre de section SANS valeur plutôt qu'une suite de l'en-tête de
-    # colonnes (ex. STAR : "PRNV1 Primes acquises" juste avant "PRNV11
-    # Primes émises et acceptées + [valeurs]" — un intitulé de poste, pas un
-    # libellé de colonne). Un tel intitulé démarre dans la zone de la
-    # colonne de LIBELLÉ (même x0 que les libellés de ligne, tout à gauche),
-    # pas au-dessus des colonnes de valeurs — on ne garde donc, comme mots
-    # d'en-tête de colonnes, que ceux positionnés à droite du début réel des
-    # colonnes de données (avec une marge, l'en-tête étant souvent aligné à
-    # gauche de sa colonne alors que les centres ci-dessus viennent des
-    # valeurs, plutôt centrées/alignées à droite).
-    HEADER_LEFT_MARGIN = 80
-    header_left_bound = min(data_centers) - HEADER_LEFT_MARGIN
-    header_words = [
-        w for line in lines[header_start:first_data_idx] for w in line
-        if w["x0"] >= header_left_bound
-    ]
+    # Libellé de chaque colonne de valeur = concaténation verticale de ses
+    # cellules non vides dans les lignes d'en-tête (camelot aligne déjà
+    # chaque fragment replié dans la bonne colonne — pas besoin de
+    # rattachement par position).
+    col_names = []
+    for col_idx in range(label_col_end, n_cols_total):
+        parts = [rows_raw[r][col_idx].strip() for r in range(header_start, first_data_idx) if rows_raw[r][col_idx].strip()]
+        label = _normalizer.clean(" ".join(parts)) if parts else f"(colonne {col_idx})"
+        col_names.append(label)
 
-    columns = _build_columns(header_words, data_centers)
-    # Un centre de colonne déduit des valeurs mais sans AUCUN mot d'en-tête à
-    # portée (placeholder "(colonne N)") signale presque toujours un même
-    # poste scindé en 2 centres proches par la tolérance COL_GAP (ex. une
-    # colonne à valeurs souvent nulles/étroites dont les x0 varient trop d'une
-    # ligne à l'autre) plutôt qu'une vraie colonne distincte — une vraie
-    # colonne a toujours au moins un mot d'en-tête au-dessus d'elle. On le
-    # supprime : ses valeurs se rattacheront alors au centre voisin réellement
-    # étiqueté (le plus proche) lors de l'extraction des lignes ci-dessous,
-    # au lieu de laisser une colonne fantôme vide dans le résultat.
-    filtered_columns = [(x, name) for x, name in columns if not re.match(r"^\(colonne \d+\)$", name)]
-    if filtered_columns:  # garde-fou : ne jamais tout supprimer si l'en-tête
-        columns = filtered_columns  # n'a pu être rattaché à AUCUNE colonne
-
-    # Deux centres distincts peuvent se voir attribuer le MÊME libellé nettoyé
-    # (ex. gabarit STAR agrégé : un en-tête d'unité "31/12/2018" wrappé sur
-    # plusieurs lignes visuelles finit rattaché à 2-3 centres différents) —
-    # les distinguer par suffixe plutôt que de laisser 2 colonnes homonymes
-    # se confondre en aval (silencieusement en Excel, ou en erreur d'unicité
-    # au stockage) ; même principe déjà appliqué aux libellés de ligne
-    # dupliqués ci-dessous.
-    seen_names = {}
-    deduped_columns = []
-    for x, name in columns:
+    # Deux colonnes peuvent se voir attribuer le même libellé nettoyé
+    # (rare mais déjà rencontré) — distinguer par suffixe plutôt que de les
+    # laisser se confondre en aval (silencieusement en Excel, ou en erreur
+    # d'unicité au stockage).
+    seen_names, deduped = {}, []
+    for name in col_names:
         n = seen_names.get(name, 0) + 1
         seen_names[name] = n
-        deduped_columns.append((x, name if n == 1 else f"{name} ({n})"))
-    columns = deduped_columns
+        deduped.append(name if n == 1 else f"{name} ({n})")
+    col_names = deduped
 
-    col_names = [name for _x, name in columns]
-    col_centers_final = [x for x, _name in columns]
+    def _row_own_label(row):
+        cells = [c.strip() for c in row[:label_col_end] if c.strip()]
+        text = _normalizer.clean(" ".join(cells)) if cells else ""
+        text = ROW_CODE_PREFIX_RE.sub("", text, count=1)
+        if not text or _JUNK_LABEL_RE.match(text):
+            return ""
+        return text
+
+    def _row_has_values(row):
+        return any(_looks_numeric_cell(cell) for cell in row[label_col_end:])
 
     # Un libellé de ligne trop long pour tenir sur une seule ligne physique
-    # se replie sur 2 (parfois 3) lignes visuelles, avec les VALEURS
-    # verticalement centrées entre les deux moitiés du libellé (constaté sur
-    # STAR, gabarit agrégé 4 colonnes : "Variation de la provision pour" /
-    # [valeurs] / "primes non acquises") — la ligne de valeurs porte alors
-    # elle-même un "libellé" qui n'est en réalité qu'un symbole de colonne
-    # isolé ("+", "+/-", "-", une 3e colonne à part sur ce gabarit précis),
-    # pas du texte de contenu. Reconstruction : les lignes sans aucune
-    # valeur numérique sont accumulées comme préfixe ; à la première ligne
-    # avec des valeurs, son propre "libellé" n'est retenu que s'il n'est pas
-    # un symbole isolé ; la ligne suivante, si elle n'a elle-même aucune
-    # valeur, est consommée comme suffixe (un seul niveau de repli après —
-    # un repli plus long resterait partiellement reconstruit, cas connu et
-    # documenté plutôt que traité ici).
-    def _own_label_or_empty(line):
-        lbl = _label_text(line)
-        if lbl is None or _JUNK_LABEL_RE.match(lbl):
-            return ""
-        return lbl
-
-    data_lines = list(lines[first_data_idx:])
-    merged_rows = []  # [(label, [line, ...]), ...]
-    prefix_words = []
-    i = 0
-    while i < len(data_lines):
-        line = data_lines[i]
-        clusters_now = _extract_numeric_clusters(line)
-        if not clusters_now:
-            prefix_words.append(_label_text(line))
+    # se replie sur 2 lignes, avec les VALEURS "sandwichées" entre les deux
+    # moitiés (constaté sur le gabarit STAR agrégé — pas la vraie page
+    # Annexe 13 : "Variation de la provision pour" / [valeurs] / "primes non
+    # acquises"). Le suffixe n'est consommé QUE si la ligne de valeurs n'a
+    # elle-même aucun libellé exploitable — sinon la ligne suivante est le
+    # début du POSTE SUIVANT, pas la suite de celui-ci (les confondre
+    # fusionnerait à tort deux postes distincts).
+    merged_rows = []  # [(label, value_row), ...]
+    prefix_parts = []
+    i = first_data_idx
+    while i < len(rows_raw):
+        row = rows_raw[i]
+        if not _row_has_values(row):
+            own = _row_own_label(row)
+            if own:
+                prefix_parts.append(own)
             i += 1
             continue
-        parts = [p for p in prefix_words if p]
-        own = _own_label_or_empty(line)
+        own = _row_own_label(row)
+        parts = list(prefix_parts)
         if own:
             parts.append(own)
-        prefix_words = []
-        value_lines = [line]
-        # Un suffixe n'est consommé QUE si cette ligne de valeurs n'a
-        # elle-même aucun libellé exploitable (le cas "libellé replié avec
-        # les valeurs au milieu") — sinon la ligne suivante appartient à la
-        # ligne logique SUIVANTE, pas à celle-ci (ex. STAR : "Primes émises
-        # et acceptées" est déjà un libellé complet sur une seule ligne ;
-        # la ligne suivante "Variation de la provision pour" est le début
-        # du POSTE SUIVANT, pas sa suite — les y confondre fusionnerait à
-        # tort deux lignes différentes du document).
-        if not own and i + 1 < len(data_lines) and not _extract_numeric_clusters(data_lines[i + 1]):
-            suffix = _label_text(data_lines[i + 1])
+        prefix_parts = []
+        if not own and i + 1 < len(rows_raw) and not _row_has_values(rows_raw[i + 1]):
+            suffix = _row_own_label(rows_raw[i + 1])
             if suffix:
                 parts.append(suffix)
             i += 1
         label = _normalizer.clean(" ".join(parts)) if parts else None
-        merged_rows.append((label, value_lines))
+        merged_rows.append((label, row))
         i += 1
 
     rows = {}
-    for label, value_lines in merged_rows:
-        clusters = [c for vl in value_lines for c in _extract_numeric_clusters(vl)]
-        if not clusters:
-            continue
+    for label, value_row in merged_rows:
         if not label:
             continue
         row_values = {}
-        for val, x0 in clusters:
-            idx = _nearest_index(x0, col_centers_final, ASSIGN_MAX_DIST)
-            if idx is not None:
-                row_values[col_names[idx]] = val
+        for col_idx in range(label_col_end, n_cols_total):
+            val = _clean_cell_value(value_row[col_idx])
+            if val is not None:
+                row_values[col_names[col_idx - label_col_end]] = val
         if row_values:
             # Deux lignes de libellé identique (rare, ex. sous-totaux
             # répétés) : la seconde écraserait la première — suffixée pour
             # ne perdre aucune ligne réelle du document.
-            key = label
-            n = 2
+            key, n = label, 2
             while key in rows:
                 key = f"{label} ({n})"
                 n += 1
@@ -438,18 +339,20 @@ def _sanity_ok(rows, kpi_patterns, min_matches=2):
 _ANNEXE_TITLE_RE = re.compile(r"\bannexe\b")
 
 
-def locate_and_extract_full_table(pdf, is_target_page, kpi_patterns, raccordement_re=None,
-                                   max_pages=120, min_data_clusters=MIN_DATA_CLUSTERS, min_sanity_matches=2,
+def locate_and_extract_full_table(pdf_path, is_target_page, kpi_patterns, raccordement_re=None,
+                                   max_pages=120, min_data_cells=MIN_DATA_CELLS, min_sanity_matches=2,
                                    extra_page_predicate=None):
-    """Localise la bonne page dans `pdf` (réutilise le prédicat
+    """Localise la bonne page dans le PDF `pdf_path` (réutilise le prédicat
     `is_target_page` déjà validé par l'extracteur 7-KPI correspondant —
     ex. annexe13_kpi_extractor._is_target_page — plutôt qu'une détection de
-    page indépendante) puis y extrait la grille complète. Essaie TOUTES les
-    pages candidates (une page peut à tort sembler correspondre — sommaire,
-    notes en prose citant le même titre) et retient celle dont la grille
-    extraite est la plus riche (le plus de colonnes) parmi celles qui
-    passent le contrôle de vraisemblance (`_sanity_ok`). Renvoie
-    (numero_page_1_indexe, grille) ou (None, None) si aucune page valide.
+    page indépendante ; l'exploration des pages candidates se fait via
+    pdfplumber, léger et déjà utilisé par ce prédicat) puis y extrait la
+    grille complète via camelot. Essaie TOUTES les pages candidates (une
+    page peut à tort sembler correspondre — sommaire, notes en prose citant
+    le même titre) et retient celle dont la grille extraite est la plus
+    riche (le plus de colonnes) parmi celles qui passent le contrôle de
+    vraisemblance (`_sanity_ok`). Renvoie (numero_page_1_indexe, grille) ou
+    (None, None) si aucune page valide.
 
     `extra_page_predicate`, si fourni, est essayé EN PLUS de `is_target_page`
     (union des deux, pas remplacement) — sert à récupérer des pages qu'une
@@ -460,34 +363,33 @@ def locate_and_extract_full_table(pdf, is_target_page, kpi_patterns, raccordemen
     nécessaire pour le pipeline 7-KPI existant, donc non modifiée ici).
     Le contrôle de vraisemblance ci-dessous protège contre les faux positifs
     supplémentaires qu'un prédicat plus permissif pourrait introduire."""
-    candidates = []
-    for i, page in enumerate(pdf.pages[:max_pages]):
-        if is_target_page(page) or (extra_page_predicate and extra_page_predicate(page)):
-            candidates.append((i, page))
+    import pdfplumber
 
-    def _norm_head(page):
-        return _normalizer.clean((page.extract_text() or "")[:300])
+    candidates = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for i, page in enumerate(pdf.pages[:max_pages]):
+            if is_target_page(page) or (extra_page_predicate and extra_page_predicate(page)):
+                head = _normalizer.clean((page.extract_text() or "")[:300])
+                candidates.append((i, head))
 
     if raccordement_re is not None:
-        candidates.sort(key=lambda t: bool(raccordement_re.search(_norm_head(t[1]))))
+        candidates.sort(key=lambda t: bool(raccordement_re.search(t[1])))
 
     # Une page effectivement titrée "Annexe N°X" est LA page officielle du
     # tableau — à préférer sur toute autre page qui se contente d'évoquer un
-    # "résultat technique" en passant (ex. BIAT : une page de sommaire/renvoi
-    # sans rapport avec le tableau produisait, par accident de reconstruction
-    # d'en-tête, PLUS de "colonnes" que la vraie page Annexe 13 — 49 colonnes
-    # fragmentées/inexploitables contre 15 colonnes propres — et gagnait donc
-    # à tort le départage "le plus de colonnes"). On départage d'abord sur ce
-    # signal, robuste car indépendant de la reconstruction elle-même, puis
-    # seulement ensuite sur le nombre de colonnes.
+    # "résultat technique" en passant (ex. une page de sommaire/renvoi sans
+    # rapport avec le tableau, qui pourrait produire par accident plus de
+    # "colonnes" que la vraie page). On départage d'abord sur ce signal,
+    # robuste car indépendant de la reconstruction elle-même, puis seulement
+    # ensuite sur le nombre de colonnes.
     best = None
-    for i, page in candidates:
-        result = extract_full_table(page, min_data_clusters=min_data_clusters)
+    for i, head in candidates:
+        result = extract_full_table_camelot(pdf_path, i + 1, min_data_cells=min_data_cells)
         if not result or len(result["colonnes"]) < 3 or len(result["lignes"]) < min_sanity_matches:
             continue
         if not _sanity_ok(result["lignes"], kpi_patterns, min_sanity_matches):
             continue
-        is_annexe_titled = bool(_ANNEXE_TITLE_RE.search(_norm_head(page)))
+        is_annexe_titled = bool(_ANNEXE_TITLE_RE.search(head))
         rank = (is_annexe_titled, len(result["colonnes"]))
         if best is None or rank > best[2]:
             best = (i, result, rank)

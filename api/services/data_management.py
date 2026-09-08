@@ -10,7 +10,6 @@ valeur de KPI), pas une mise en page métier avec formules recalculables.
 
 import os
 
-import pdfplumber
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -23,6 +22,7 @@ from extraction.annexe13_kpi_extractor import (
     KPI_PATTERNS as _ANNEXE13_KPI_PATTERNS,
 )
 from extraction.full_table_extractor import locate_and_extract_full_table, relaxed_is_annexe13_page
+from extraction.annexe13_pipeline import normalize_table, CANONICAL_ROWS
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
@@ -229,15 +229,37 @@ def _write_sheet_title(ws, last_col, title, subtitle):
 # place, clairement signalé comme tel plutôt que de faire disparaître
 # l'année silencieusement.
 def _extract_annexe13_full_grid(pdf_path):
+    """Repli en direct sur le PDF pour un document pas encore traité par la
+    pipeline de validation (extraction/annexe13_pipeline.py — voir
+    api/services/tableau_pipeline_service.py) : mêmes localisation +
+    extraction, ET même normalisation des libellés de ligne, pour que ce
+    chemin de repli reste visuellement cohérent avec le chemin rapide
+    (cellules déjà validées en base) plutôt que d'afficher des libellés
+    bruts non normalisés selon que le document a déjà été traité ou pas."""
     try:
-        with pdfplumber.open(pdf_path) as pdf:
-            _page_num, result = locate_and_extract_full_table(
-                pdf, _is_annexe13_page, _ANNEXE13_KPI_PATTERNS, _ANNEXE13_RACCORDEMENT_RE,
-                extra_page_predicate=relaxed_is_annexe13_page,
-            )
+        _page_num, result = locate_and_extract_full_table(
+            pdf_path, _is_annexe13_page, _ANNEXE13_KPI_PATTERNS, _ANNEXE13_RACCORDEMENT_RE,
+            extra_page_predicate=relaxed_is_annexe13_page,
+        )
     except Exception:
         return None
-    return result
+    if result is None:
+        return None
+    normalized = normalize_table(result)
+    return {"colonnes": normalized["colonnes"], "lignes": normalized["lignes"]}
+
+
+# Position de chaque poste dans l'ordre naturel du tableau (ordre déjà
+# significatif de CANONICAL_ROWS — annexe13_pipeline.py, celui d'un vrai
+# relevé "Résultat technique" : Primes en premier, Résultat technique et
+# provisions en dernier) — sans ça, l'ordre dépend de la source (DB triée
+# par libellé le temps d'une requête sans ORDER BY explicite, ou ordre
+# d'apparition PDF pour le repli live) et n'est jamais celui attendu.
+_ROW_DISPLAY_ORDER = {label: i for i, label in enumerate(CANONICAL_ROWS)}
+
+
+def _sorted_grid_rows(lignes):
+    return sorted(lignes.items(), key=lambda kv: (_ROW_DISPLAY_ORDER.get(kv[0], len(CANONICAL_ROWS)), kv[0]))
 
 
 def _write_full_grid_block(ws, row, annee, grid):
@@ -245,7 +267,11 @@ def _write_full_grid_block(ws, row, annee, grid):
     ws.cell(row=row, column=1, value=f"{annee} — tableau complet ({len(grid['lignes'])} lignes × {len(cols)} colonnes)")
     ws.cell(row=row, column=1).font = Font(italic=True, size=10, color=DARK, name="Calibri")
     row += 1
-    headers = ["Libellé"] + cols
+    # En majuscules à l'affichage (ex. "A.TRAVAIL", "INCENDIE", "TOTAL") —
+    # c'est la convention réelle des en-têtes de branche dans les documents
+    # source, cohérente avec ce que produit le libellé de ligne (poste
+    # comptable canonique, lui en casse normale).
+    headers = ["Libellé"] + [c.upper() for c in cols]
     for col_idx, header in enumerate(headers, start=1):
         cell = ws.cell(row=row, column=col_idx, value=header)
         cell.fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
@@ -253,9 +279,9 @@ def _write_full_grid_block(ws, row, annee, grid):
         cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = _thin_border()
     row += 1
-    for i, (label, values) in enumerate(grid["lignes"].items()):
+    for i, (label, values) in enumerate(_sorted_grid_rows(grid["lignes"])):
         fill = PatternFill(start_color=LIGHT, end_color=LIGHT, fill_type="solid") if i % 2 == 0 else None
-        cell = ws.cell(row=row, column=1, value=label.capitalize() if label else "")
+        cell = ws.cell(row=row, column=1, value=label or "")
         cell.border = _thin_border()
         cell.font = Font(name="Calibri", size=10, color=DARK)
         cell.alignment = Alignment(horizontal="left", vertical="center")
@@ -440,10 +466,22 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             sheet_name = _safe_sheet_name(code, used_names)
             ws = wb.create_sheet(sheet_name)
 
-            # Largeur de bandeau par défaut ; réévaluée au fil des blocs
-            # ci-dessous (chacun peut avoir un nombre de colonnes différent).
-            n_cols = 2
-            _write_sheet_title(ws, 6, f"{soc['nom'] or code} ({code})", "FS Market Intelligence — Export de données")
+            # Largeur du bandeau de titre = la plus large colonne de TOUS les
+            # blocs de la feuille (calculée AVANT d'écrire quoi que ce soit) —
+            # sans ce pré-calcul, le bandeau se limitait à une largeur fixe
+            # devinée à l'avance (6), trop étroite dès qu'un bloc (ex. Annexe
+            # 13, jusqu'à 16 colonnes par branche) la dépassait : le fond
+            # sombre du titre s'arrêtait au milieu du tableau, visible comme
+            # un trait/une cassure verticale entre zone sombre et zone
+            # blanche au-dessus des colonnes suivantes.
+            n_cols = max(
+                [2] +
+                [1 + len({a for kpi_annees in bloc.values() for a in kpi_annees.keys()})
+                 for name, bloc in soc["blocs"].items() if not (name == _ANNEXE13_DISPLAY and include_annexe13_full)] +
+                ([1 + max((len(g["colonnes"]) for g in soc.get("annexe13_grids", {}).values() if g and g.get("lignes")), default=0),
+                  2] if include_annexe13_full else [])
+            )
+            _write_sheet_title(ws, n_cols, f"{soc['nom'] or code} ({code})", "FS Market Intelligence — Export de données")
 
             row = 4
             for display_tableau in sorted(soc["blocs"].keys()):
