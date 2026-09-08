@@ -37,8 +37,35 @@ Net/Net N-1, pas de branches) et les tableaux Takaful (Annexes 14/15) ont
 une structure différente et ne sont pas couverts par ce module pour
 l'instant."""
 
+import re
+
 from extraction.bilan_kpi_extractor import _cluster_lines, _extract_numeric_clusters, _normalizer
-from extraction.annexe13_kpi_extractor import _label_text
+from extraction.annexe13_kpi_extractor import (
+    _label_text, PAGE_TITLE_RE as _A13_PAGE_TITLE_RE,
+    NON_VIE_RE as _A13_NON_VIE_RE, VIE_RE as _A13_VIE_RE,
+)
+
+
+def relaxed_is_annexe13_page(page, lines_checked=4):
+    """Variante de annexe13_kpi_extractor._is_target_page SANS l'exclusion
+    "notes sur" (NOTES_SECTION_RE) — cette règle reste nécessaire au
+    pipeline 7-KPI existant (non modifiée), mais exclut à tort la page
+    réelle d'au moins une société (LLOYD_TUNISIEN, dont l'annexe est
+    titrée "Notes sur le résultat technique par catégorie..."). À utiliser
+    UNIQUEMENT comme `extra_page_predicate` de `locate_and_extract_full_table`
+    (le contrôle de vraisemblance qui suit absorbe le risque de faux
+    positifs supplémentaires)."""
+    text = (page.extract_text() or "").strip()
+    if not text:
+        return False
+    normalized = _normalizer.clean(" ".join(text.split("\n")[:lines_checked]))
+    if not _A13_PAGE_TITLE_RE.search(normalized):
+        return False
+    if _A13_NON_VIE_RE.search(normalized):
+        return True
+    return not _A13_VIE_RE.search(normalized)
+
+_JUNK_LABEL_RE = re.compile(r"^[+\-/\s]+$")
 
 MIN_DATA_CLUSTERS = 4   # une vraie ligne de donnees a au moins 4 colonnes remplies (la
 # ligne société/date du préambule ("Société X, États financiers au 31
@@ -157,33 +184,65 @@ def extract_full_table(page, min_data_clusters=MIN_DATA_CLUSTERS):
     col_names = [name for _x, name in columns]
     col_centers_final = [x for x, _name in columns]
 
-    # Une ligne de tableau (libellé + valeurs) peut être scindée en deux
-    # "lignes visuelles" par _cluster_lines si le libellé et ses valeurs ne
-    # sont pas exactement à la même hauteur (constaté sur STAR, gabarit
-    # agrégé 4 colonnes) : une ligne "libellé seul, aucune valeur" suivie
-    # d'une ligne "valeurs seules, aucun libellé". Fusionnées ici avant
-    # extraction plutôt que perdues.
+    # Un libellé de ligne trop long pour tenir sur une seule ligne physique
+    # se replie sur 2 (parfois 3) lignes visuelles, avec les VALEURS
+    # verticalement centrées entre les deux moitiés du libellé (constaté sur
+    # STAR, gabarit agrégé 4 colonnes : "Variation de la provision pour" /
+    # [valeurs] / "primes non acquises") — la ligne de valeurs porte alors
+    # elle-même un "libellé" qui n'est en réalité qu'un symbole de colonne
+    # isolé ("+", "+/-", "-", une 3e colonne à part sur ce gabarit précis),
+    # pas du texte de contenu. Reconstruction : les lignes sans aucune
+    # valeur numérique sont accumulées comme préfixe ; à la première ligne
+    # avec des valeurs, son propre "libellé" n'est retenu que s'il n'est pas
+    # un symbole isolé ; la ligne suivante, si elle n'a elle-même aucune
+    # valeur, est consommée comme suffixe (un seul niveau de repli après —
+    # un repli plus long resterait partiellement reconstruit, cas connu et
+    # documenté plutôt que traité ici).
+    def _own_label_or_empty(line):
+        lbl = _label_text(line)
+        if lbl is None or _JUNK_LABEL_RE.match(lbl):
+            return ""
+        return lbl
+
     data_lines = list(lines[first_data_idx:])
-    merged_lines, i = [], 0
+    merged_rows = []  # [(label, [line, ...]), ...]
+    prefix_words = []
+    i = 0
     while i < len(data_lines):
         line = data_lines[i]
-        label_now = _label_text(line)
         clusters_now = _extract_numeric_clusters(line)
-        if label_now and not clusters_now and i + 1 < len(data_lines):
-            nxt = data_lines[i + 1]
-            if not _label_text(nxt) and _extract_numeric_clusters(nxt):
-                merged_lines.append(line + nxt)
-                i += 2
-                continue
-        merged_lines.append(line)
+        if not clusters_now:
+            prefix_words.append(_label_text(line))
+            i += 1
+            continue
+        parts = [p for p in prefix_words if p]
+        own = _own_label_or_empty(line)
+        if own:
+            parts.append(own)
+        prefix_words = []
+        value_lines = [line]
+        # Un suffixe n'est consommé QUE si cette ligne de valeurs n'a
+        # elle-même aucun libellé exploitable (le cas "libellé replié avec
+        # les valeurs au milieu") — sinon la ligne suivante appartient à la
+        # ligne logique SUIVANTE, pas à celle-ci (ex. STAR : "Primes émises
+        # et acceptées" est déjà un libellé complet sur une seule ligne ;
+        # la ligne suivante "Variation de la provision pour" est le début
+        # du POSTE SUIVANT, pas sa suite — les y confondre fusionnerait à
+        # tort deux lignes différentes du document).
+        if not own and i + 1 < len(data_lines) and not _extract_numeric_clusters(data_lines[i + 1]):
+            suffix = _label_text(data_lines[i + 1])
+            if suffix:
+                parts.append(suffix)
+            i += 1
+        label = _normalizer.clean(" ".join(parts)) if parts else None
+        merged_rows.append((label, value_lines))
         i += 1
 
     rows = {}
-    for line in merged_lines:
-        clusters = _extract_numeric_clusters(line)
+    for label, value_lines in merged_rows:
+        clusters = [c for vl in value_lines for c in _extract_numeric_clusters(vl)]
         if not clusters:
             continue
-        label = _label_text(line)
         if not label:
             continue
         row_values = {}
@@ -205,17 +264,41 @@ def extract_full_table(page, min_data_clusters=MIN_DATA_CLUSTERS):
     return {"colonnes": [c for c in col_names if c.strip()], "lignes": rows}
 
 
+# Vocabulaire générique d'un tableau "résultat technique"/Annexe, en plus
+# des regex étroites (ancrées en début de libellé) de l'extracteur 7-KPI —
+# celles-ci ratent des lignes réelles dont la formulation diffère légèrement
+# de la ligne utilisée par les dashboards (ex. STAR 2022-2025 : "Variation
+# de la provision pour primes non acquises" plutôt que "Provisions pour
+# primes non acquises"). Termes volontairement propres au vocabulaire
+# assurantiel du tableau (pas une liste de mots génériques) pour continuer
+# à exclure une page de prose qui ne fait que CITER le titre recherché
+# (ex. GAT "F.2.6 Tableaux de raccordement... sont présentés au niveau
+# de...", qui ne contient aucun de ces termes de poste comptable).
+_GENERIC_LINE_ITEM_TERMS = (
+    "primes emises", "primes acquises", "primes non acquises",
+    "charge de sinistres", "charges de sinistres", "provision pour sinistres",
+    "commissions", "frais d acquisition", "frais d administration",
+    "resultat technique", "produits de placements", "provision pour primes",
+    "cessions retrocessions", "charges techniques", "frais d exploitation",
+)
+
+
 def _sanity_ok(rows, kpi_patterns, min_matches=2):
     """Vérifie qu'au moins `min_matches` lignes extraites correspondent à un
-    libellé de KPI réellement attendu sur ce tableau (réutilise les regex
-    déjà validées de l'extracteur 7-KPI existant) — filtre les pages qui
+    libellé de poste comptable réellement attendu sur ce tableau — d'abord
+    via les regex étroites déjà validées de l'extracteur 7-KPI existant,
+    puis via un vocabulaire plus large (`_GENERIC_LINE_ITEM_TERMS`) pour les
+    variantes de formulation qu'elles ne couvrent pas. Filtre les pages qui
     satisfont le titre recherché mais sont en réalité une page de sommaire/
     notes mentionnant ce titre en prose (ex: GAT "F.2.6 Tableaux de
     raccordement... sont présentés au niveau de..."), pas le vrai tableau."""
     n = 0
     for label in rows:
         norm = _normalizer.clean(label)
-        if any(pat.search(norm) for pat in kpi_patterns.values()):
+        matched = any(pat.search(norm) for pat in kpi_patterns.values())
+        if not matched:
+            matched = any(term in norm for term in _GENERIC_LINE_ITEM_TERMS)
+        if matched:
             n += 1
             if n >= min_matches:
                 return True
@@ -223,7 +306,8 @@ def _sanity_ok(rows, kpi_patterns, min_matches=2):
 
 
 def locate_and_extract_full_table(pdf, is_target_page, kpi_patterns, raccordement_re=None,
-                                   max_pages=120, min_data_clusters=MIN_DATA_CLUSTERS, min_sanity_matches=2):
+                                   max_pages=120, min_data_clusters=MIN_DATA_CLUSTERS, min_sanity_matches=2,
+                                   extra_page_predicate=None):
     """Localise la bonne page dans `pdf` (réutilise le prédicat
     `is_target_page` déjà validé par l'extracteur 7-KPI correspondant —
     ex. annexe13_kpi_extractor._is_target_page — plutôt qu'une détection de
@@ -232,10 +316,20 @@ def locate_and_extract_full_table(pdf, is_target_page, kpi_patterns, raccordemen
     notes en prose citant le même titre) et retient celle dont la grille
     extraite est la plus riche (le plus de colonnes) parmi celles qui
     passent le contrôle de vraisemblance (`_sanity_ok`). Renvoie
-    (numero_page_1_indexe, grille) ou (None, None) si aucune page valide."""
+    (numero_page_1_indexe, grille) ou (None, None) si aucune page valide.
+
+    `extra_page_predicate`, si fourni, est essayé EN PLUS de `is_target_page`
+    (union des deux, pas remplacement) — sert à récupérer des pages qu'une
+    règle volontaire du prédicat partagé exclut à tort pour cet usage précis
+    (ex. LLOYD_TUNISIEN : sa page réelle est titrée "Notes sur le résultat
+    technique par catégorie...", exclue par `NOTES_SECTION_RE` dans
+    `annexe13_kpi_extractor._is_target_page` — une règle qui reste
+    nécessaire pour le pipeline 7-KPI existant, donc non modifiée ici).
+    Le contrôle de vraisemblance ci-dessous protège contre les faux positifs
+    supplémentaires qu'un prédicat plus permissif pourrait introduire."""
     candidates = []
     for i, page in enumerate(pdf.pages[:max_pages]):
-        if is_target_page(page):
+        if is_target_page(page) or (extra_page_predicate and extra_page_predicate(page)):
             candidates.append((i, page))
     if raccordement_re is not None:
         def _norm_head(page):
