@@ -31,6 +31,90 @@ Vie exclusivement + Takaful), importée à la fois par le script d'audit et
 par `get_reliability_stats()` — pour ne plus jamais diverger entre les deux
 sur "qui est censé avoir une Annexe 13 Non-Vie".
 
+### 2026-09-09 (suite) — RÉSOLU : chemin de repli « Notes sur les Comptes de Résultats » (`extraction/notes_resultat_extractor.py`)
+
+La « piste future » notée dans la ligne BNA ci-dessus a été implémentée. Le
+gabarit « éclaté » n'est PAS propre à BNA 2024 : le sweep complet montre que
+**AMI 2021 et AMI 2022** (AMI = ancien nom de BNA, mêmes équipes/même
+reporting) utilisent exactement le même format — une section narrative
+« V - Notes sur les Comptes de Résultats » où chaque poste Non-Vie a son
+propre petit tableau de réconciliation à 4 colonnes (Opérations brutes N /
+Cessions / Opérations nettes N / Opérations nettes N-1), précédé de son code
+de rubrique (`PRNV1- Primes acquises`, `CHNV1- Charges de sinistres`,
+`CHNV4- Frais d'exploitation`, `CHNV5- Autres charges techniques non-vie`…),
+le tout intercalé dans de la prose.
+
+**Nouveau module `extraction/notes_resultat_extractor.py`** —
+`assemble_non_vie_grid_from_notes(pdf_path)` :
+1. localise la section par son titre (`notes sur les comptes de resultats`,
+   singulier/pluriel), bornée à la section romaine suivante (`VI - Notes sur…`) ;
+2. machine à états sur les lignes clusterisées (pdfplumber, briques de
+   `bilan_kpi_extractor`) : suit le dernier code de rubrique vu, n'ouvre un
+   petit tableau que sous un préfixe **Non-Vie** (`PRNV` / `CHNV` / `RTNV` —
+   les rubriques Vie `PRV`/`CHV`/`RTV` et non-techniques `PRNT`/`CHNT` sont
+   ignorées), sur détection de l'en-tête « Opérations … Cessions … » ;
+3. découpe chaque ligne de données en 4 cellules par **bord droit (x1)** des
+   tokens (montants alignés à droite → x1 stable ; un tiret isolé « - » est
+   une cellule « néant » explicite, ce qui lève l'ambiguïté des lignes à 3
+   valeurs où la colonne vide peut être Brut *ou* Cessions) ; alignement
+   final sur les bords droits de la ligne « Total en DT » du sous-tableau
+   (toujours complète) ;
+4. renomme la ligne « Total en DT » de chaque sous-tableau par le libellé de
+   sa rubrique (`Primes acquises`, `Charges de sinistres`, `Frais
+   d'exploitation`…) pour éviter la collision de clés et rendre les totaux
+   exploitables ;
+5. renvoie le **contrat identique** à `extract_full_table_camelot`
+   (`{"colonnes": [...], "lignes": {...}}`), colonnes/lignes normalisées.
+
+**Branchement** : `full_table_extractor.locate_and_extract_full_table` essaie
+d'abord la page « Annexe N°13 » unique (voie normale, camelot) ; si et
+seulement si elle échoue (`best is None`), il tente ce repli, filtré par le
+**même** `_sanity_ok` (≥ 2 postes comptables reconnus). Aucune page unique
+valide n'est jamais remplacée par le repli → régression structurellement
+impossible sur les documents déjà OK. `process_annexe13` en hérite (il
+appelle `locate_and_extract_full_table`).
+
+**Vérification** :
+- **BNA 2024** : ECHEC → OK. Page 28, grille 4 colonnes / 12 lignes.
+  `process_annexe13` : identité `primes_acquises` (Primes acquises = Primes
+  émises + Variation des primes non acquises) validée **sur les 4 colonnes,
+  0 écart** ; les autres règles ressortent en `donnees_manquantes` (ce
+  gabarit ne publie que 3-4 sous-tableaux, pas tous les postes canoniques —
+  inhérent à la source, pas un défaut d'extraction).
+- **BNA 2025** : inchangé — garde sa vraie page Annexe 13 multi-branches
+  (page 45, 7 colonnes / 26 lignes) ; le repli n'est jamais atteint.
+- **AMI 2021, AMI 2022** : ECHEC → OK en ricochet (même gabarit). Totaux
+  internes recoupés (Primes acquises = Primes émises + Var. PPNA ; Charges de
+  sinistres = Sinistres payés + Var. PSAP + PREC ; Frais d'exploitation =
+  Frais d'acq. + Var. frais d'acq. reportés + Frais d'admin. + Commissions
+  reçues des réassureurs) — cohérents au dinar près.
+- **AMI 2023** : reste ECHEC — pas de section « Notes sur les Comptes de
+  Résultats » exploitable dans ce document (structure différente) ; non
+  régressé, non traité.
+- **Sweep complet `scripts/audit_full_table_extraction.py --years 10
+  --last-year 2025`** : **92/114 OK (81%) → 95/114 OK (83%)**. Diff cellule
+  par cellule (avant/après) : exactement **3 passages ECHEC→OK (BNA 2024,
+  AMI 2021, AMI 2022), 0 régression** (aucun OK→ECHEC), sur toute la
+  plateforme.
+
+**Limites connues du repli (documentées, non bloquantes)** :
+- Grille **sans ventilation par branche** — le document ne la fournit pas
+  cette année-là ; les 4 colonnes sont Brut/Cessions/Net-N/Net-N-1, comme une
+  page « raccordement » (déjà couverte par le pipeline 7-KPI via
+  `annexe13_kpi_extractor`).
+- Postes présentés **uniquement en prose** (pas de petit tableau) non
+  capturés : `RTNV- Résultat technique non-vie` (le total « bénéfice de
+  18 825 105 DT » est une phrase, en plus coupé par un retour à la ligne),
+  et les rubriques dont le document ne donne que le net en prose. Conséquence
+  : la ligne « Résultat technique » est absente de la grille → règle
+  `resultat_technique` en `donnees_manquantes` (pas en écart).
+- `normalize_row_label` (`annexe13_pipeline`) ne rattache pas encore
+  « Variation de la PPNA » → « Variation des primes non acquises » ni
+  « Sinistres payés »/« PREC » à un poste canonique : ces libellés restent
+  bruts dans `non_reconnues` (jamais perdus). Amélioration possible du
+  vocabulaire de normalisation — hors périmètre de ce correctif (contrat de
+  sortie inchangé, aucun code aval touché).
+
 ## 2026-09-09 — migration du moteur d'extraction : pdfplumber → camelot
 
 Suite à un retour utilisateur montrant un script de référence (camelot,
