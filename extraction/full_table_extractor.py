@@ -162,9 +162,17 @@ def extract_full_table_camelot(pdf_path, page_num, min_data_cells=MIN_DATA_CELLS
     rows_raw = df.values.tolist()
     n_cols_total = df.shape[1]
 
+    # Seuil de détection de la première ligne de données adapté à la largeur
+    # réelle du tableau : une société mono-branche (ex. COTUNACE, uniquement
+    # "Crédit-Caution") n'a que 1-2 colonnes de valeurs — le seuil global
+    # (conçu pour les gabarits multi-branches à 4-16 colonnes) ne trouverait
+    # jamais de ligne de données sur un tableau aussi étroit. Toujours borné
+    # à au moins 1.
+    effective_min_data_cells = min(min_data_cells, max(1, n_cols_total - 1))
+
     first_data_idx = None
     for idx, row in enumerate(rows_raw):
-        if sum(1 for cell in row if _looks_numeric_cell(cell)) >= min_data_cells:
+        if sum(1 for cell in row if _looks_numeric_cell(cell)) >= effective_min_data_cells:
             first_data_idx = idx
             break
     if first_data_idx is None or first_data_idx == 0:
@@ -204,16 +212,42 @@ def extract_full_table_camelot(pdf_path, page_num, min_data_cells=MIN_DATA_CELLS
     if header_start is None:
         header_start = 0
         for idx in range(first_data_idx - 1, -1, -1):
-            if sum(1 for cell in rows_raw[idx] if _looks_numeric_cell(cell)) >= min_data_cells:
+            if sum(1 for cell in rows_raw[idx] if _looks_numeric_cell(cell)) >= effective_min_data_cells:
                 header_start = idx + 1
                 break
+
+    # Colonne dupliquée telle-quelle dans le PDF source : constaté sur
+    # COTUNACE (chaque libellé d'en-tête ET chaque valeur de la grille
+    # "Crédit-Caution" est répété mot-pour-mot deux fois côte à côte dans le
+    # flux de texte source — probablement un artefact de génération du PDF,
+    # pas une vraie 2e colonne). Détecté ici plutôt que corrigé à la main
+    # pour cette seule société : une colonne de valeur est écartée si son
+    # en-tête brut ET la totalité de ses cellules de données sont identiques,
+    # caractère pour caractère, à la colonne de valeur immédiatement
+    # précédente déjà conservée — un vrai doublon (Brut/Net réellement
+    # distincts) n'a jamais des valeurs identiques sur TOUTES les lignes.
+    value_col_idxs = list(range(label_col_end, n_cols_total))
+    kept_col_idxs = []
+    for col_idx in value_col_idxs:
+        header_raw = "".join(rows_raw[r][col_idx].strip() for r in range(header_start, first_data_idx))
+        if kept_col_idxs:
+            prev = kept_col_idxs[-1]
+            prev_header_raw = "".join(rows_raw[r][prev].strip() for r in range(header_start, first_data_idx))
+            same_header = header_raw == prev_header_raw
+            same_values = all(
+                rows_raw[r][col_idx].strip() == rows_raw[r][prev].strip()
+                for r in range(first_data_idx, len(rows_raw))
+            )
+            if same_header and same_values:
+                continue  # doublon exact du flux source — pas une colonne distincte
+        kept_col_idxs.append(col_idx)
 
     # Libellé de chaque colonne de valeur = concaténation verticale de ses
     # cellules non vides dans les lignes d'en-tête (camelot aligne déjà
     # chaque fragment replié dans la bonne colonne — pas besoin de
     # rattachement par position).
     col_names = []
-    for col_idx in range(label_col_end, n_cols_total):
+    for col_idx in kept_col_idxs:
         parts = [rows_raw[r][col_idx].strip() for r in range(header_start, first_data_idx) if rows_raw[r][col_idx].strip()]
         label = _normalizer.clean(" ".join(parts)) if parts else f"(colonne {col_idx})"
         col_names.append(label)
@@ -278,10 +312,10 @@ def extract_full_table_camelot(pdf_path, page_num, min_data_cells=MIN_DATA_CELLS
         if not label:
             continue
         row_values = {}
-        for col_idx in range(label_col_end, n_cols_total):
+        for pos, col_idx in enumerate(kept_col_idxs):
             val = _clean_cell_value(value_row[col_idx])
             if val is not None:
-                row_values[col_names[col_idx - label_col_end]] = val
+                row_values[col_names[pos]] = val
         if row_values:
             # Deux lignes de libellé identique (rare, ex. sous-totaux
             # répétés) : la seconde écraserait la première — suffixée pour
@@ -385,7 +419,13 @@ def locate_and_extract_full_table(pdf_path, is_target_page, kpi_patterns, raccor
     best = None
     for i, head in candidates:
         result = extract_full_table_camelot(pdf_path, i + 1, min_data_cells=min_data_cells)
-        if not result or len(result["colonnes"]) < 3 or len(result["lignes"]) < min_sanity_matches:
+        # Seuil de colonnes minimal abaissé à 1 (au lieu de 3) : une société
+        # mono-branche (ex. COTUNACE — uniquement "Crédit-Caution") produit
+        # une grille valide à une seule colonne de valeur. Le filtrage des
+        # faux positifs reste assuré par `_sanity_ok` ci-dessous (labels de
+        # poste comptable réellement attendus), pas par un compte de
+        # colonnes qui pénaliserait injustement les petites sociétés.
+        if not result or len(result["colonnes"]) < 1 or len(result["lignes"]) < min_sanity_matches:
             continue
         if not _sanity_ok(result["lignes"], kpi_patterns, min_sanity_matches):
             continue

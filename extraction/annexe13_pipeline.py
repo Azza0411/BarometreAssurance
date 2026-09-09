@@ -28,6 +28,26 @@ import difflib
 import re
 
 from extraction.bilan_kpi_extractor import _normalizer
+from config.company_registry import TAKAFUL_CODES
+
+# ── Sociétés hors périmètre de l'Annexe 13 (Résultat technique Non-Vie) ────
+# Par nature du modèle métier — pas des échecs d'extraction. Référentiel
+# UNIQUE (2026-09-09) : importé à la fois par le script d'audit de
+# couverture (scripts/audit_full_table_extraction.py) et par le calcul des
+# indicateurs de fiabilité (api/services/data_management.py::get_reliability_
+# stats) pour ne jamais diverger sur "qui est censé avoir une Annexe 13
+# Non-Vie". ATTIJARI et UIB vérifiés le 2026-09-09 : leur propre objet
+# social ("opérations d'assurances sur la vie... et de capitalisation")
+# confirme des sociétés Vie exclusivement — aucune page Annexe 13 Non-Vie
+# dans leurs documents CMF, à aucune année (les rares résultats obtenus
+# avant ce correctif étaient des faux positifs sur la page de raccordement
+# Vie, codes PRV1/CHV1/CHV2). Takaful (Annexes 14/15 spécifiques) réutilise
+# TAKAFUL_CODES du registre société plutôt que de le redéfinir ici.
+VIE_ONLY_CODES = {
+    "GAT_VIE", "LLOYD_VIE", "MAGHREBIA_VIE", "CARTE_VIE", "HAYETT",
+    "ATTIJARI", "UIB",
+}
+ANNEXE13_NON_VIE_EXCLUSIONS = VIE_ONLY_CODES | TAKAFUL_CODES
 
 # ── Normalisation des libellés de ligne ─────────────────────────────────────
 # Vocabulaire réglementaire commun à toutes les sociétés (poste comptable du

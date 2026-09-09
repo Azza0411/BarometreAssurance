@@ -265,13 +265,31 @@
       "statut": "echec"
     },
     "2023": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 26,
+      "n_colonnes": 1,
+      "n_lignes": 10,
+      "colonnes": [
+        "total raccordement 133 936 267 prv1 1ere colonne 51 211 119 chv1 1ere colonne 100 345 158 chv2 1ere colonne"
+      ]
     },
     "2022": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 28,
+      "n_colonnes": 1,
+      "n_lignes": 11,
+      "colonnes": [
+        "total raccordement 112 230 707 prv1 1ere colonne 30 611 114 chv1 1ere colonne 92 653 634 chv2 1ere colonne"
+      ]
     },
     "2021": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 27,
+      "n_colonnes": 1,
+      "n_lignes": 11,
+      "colonnes": [
+        "total raccordement 133 089 821 prv1 1 colonne 29 161 855 chv1 1 colonne 111 705 061 chv2 1 colonne"
+      ]
     },
     "2020": {
       "statut": "echec"
@@ -653,14 +671,11 @@
     },
     "2023": {
       "statut": "ok",
-      "page": 4,
-      "n_colonnes": 4,
-      "n_lignes": 4,
+      "page": 39,
+      "n_colonnes": 1,
+      "n_lignes": 23,
       "colonnes": [
-        "2023",
-        "retrocessions 2023",
-        "2023 (2)",
-        "2022"
+        "raccordement"
       ]
     },
     "2022": {
@@ -994,10 +1009,22 @@
   },
   "COTUNACE": {
     "2025": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 67,
+      "n_colonnes": 1,
+      "n_lignes": 18,
+      "colonnes": [
+        "credit-caution"
+      ]
     },
     "2024": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 67,
+      "n_colonnes": 1,
+      "n_lignes": 26,
+      "colonnes": [
+        "credit-caution"
+      ]
     },
     "2023": {
       "statut": "echec"
@@ -1009,13 +1036,25 @@
       "statut": "echec"
     },
     "2020": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 64,
+      "n_colonnes": 1,
+      "n_lignes": 26,
+      "colonnes": [
+        "credit - caution"
+      ]
     },
     "2019": {
       "statut": "echec"
     },
     "2018": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 62,
+      "n_colonnes": 1,
+      "n_lignes": 18,
+      "colonnes": [
+        "credit-caution"
+      ]
     },
     "2017": {
       "statut": "echec"
@@ -1357,10 +1396,22 @@
       ]
     },
     "2022": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 36,
+      "n_colonnes": 1,
+      "n_lignes": 22,
+      "colonnes": [
+        "total raccordement"
+      ]
     },
     "2021": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 35,
+      "n_colonnes": 1,
+      "n_lignes": 24,
+      "colonnes": [
+        "total raccordement"
+      ]
     },
     "2020": {
       "statut": "ok",
