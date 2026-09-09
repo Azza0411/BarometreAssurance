@@ -58,14 +58,18 @@ def _logo_path(code):
     return path if os.path.isfile(path) else None
 
 
-def _excel_col_width_to_px(width):
-    """Conversion approximative largeur de colonne Excel (unités de
-    caractère) → pixels — formule standard pour la police par défaut
-    (Calibri 11) qu'utilise Excel lui-même. Sert à contraindre le logo à ne
-    jamais dépasser la largeur réelle de ses colonnes d'ancrage."""
+def _excel_col_width_to_px(width, mdw=7):
+    """Conversion largeur de colonne Excel (unités de caractère) → pixels —
+    formule officielle documentée par Microsoft (pas une simple
+    approximation linéaire) : Truncate(((256*width + Truncate(128/MDW))
+    /256) * MDW), MDW = largeur du chiffre le plus large de la police par
+    défaut (7px pour Calibri 11). Sert à centrer précisément le logo sur la
+    largeur réelle du tableau (retour utilisateur : le titre du bloc doit
+    être exactement en-dessous du logo, ce qui suppose que les deux soient
+    calculés sur la MÊME largeur réelle, pas une valeur approchée)."""
     if not width:
         return 64
-    return int(round(width * 7 + 5))
+    return int(((256 * width + int(128 / mdw)) // 256) * mdw)
 
 
 def _table_width_px(ws, start_col, end_col):
@@ -395,10 +399,13 @@ def _sorted_grid_rows(lignes):
 # Charte visuelle de ce bloc spécifiquement (grille complète Annexe 13) —
 # police Arial alignée sur le script de référence de l'utilisatrice
 # (FS_Market_Intelligence/B.py::export_to_excel). Couleur d'en-tête : bleu
-# → gris → jaune foncé → sombre (couleur EY) → ce gris moins foncé (retours
-# utilisateur successifs). Fond de ligne uni (blanc), pas de zébrage.
-_REF_HEADER = "6B7280"
+# → gris → jaune foncé → sombre (couleur EY) → gris moyen → ce gris,
+# légèrement plus foncé (retours utilisateur successifs). Lignes de données
+# zébrées (alternance blanc/gris très clair), comme le tableau de référence
+# "Classement des compagnies".
+_REF_HEADER = "5B6472"
 _REF_HEADER_TEXT = "FFFFFF"
+_REF_ZEBRA = "F3F4F6"
 
 
 def _write_full_grid_block(ws, row, annee, grid):
@@ -408,7 +415,7 @@ def _write_full_grid_block(ws, row, annee, grid):
     subtitle_cell = ws.cell(row=row, column=1, value=f"{annee} — tableau complet ({len(grid['lignes'])} lignes × {len(cols)} colonnes)")
     subtitle_cell.font = Font(italic=True, size=10, color=DARK, name="Calibri")
     subtitle_cell.alignment = Alignment(horizontal="center", vertical="center")
-    row += 1
+    row += 2  # ligne vide avant le début du tableau (retour utilisateur : espacement)
     # Libellés de ligne ET d'en-tête en MAJUSCULES — la casse du référentiel
     # canonique (CANONICAL_ROWS) sert au rattachement/à la validation, pas à
     # l'affichage ; convention réelle des tableaux source (et du dossier de
@@ -421,11 +428,14 @@ def _write_full_grid_block(ws, row, annee, grid):
         cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = _thin_border()
     row += 1
-    for label, values in _sorted_grid_rows(grid["lignes"]):
+    for i, (label, values) in enumerate(_sorted_grid_rows(grid["lignes"])):
+        fill = PatternFill(start_color=_REF_ZEBRA, end_color=_REF_ZEBRA, fill_type="solid") if i % 2 == 1 else None
         cell = ws.cell(row=row, column=1, value=(label or "").upper())
         cell.border = _thin_border()
         cell.font = Font(name="Arial", size=10, color=DARK)
         cell.alignment = Alignment(horizontal="left", vertical="center")
+        if fill:
+            cell.fill = fill
         for col_idx, col in enumerate(cols, start=2):
             val = values.get(col)
             c = ws.cell(row=row, column=col_idx, value=val)
@@ -433,6 +443,8 @@ def _write_full_grid_block(ws, row, annee, grid):
             c.border = _thin_border()
             c.font = Font(name="Arial", size=10, color=DARK)
             c.alignment = Alignment(horizontal="center", vertical="center")
+            if fill:
+                c.fill = fill
         row += 1
     row += 2
     return row, len(headers)
