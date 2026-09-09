@@ -208,9 +208,11 @@ TABLEAU_GROUPS = [
     ("annexe13", "Annexe 13 — Résultat technique Non-Vie",
      ["Annexe13", "Annexe 13 - Resultat technique Non-Vie", "Annexe 12/13"]),
     ("bilan", "Bilan (Actif / Passif)", ["Bilan"]),
-    ("resultat", "État de résultat", ["Etat de resultat (technique / global)"]),
-    ("calcul", "Ratios calculés (interne)", ["Calcul interne"]),
-    ("presentation", "Présentation de la société", ["Presentation de la societe"]),
+    # "État de résultat" / "Ratios calculés (interne)" / "Présentation de la
+    # société" retirés du sélecteur (2026-09-09, retour utilisateur direct)
+    # — restent des libellés `tableau` réels dans kpi_values (un export
+    # "tous les tableaux" sans filtre les inclut donc toujours), seulement
+    # plus proposés comme filtre explicite.
 ]
 _TABLEAU_GROUP_TO_RAW = {key: raws for key, _label, raws in TABLEAU_GROUPS}
 

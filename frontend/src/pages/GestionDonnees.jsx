@@ -382,9 +382,15 @@ function ExportDrawer({ open, prefill, onClose }) {
   // sinon une société qui n'a que l'Annexe 12 serait exclue dès qu'on
   // ajoute l'Annexe 13 à la sélection).
   const societesDisabled = useMemo(() => {
-    if (!opts || tableaux.size === 0) return new Set();
+    if (!opts?.societes_par_tableau || tableaux.size === 0) return new Set();
     const eligible = new Set();
-    tableaux.forEach(t => (opts.societes_par_tableau?.[t] || []).forEach(c => eligible.add(c)));
+    tableaux.forEach(t => (opts.societes_par_tableau[t] || []).forEach(c => eligible.add(c)));
+    // Filet de sécurité : si `eligible` finit vide alors qu'un tableau EST
+    // sélectionné, c'est que la donnée n'est structurellement pas dispo côté
+    // client (jamais le cas réel — chaque groupe a au moins une société) —
+    // ne désactive personne plutôt que de bloquer tout le sélecteur (repli
+    // "fail open", pas "fail closed").
+    if (eligible.size === 0) return new Set();
     return new Set(opts.societes.map(s => s.code).filter(c => !eligible.has(c)));
   }, [opts, tableaux]);
 
