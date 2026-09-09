@@ -1,5 +1,49 @@
 # Cas particuliers — extraction "grille complète" (extraction/full_table_extractor.py)
 
+## 2026-09-10 — 5ᵉ catégorie de défaut : signe négatif perdu (TUNIS_RE)
+
+Trouvé en vérifiant TUNIS_RE 2020 valeur par valeur contre le PDF (audit
+demandé par l'utilisatrice sur un export Excel réel, pas seulement les
+noms). **Le plus dangereux des défauts trouvés jusqu'ici** : la valeur
+extraite est un nombre plausible, juste du mauvais signe — rien ne le
+trahit sans recalculer une identité comptable.
+
+Deux variantes du même défaut source, sur la même page :
+1. **Signe détaché dans une cellule camelot séparée** : "Variation des
+   PPNA" colonne "Vie" — camelot renvoie `"-"` seul dans une colonne et
+   `"1 954 323"` dans la colonne suivante, au lieu de fusionner les deux
+   comme il le fait pour les autres colonnes de la même ligne. Fix :
+   détection par COLONNE (jamais par cellule isolée, pour ne pas confondre
+   avec un vrai "néant") — une colonne dont TOUTES les valeurs sur la plage
+   de données sont soit vides soit exactement "-" est une colonne
+   "fantôme" porte-signe, fusionnée dans la colonne suivante.
+2. **Signe détaché par un retour à la ligne DANS la même cellule** :
+   `"-    \n71 142 408"` — `_CELL_NUMERIC_RE` exigeait le chiffre
+   immédiatement après le signe (`-?\d`), sans espace/saut de ligne
+   toléré entre les deux ; ratait donc silencieusement la cellule entière
+   (`_looks_numeric_cell` renvoyait `False`) plutôt que juste le signe.
+   Fix : `\s*` ajouté entre le signe optionnel et le premier chiffre.
+
+**Résultat vérifié** : TUNIS_RE 2020 "Solde de souscription" — les 4
+colonnes qui manquaient entièrement (Incendie, Total non marines, Total,
+Total général) sont réapparues avec le bon signe, correspondant exactement
+au PDF. Sweep de régression sur STAR/BIAT/GAT/CARTE/COMAR/CTAMA : 0 écart,
+0 colonne non étiquetée, aucun changement — ces deux fixes n'affectent que
+les documents qui avaient réellement ce défaut de rendu.
+
+**Note méthodologique découverte au passage** : plusieurs sociétés (LLOYD_
+TUNISIEN, TUNIS_RE) présentent "Charges de prestations" en valeur NON
+signée (positive) dans leur PDF, alors que `VALIDATION_RULES` (`annexe13_
+pipeline.py`) suppose que toutes les charges sont déjà négatives (simple
+somme). Ce n'est PAS un bug d'extraction — les valeurs extraites
+correspondent exactement au PDF — mais ça fait remonter des "écarts" de
+validation qui sont en réalité des faux positifs de l'outil de diagnostic,
+pas de vraies erreurs de données. Piste pour plus tard : détecter la
+convention de signe par document (ex. si "Charges de prestations" a plus
+de valeurs positives que négatives sur l'ensemble du tableau, soustraire
+au lieu d'additionner dans `validate_table`) plutôt que de supposer une
+convention unique pour toutes les sociétés.
+
 ## 2026-09-09 — 4ᵉ catégorie de défaut : titre "lettres espacées" invisible à la détection de page
 
 Trouvé en revérifiant l'année 2020 sur demande utilisateur. **CARTE 2020**

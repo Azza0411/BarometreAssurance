@@ -155,8 +155,11 @@ MIN_DATA_CELLS = 4  # une vraie ligne de donnees a au moins 4 cellules numerique
 # Une cellule camelot entière (pas un mot-token pdfplumber) : "126 336 369",
 # "(4 086 562)" (négatif comptable), "0", "-" (case vide/néant). Les espaces
 # internes sont des séparateurs de milliers, jamais un espace de mise en
-# page (camelot a déjà isolé chaque valeur dans sa propre cellule).
-_CELL_NUMERIC_RE = re.compile(r"^\(?-?\d[\d\s.,]*\)?$")
+# page (camelot a déjà isolé chaque valeur dans sa propre cellule). Le signe
+# "-" peut être visuellement détaché des chiffres par un espace ET/OU un
+# retour à la ligne dans la MÊME cellule (constaté sur TUNIS_RE : "-    \n71
+# 142 408") — `\s*` entre le signe et le premier chiffre couvre les deux.
+_CELL_NUMERIC_RE = re.compile(r"^\(?-?\s*\d[\d\s.,]*\)?$")
 
 
 def _looks_numeric_cell(text):
@@ -471,6 +474,32 @@ def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_C
     if not numeric_col_idxs:
         return None
     label_col_end = min(numeric_col_idxs)
+
+    # Signe négatif détaché dans sa propre colonne — constaté sur TUNIS_RE :
+    # certaines valeurs négatives sont rendues "-" et le nombre comme DEUX
+    # cellules camelot adjacentes ("-" seul dans une colonne, le nombre non
+    # signé dans la suivante) plutôt que fusionnées en une seule cellule
+    # ("- 242 173") comme la plupart des autres négatifs de la même page —
+    # perd silencieusement le signe (`_clean_cell_value` traite un "-" seul
+    # comme "néant", jamais comme la marque négative de sa voisine). Détecté
+    # par colonne plutôt que par cellule pour ne jamais confondre avec un
+    # VRAI "néant" : une colonne "phantom" qui ne contient JAMAIS un vrai
+    # nombre à elle seule sur TOUTE la plage de données, seulement "-" ou
+    # vide, est fusionnée dans la colonne suivante (jamais l'inverse — la
+    # convention observée est "signe avant le nombre").
+    value_range = range(label_col_end, n_cols_total - 1)
+    phantom_dash_cols = [
+        j for j in value_range
+        if all((rows_raw[r][j] or "").strip() in ("", "-", "–", "—") for r in range(first_data_idx, len(rows_raw)))
+        and any((rows_raw[r][j] or "").strip() in ("-", "–", "—") for r in range(first_data_idx, len(rows_raw)))
+    ]
+    for j in phantom_dash_cols:
+        for r in range(first_data_idx, len(rows_raw)):
+            if (rows_raw[r][j] or "").strip() in ("-", "–", "—"):
+                neighbor = (rows_raw[r][j + 1] or "").strip()
+                if neighbor and _looks_numeric_cell(neighbor) and not neighbor.startswith(("-", "(")):
+                    rows_raw[r][j + 1] = f"-{neighbor}"
+                rows_raw[r][j] = ""
 
     # Ancre "en dinar" (sans le "s" final — variantes déjà rencontrées
     # "chiffres arrondis en dinars", "unité en dinars", "(Exprimé en dinar
