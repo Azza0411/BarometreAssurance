@@ -56,6 +56,16 @@ def _logo_path(code):
     return path if os.path.isfile(path) else None
 
 
+def _excel_col_width_to_px(width):
+    """Conversion approximative largeur de colonne Excel (unités de
+    caractère) → pixels — formule standard pour la police par défaut
+    (Calibri 11) qu'utilise Excel lui-même. Sert à contraindre le logo à ne
+    jamais dépasser la largeur réelle de sa colonne d'ancrage."""
+    if not width:
+        return 64
+    return int(round(width * 7 + 5))
+
+
 def _logo_dimensions(logo_path, target_height=90, max_width=190):
     """Taille (largeur, hauteur) en pixels pour l'export Excel — hauteur
     cible, largeur déduite du ratio RÉEL de l'image (les logos ne sont pas
@@ -212,24 +222,22 @@ def _autosize_columns(ws, skip_rows=(1, 2), min_width=10, max_width=32, label_ma
     suivre une largeur à chaque site d'écriture séparé (plusieurs blocs
     différents écrivent dans la même feuille).
 
-    Exclusions volontaires, pour ne pas gonfler la colonne A à cause d'une
+    Exclusions volontaires, pour ne pas gonfler une colonne à cause d'une
     ligne qui n'est de toute façon jamais coupée (déborde librement dans des
     cellules vides voisines, sans bordure ni contenu pour l'arrêter) :
     - `skip_rows` : le bandeau de titre (fusionné, largeur non pertinente).
-    - toute ligne où la colonne A porte un texte seule, sans valeur en
-      colonne B (titres de bloc/sous-titres, ex. "Annexe 13 — Résultat
-      technique...", "2024 — tableau complet (...)") — une vraie ligne de
-      donnée ou d'en-tête a toujours au moins une valeur en colonne B."""
+    - toute ligne "titre" — UNE SEULE cellule remplie sur toute la ligne
+      (titres de bloc/sous-titres, ex. "Annexe 13 — Résultat technique...",
+      "2024 — tableau complet (...)") — une vraie ligne de donnée ou
+      d'en-tête a toujours plusieurs cellules remplies (libellé + valeurs)."""
     widths = {}
     for row in ws.iter_rows():
         if row[0].row in skip_rows:
             continue
-        has_col_b = len(row) > 1 and row[1].value is not None
-        for cell in row:
-            if cell.value is None:
-                continue
-            if cell.column == 1 and not has_col_b:
-                continue
+        populated = [c for c in row if c.value is not None]
+        if len(populated) <= 1:
+            continue
+        for cell in populated:
             if isinstance(cell.value, (int, float)):
                 text = f"{cell.value:,.0f}"
             else:
@@ -579,18 +587,6 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                   2] if include_annexe13_full else [])
             )
             _write_sheet_title(ws, n_cols, f"{soc['nom'] or code} ({code})", "FS Market Intelligence — Export de données")
-            # Logo de la société (déjà disponible dans le projet, réutilisé
-            # tel quel — voir _LOGO_FILES) — ancré dans le coin supérieur
-            # droit du bandeau de titre, où le texte (aligné à gauche) ne
-            # l'atteint jamais, plutôt qu'au-dessus du nom de la société.
-            logo_path = _logo_path(code)
-            if logo_path:
-                try:
-                    logo_img = XLImage(logo_path)
-                    logo_img.width, logo_img.height = _logo_dimensions(logo_path)
-                    ws.add_image(logo_img, f"{get_column_letter(n_cols)}1")
-                except Exception:
-                    pass  # image illisible/corrompue : ne doit jamais faire échouer l'export
 
             row = 4
             for display_tableau in sorted(soc["blocs"].keys()):
@@ -638,8 +634,8 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                 narrow_annexe13 = soc["blocs"].get(_ANNEXE13_DISPLAY, {})
                 annees_a_rendre = sorted(grids.keys())
                 if annees_a_rendre:
-                    ws.cell(row=row, column=1, value=f"{_ANNEXE13_DISPLAY} (tableau complet, toutes branches)")
-                    ws.cell(row=row, column=1).font = Font(bold=True, size=12, color=DARK, name="Calibri")
+                    ws.cell(row=row, column=2, value=_ANNEXE13_DISPLAY)
+                    ws.cell(row=row, column=2).font = Font(bold=True, size=12, color=DARK, name="Calibri")
                     row += 1
                     for annee in annees_a_rendre:
                         grid = grids[annee]
@@ -650,6 +646,22 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                         n_cols = max(n_cols, used_cols)
 
             _autosize_columns(ws)
+            # Logo de la société (déjà disponible dans le projet, réutilisé
+            # tel quel — voir _LOGO_FILES) — ajouté APRÈS l'auto-ajustement
+            # des largeurs (ci-dessus), pour connaître la largeur réelle de
+            # la dernière colonne du tableau et n'y dépasser JAMAIS (retour
+            # utilisateur : "que le logo ne dépasse pas le dernier trait de
+            # colonne du tableau, pour plus de structuration") — ancré à
+            # cette même colonne, dimensionné pour tenir dedans.
+            logo_path = _logo_path(code)
+            if logo_path:
+                try:
+                    last_col_px = _excel_col_width_to_px(ws.column_dimensions[get_column_letter(n_cols)].width)
+                    logo_img = XLImage(logo_path)
+                    logo_img.width, logo_img.height = _logo_dimensions(logo_path, max_width=max(last_col_px - 4, 30))
+                    ws.add_image(logo_img, f"{get_column_letter(n_cols)}1")
+                except Exception:
+                    pass  # image illisible/corrompue : ne doit jamais faire échouer l'export
             # Pas de freeze_panes : Excel dessine une ligne de démarcation
             # (souvent perçue comme un "trait" résiduel) à la limite d'un
             # volet figé, même une fois la sélection multi-volets corrigée —
