@@ -704,6 +704,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
         annexe13_docs = []
         annexe13_cellules_by_doc = {}
         if include_annexe13_full:
+            from extraction.annexe13_pipeline import ANNEXE13_NON_VIE_EXCLUSIONS
             q2 = """
                 SELECT d.id, c.code, c.nom_entreprise, d.annee, d.nom_pdf
                 FROM documents d
@@ -712,6 +713,16 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                 WHERE s.nom = 'CMF'
             """
             p2 = []
+            # Sociétés structurellement hors périmètre Non-Vie (Vie
+            # exclusivement/Takaful) toujours exclues ici — cohérent avec
+            # tableau_pipeline_service._cmf_documents (même exclusion côté
+            # stockage) : tenter une extraction live pour elles ne peut que
+            # perdre du temps (page absente) ou, pire, retomber sur la même
+            # page de raccordement Vie mal titrée qui a pollué la base une
+            # première fois (voir CAS_PARTICULIERS_FULL_TABLE.md, ATTIJARI).
+            if ANNEXE13_NON_VIE_EXCLUSIONS:
+                q2 += f" AND c.code NOT IN ({','.join(['%s'] * len(ANNEXE13_NON_VIE_EXCLUSIONS))})"
+                p2.extend(sorted(ANNEXE13_NON_VIE_EXCLUSIONS))
             if codes:
                 placeholders = ",".join(["%s"] * len(codes))
                 q2 += f" AND c.code IN ({placeholders})"
@@ -748,16 +759,34 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
         bloc = soc["blocs"].setdefault(display, {})
         bloc.setdefault(kpi, {})[annee] = valeur
 
+    # Repli d'extraction LIVE (camelot, plusieurs secondes par document) —
+    # borné : sans plafond, une sélection large (ex. "toutes sociétés,
+    # toutes années") pouvait retenter en direct chaque document jamais
+    # validé avec succès (~110 sur 223, voir statut-validation-annexe13),
+    # rendant une requête HTTP synchrone unique de dizaines de minutes —
+    # constaté en usage réel (export resté "en cours" sans jamais aboutir).
+    # Le plafond couvre largement le cas d'usage réel du repli (quelques
+    # documents fraîchement collectés, pas encore repassés par la
+    # validation de fond) sans faire dérailler un export large vers un
+    # balayage complet du portefeuille. Au-delà, le document garde
+    # simplement son repli narrow existant (`_write_narrow_fallback_block`)
+    # plutôt qu'une grille complète — jamais une erreur, juste moins riche
+    # tant que la validation de fond n'a pas tourné dessus.
+    MAX_LIVE_EXTRACTIONS = 15
+    live_extractions_done = 0
     for doc_id, code, nom_entreprise, annee, nom_pdf in annexe13_docs:
         soc = par_societe.setdefault(code, {"nom": nom_entreprise, "blocs": {}, "annexe13_grids": {}})
         cached = annexe13_cellules_by_doc.get(doc_id)
         if cached is not None:
             soc["annexe13_grids"][annee] = cached
             continue
+        if live_extractions_done >= MAX_LIVE_EXTRACTIONS:
+            continue
         pdf_path = local_pdf_path("CMF", code, nom_pdf)
         if not pdf_path or not os.path.isfile(pdf_path):
             continue
         soc["annexe13_grids"][annee] = _extract_annexe13_full_grid(pdf_path)
+        live_extractions_done += 1
 
     wb = Workbook()
     wb.remove(wb.active)  # une vraie feuille par société ci-dessous ; pas de feuille "Sheet" vide
