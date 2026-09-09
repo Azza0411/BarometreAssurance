@@ -399,7 +399,7 @@ def _write_full_grid_block(ws, row, annee, grid):
     for label, values in _sorted_grid_rows(grid["lignes"]):
         cell = ws.cell(row=row, column=1, value=(label or "").upper())
         cell.border = _thin_border()
-        cell.font = Font(name="Arial", size=10, color=DARK, bold=True)
+        cell.font = Font(name="Arial", size=10, color=DARK)
         cell.alignment = Alignment(horizontal="left", vertical="center")
         for col_idx, col in enumerate(cols, start=2):
             val = values.get(col)
