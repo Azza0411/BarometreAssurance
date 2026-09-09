@@ -15,6 +15,8 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.views import Selection
 from openpyxl.drawing.image import Image as XLImage
+from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
+from openpyxl.drawing.xdr import XDRPositiveSize2D
 import io
 
 from database.repository import get_connection, list_all_documents, get_tableau_cellules
@@ -75,6 +77,28 @@ def _table_width_px(ws, start_col, end_col):
         _excel_col_width_to_px(ws.column_dimensions[get_column_letter(c)].width)
         for c in range(max(start_col, 1), end_col + 1)
     )
+
+
+def _centered_anchor(ws, row_idx, n_cols, image_width_px, image_height_px):
+    """Ancre précise (colonne + décalage en pixels) pour centrer
+    horizontalement une image sur la largeur du tableau (colonnes 1..n_cols),
+    à la ligne `row_idx` (1-indexée) — un simple ancrage sur une colonne ne
+    suffit pas pour un centrage exact, il faut aussi le décalage EN PIXELS
+    à l'intérieur de cette colonne."""
+    total_width = _table_width_px(ws, 1, n_cols)
+    target_left = max((total_width - image_width_px) / 2, 0)
+    cum = 0
+    col, col_off_px = n_cols, 0
+    for c in range(1, n_cols + 1):
+        col_w = _excel_col_width_to_px(ws.column_dimensions[get_column_letter(c)].width)
+        if cum + col_w > target_left:
+            col, col_off_px = c, int(target_left - cum)
+            break
+        cum += col_w
+    EMU_PER_PX = 9525
+    marker = AnchorMarker(col=col - 1, colOff=col_off_px * EMU_PER_PX, row=row_idx - 1, rowOff=0)
+    ext = XDRPositiveSize2D(cx=int(image_width_px * EMU_PER_PX), cy=int(image_height_px * EMU_PER_PX))
+    return OneCellAnchor(_from=marker, ext=ext)
 
 
 def _logo_dimensions(logo_path, target_height=48, max_width=110):
@@ -660,21 +684,19 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             # Logo de la société (déjà disponible dans le projet, réutilisé
             # tel quel — voir _LOGO_FILES) — ajouté APRÈS l'auto-ajustement
             # des largeurs (ci-dessus), pour connaître la largeur réelle du
-            # tableau. Ancré 2 colonnes avant la dernière (pas la dernière
-            # seule, trop étroite pour un logo bien visible — retour
-            # utilisateur suivant : "agrandissez le logo") : le budget de
-            # largeur disponible couvre les 3 dernières colonnes, tout en
-            # restant borné par le bord droit réel du tableau (retour
-            # précédent : "que le logo ne dépasse pas le dernier trait de
-            # colonne, pour plus de structuration").
+            # tableau (nécessaire pour le centrage). Placé sur la ligne 3, le
+            # blanc entre le bandeau société (lignes 1-2) et le titre du
+            # premier bloc (ligne 4) — retour utilisateur : "entre les deux
+            # titres" — et centré horizontalement sur la largeur du tableau.
             logo_path = _logo_path(code)
             if logo_path:
                 try:
-                    anchor_col = max(n_cols - 2, 1)
-                    budget_px = _table_width_px(ws, anchor_col, n_cols)
+                    logo_w, logo_h = _logo_dimensions(logo_path)
+                    ws.row_dimensions[3].height = max(logo_h + 6, 20)
                     logo_img = XLImage(logo_path)
-                    logo_img.width, logo_img.height = _logo_dimensions(logo_path, max_width=max(budget_px - 4, 30))
-                    ws.add_image(logo_img, f"{get_column_letter(anchor_col)}1")
+                    logo_img.width, logo_img.height = logo_w, logo_h
+                    logo_img.anchor = _centered_anchor(ws, 3, n_cols, logo_w, logo_h)
+                    ws.add_image(logo_img)
                 except Exception:
                     pass  # image illisible/corrompue : ne doit jamais faire échouer l'export
             # Pas de freeze_panes : Excel dessine une ligne de démarcation
