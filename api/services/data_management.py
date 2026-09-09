@@ -359,12 +359,13 @@ def _sorted_grid_rows(lignes):
 # Charte visuelle de ce bloc spécifiquement (grille complète Annexe 13) —
 # police Arial alignée sur le script de référence de l'utilisatrice
 # (FS_Market_Intelligence/B.py::export_to_excel). Couleur d'en-tête : bleu
-# → gris → jaune foncé (retours utilisateur successifs) ; texte foncé plutôt
-# que blanc sur ce ton, plus lisible sur un jaune (même logique que le jaune
-# EY, toujours associé à du texte sombre dans la charte du reste du site).
-_REF_HEADER = "B8860B"
-_REF_HEADER_TEXT = "1F2937"
-_REF_LIGHT = "FBF3DC"
+# → gris → jaune foncé → ce bandeau sombre (retours utilisateur successifs) —
+# demande explicite : "le même design que celui-là [tableau Classement des
+# compagnies, fond sombre EY] mais au lieu du jaune on met du blanc pour le
+# texte". Fond de ligne uni (blanc), pas de zébrage, comme sur ce même
+# tableau de référence.
+_REF_HEADER = DARK
+_REF_HEADER_TEXT = "FFFFFF"
 
 
 def _write_full_grid_block(ws, row, annee, grid):
@@ -384,14 +385,11 @@ def _write_full_grid_block(ws, row, annee, grid):
         cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = _thin_border()
     row += 1
-    for i, (label, values) in enumerate(_sorted_grid_rows(grid["lignes"])):
-        fill = PatternFill(start_color=_REF_LIGHT, end_color=_REF_LIGHT, fill_type="solid") if i % 2 == 0 else None
+    for label, values in _sorted_grid_rows(grid["lignes"]):
         cell = ws.cell(row=row, column=1, value=(label or "").upper())
         cell.border = _thin_border()
         cell.font = Font(name="Arial", size=10, color=DARK, bold=True)
         cell.alignment = Alignment(horizontal="left", vertical="center")
-        if fill:
-            cell.fill = fill
         for col_idx, col in enumerate(cols, start=2):
             val = values.get(col)
             c = ws.cell(row=row, column=col_idx, value=val)
@@ -399,8 +397,6 @@ def _write_full_grid_block(ws, row, annee, grid):
             c.border = _thin_border()
             c.font = Font(name="Arial", size=10, color=DARK)
             c.alignment = Alignment(horizontal="center", vertical="center")
-            if fill:
-                c.fill = fill
         row += 1
     row += 2
     return row, len(headers)
