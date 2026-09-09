@@ -358,12 +358,13 @@ def _sorted_grid_rows(lignes):
 
 # Charte visuelle de ce bloc spécifiquement (grille complète Annexe 13) —
 # police Arial alignée sur le script de référence de l'utilisatrice
-# (FS_Market_Intelligence/B.py::export_to_excel), couleur GRISE (retour
-# utilisateur : "au lieu du bleu on opte pour le gris") plutôt que la charte
-# EY sombre/jaune utilisée pour le bandeau de la feuille et les autres
-# blocs KPI.
-_REF_GREY = "6B7280"
-_REF_LIGHT = "F3F4F6"
+# (FS_Market_Intelligence/B.py::export_to_excel). Couleur d'en-tête : bleu
+# → gris → jaune foncé (retours utilisateur successifs) ; texte foncé plutôt
+# que blanc sur ce ton, plus lisible sur un jaune (même logique que le jaune
+# EY, toujours associé à du texte sombre dans la charte du reste du site).
+_REF_HEADER = "B8860B"
+_REF_HEADER_TEXT = "1F2937"
+_REF_LIGHT = "FBF3DC"
 
 
 def _write_full_grid_block(ws, row, annee, grid):
@@ -378,8 +379,8 @@ def _write_full_grid_block(ws, row, annee, grid):
     headers = ["LIBELLÉ"] + [c.upper() for c in cols]
     for col_idx, header in enumerate(headers, start=1):
         cell = ws.cell(row=row, column=col_idx, value=header)
-        cell.fill = PatternFill(start_color=_REF_GREY, end_color=_REF_GREY, fill_type="solid")
-        cell.font = Font(color="FFFFFF", bold=True, name="Arial", size=10)
+        cell.fill = PatternFill(start_color=_REF_HEADER, end_color=_REF_HEADER, fill_type="solid")
+        cell.font = Font(color=_REF_HEADER_TEXT, bold=True, name="Arial", size=10)
         cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = _thin_border()
     row += 1
@@ -634,8 +635,10 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                 narrow_annexe13 = soc["blocs"].get(_ANNEXE13_DISPLAY, {})
                 annees_a_rendre = sorted(grids.keys())
                 if annees_a_rendre:
-                    ws.cell(row=row, column=2, value=_ANNEXE13_DISPLAY)
-                    ws.cell(row=row, column=2).font = Font(bold=True, size=12, color=DARK, name="Calibri")
+                    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=max(n_cols, 2))
+                    title_cell = ws.cell(row=row, column=1, value=_ANNEXE13_DISPLAY)
+                    title_cell.font = Font(bold=True, size=12, color=DARK, name="Calibri")
+                    title_cell.alignment = Alignment(horizontal="center", vertical="center")
                     row += 1
                     for annee in annees_a_rendre:
                         grid = grids[annee]
