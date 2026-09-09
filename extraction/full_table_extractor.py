@@ -46,7 +46,7 @@ structure différente et ne sont pas couverts par ce module pour l'instant."""
 
 import re
 
-from extraction.bilan_kpi_extractor import _normalizer, ROW_CODE_PREFIX_RE
+from extraction.bilan_kpi_extractor import _normalizer, ROW_CODE_PREFIX_RE, _parse_number
 from extraction.annexe13_kpi_extractor import (
     NON_VIE_RE as _A13_NON_VIE_RE, VIE_RE as _A13_VIE_RE,
 )
@@ -129,12 +129,15 @@ def _clean_cell_value(text):
     # format français rendus par certains PDF) : tous des séparateurs de
     # milliers, jamais un espace de mise en page (camelot isole déjà chaque
     # valeur dans sa propre cellule).
-    core = re.sub(r"\s+", "", text.strip("()"), flags=re.UNICODE).replace(",", ".")
-    try:
-        value = float(core)
-    except ValueError:
-        return None
-    return -value if negative else value
+    # Le choix virgule/point (decimale vs milliers) est delegue a
+    # `_parse_number` (bilan_kpi_extractor) -- meme convention que l'extraction
+    # 7-KPI sur ces memes documents : gere notamment le format americain
+    # "13,531,056.575" (virgule = millier, point = decimale -- constate sur
+    # COTUNACE 2015/2016/2021) que l'ancien `.replace(",", ".")` cassait (il
+    # produisait "13.531.056.575", rejete par float -> toute la grille
+    # ressortait vide).
+    core = re.sub(r"\s+", "", text.strip("()"), flags=re.UNICODE)
+    return _parse_number(core, negative)
 
 
 def _find_table_camelot(pdf_path, page_num):
@@ -159,9 +162,23 @@ def extract_full_table_camelot(pdf_path, page_num, min_data_cells=MIN_DATA_CELLS
     df = _find_table_camelot(pdf_path, page_num)
     if df is None or df.empty:
         return None
-    rows_raw = df.values.tolist()
-    n_cols_total = df.shape[1]
+    return reconstruct_grid_from_rows(df.values.tolist(), df.shape[1], min_data_cells)
 
+
+def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_CELLS):
+    """Reconstruit la grille {"colonnes": [...], "lignes": {...}} à partir
+    d'une matrice de cellules brutes `rows_raw` (liste de listes de chaînes),
+    déjà découpée en `n_cols_total` colonnes. Sortie identique au contrat de
+    `extract_full_table_camelot`.
+
+    Extrait de `extract_full_table_camelot` (2026-09-09) pour être partagé
+    avec la voie OCR (`extraction/scanned_table_extractor.py`) : celle-ci
+    reconstruit la même matrice cellulaire à partir des boîtes de mots
+    Tesseract d'une page scannée, puis réutilise exactement cette logique de
+    reconstruction (repérage de la 1re ligne de données, zone libellé vs
+    colonnes de valeurs, en-têtes repliés, libellés de ligne sandwichés…)
+    plutôt que de la réécrire — le gabarit du tableau est le même, seule la
+    SOURCE des cellules change (camelot/texte natif vs OCR d'image)."""
     # Seuil de détection de la première ligne de données adapté à la largeur
     # réelle du tableau : une société mono-branche (ex. COTUNACE, uniquement
     # "Crédit-Caution") n'a que 1-2 colonnes de valeurs — le seuil global
@@ -448,10 +465,7 @@ def locate_and_extract_full_table(pdf_path, is_target_page, kpi_patterns, raccor
     try:
         notes_page, notes_grid = assemble_non_vie_grid_from_notes(pdf_path, max_pages=max_pages)
     except Exception:
-        # Ce chemin n'est atteint que sur des documents déjà en échec par la
-        # voie normale : un plantage du repli ne doit pas être pire qu'un
-        # échec franc.
-        return None, None
+        notes_page, notes_grid = None, None
     if (
         notes_grid
         and len(notes_grid["colonnes"]) >= 1
@@ -459,4 +473,32 @@ def locate_and_extract_full_table(pdf_path, is_target_page, kpi_patterns, raccor
         and _sanity_ok(notes_grid["lignes"], kpi_patterns, min_sanity_matches)
     ):
         return notes_page, notes_grid
+
+    # Dernier recours : voie OCR, pour les documents dont la couche texte est
+    # inexploitable sur toute la zone Annexe 13 (scan image intégral, police
+    # cassée, ou OCR de mauvaise qualité à la source — ex. COTUNACE
+    # 2017/2019/2022/2023, AMI 2016/2017/2019/2020/2023). N'est tentée que si
+    # au moins une page de la zone a effectivement une couche texte
+    # inutilisable (sinon l'échec vient d'ailleurs et un OCR de plusieurs
+    # minutes ne servirait à rien). Filtrée par le MÊME contrôle de
+    # vraisemblance (`_sanity_ok`) que les autres voies.
+    from extraction.scanned_table_extractor import document_needs_ocr, ocr_locate_and_extract
+
+    try:
+        if not document_needs_ocr(pdf_path, max_pages=max_pages):
+            return None, None
+        ocr_page, ocr_grid = ocr_locate_and_extract(
+            pdf_path, kpi_patterns,
+            lambda lignes: _sanity_ok(lignes, kpi_patterns, min_sanity_matches),
+            max_pages=max_pages, min_sanity_matches=min_sanity_matches,
+        )
+    except Exception:
+        return None, None
+    if (
+        ocr_grid
+        and len(ocr_grid["colonnes"]) >= 1
+        and len(ocr_grid["lignes"]) >= min_sanity_matches
+        and _sanity_ok(ocr_grid["lignes"], kpi_patterns, min_sanity_matches)
+    ):
+        return ocr_page, ocr_grid
     return None, None

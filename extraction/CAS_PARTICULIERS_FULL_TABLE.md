@@ -1,5 +1,92 @@
 # Cas particuliers — extraction "grille complète" (extraction/full_table_extractor.py)
 
+## 2026-09-09 — voie OCR pour les documents scannés / à couche texte cassée (`extraction/scanned_table_extractor.py`)
+
+Suite à l'entrée « audit de QUALITÉ » ci-dessous, qui isolait **COTUNACE
+(7/11 échecs) et AMI (5/9)** comme un problème de *qualité du document
+source* (scan intégral, pas un bloc de pages scannées isolé comme
+STAR 2025 / ASTREE 2023). Deux corrections :
+
+### 1. `_clean_cell_value` — format de nombre américain (`13,531,056.575`)
+
+Bug d'extraction réel, **général**, corrigé. `extract_full_table_camelot`
+convertissait toute cellule numérique en float par un `.replace(",", ".")`
+brut, qui casse le format « virgule = séparateur de milliers, point =
+décimale » (`13,531,056.575` → `13.531.056.575`, rejeté par `float` → la
+grille entière ressortait vide). Le choix virgule/point est désormais
+délégué à `bilan_kpi_extractor._parse_number` (déjà utilisé, validé, par
+l'extraction 7-KPI sur les mêmes documents). **COTUNACE 2021 : ÉCHEC → OK**
+(page native propre, seul le parsing bloquait ; 26 lignes, colonne
+« Crédit-Caution »). Aucune régression sur les documents déjà OK (mêmes
+valeurs sur les formats français).
+
+### 2. Nouveau module `extraction/scanned_table_extractor.py` (voie OCR, dernier recours)
+
+Branché dans `locate_and_extract_full_table` **après** la voie camelot ET
+le repli « Notes », et seulement si `document_needs_ocr()` confirme qu'une
+page de la zone a une couche texte inutilisable (peu de `chars`, `(cid:N)`
+en masse, ou texte présent mais illisible). Filtré par le **même**
+`_sanity_ok` que les autres voies → régression structurellement impossible
+sur les documents déjà OK (voie jamais atteinte). Méthode : rendu image
+(PyMuPDF) → retrait du quadrillage (morphologie OpenCV, indispensable pour
+les tableaux encadrés type AMI) → `image_to_data` (fra, `--psm 6`) →
+lignes = groupage natif Tesseract, **colonnes = position X** des cellules
+numériques (même principe que `full_table_extractor`) → contrat de sortie
+identique. Localisation de la page par score de titre flou (`_title_score`,
+tolérant au bruit), avec rejet franc d'une page « Annexe N°X, X ≠ 13 »
+(piège AMI : l'« Annexe 3 — État de résultat technique … Non Vie » agrégée
+supplantait sinon la vraie page Annexe 13 par branche). Sociétés
+mono-branche à colonne imprimée deux fois (COTUNACE) : les deux lectures
+sont fusionnées en gardant la plus complète cellule par cellule
+(`_reconcile_doubled_columns`).
+
+**Résultat par année (audit `scripts/audit_full_table_extraction.py`
+`--code COTUNACE`/`--code AMI`, 11/9 ans) :**
+
+| Société | Avant | Après | Détail |
+|---|---|---|---|
+| **AMI** | 3/8 OK | **8/9 OK** | **2016, 2017** : recouvrées, scans propres, grille 7 branches (Incendie/Transport/Risq.Divers/Risq.Spx/Automobile/Groupe/Total) fidèle — 2-3 cellules signalées `ecart` par les identités comptables (erreurs de groupement OCR isolées : `742` pour `742 000`, `7233142` pour `233 142`). **2020, 2023** : vraie page Annexe 13 trouvée (p47/p55) mais scan très dégradé → grille partielle, ~moitié des cellules exploitables, le reste en `ecart`. **2019** : reste ÉCHEC — scan trop dégradé, aucune grille fiable. **2015** inchangé (déjà OK avant via camelot sur la page de réconciliation p4). |
+| **COTUNACE** | 4/10 OK | **6/11 OK** | **2019** : recouvrée par OCR, scan propre, 26 lignes, colonne « Crédit-Caution ». Profil de validation **identique** aux années natives 2021/2024 (mêmes 4-5 `ecart` sur `primes_acquises`/`solde_souscription`/`solde_financier`/`resultat_technique`) → l'extraction OCR est aussi fidèle que l'extraction native ; les `ecart` viennent d'une convention COTUNACE (charges imprimées en magnitude positive, sans signe — les identités signées du pipeline ne tiennent pas), **pas de l'OCR**. **2021** : recouvrée par le fix nº1 (format de nombre). |
+
+**Années NON recouvrées, honnêtement (limite du document source, hors périmètre d'un correctif d'extraction latin) :**
+
+- **COTUNACE 2015, 2016, 2017** : états financiers **en arabe** (police
+  embarquée cassée en 2015/2016 : `page.extract_text()` = `(cid:N)` ; scan
+  en 2017). La page « Résultat technique par catégorie NON-VIE » latine
+  n'existe pas ces années-là — l'OCR latin ne peut rien en tirer. Piste :
+  une voie OCR arabe (le projet a `extraction/arabic_ocr_extractor.py`,
+  câblé pour les KPI Takaful, pas pour la grille par branche).
+- **COTUNACE 2022** : couche texte présente mais **corrompue à la source**
+  par un mauvais OCR (`Pt.imes acaui8es`, `R6sultat tochnlauo` — déjà
+  documenté `api/services/quality.py::PROBLEMATIC_CODES["COTUNACE"]`). Le
+  rendu image + ré-OCR passe le titre mais la reconstruction de colonnes
+  reste trop bruitée pour franchir le contrôle de vraisemblance.
+- **COTUNACE 2023** : scan lisible à l'œil mais filets de tableau épais +
+  artefacts de reliure ; le retrait de quadrillage mange du contenu,
+  l'OCR ne produit pas de grille plausible. Non recouvrée.
+- **AMI 2019** : scan de l'Annexe 13 (p59) trop dégradé — libellés et
+  chiffres illisibles même après prétraitement.
+
+**Généralisation** : la voie OCR n'est PAS spécifique à COTUNACE/AMI. Le
+même `document_needs_ocr` + `ocr_locate_and_extract` récupère aussi, au
+passage, des cas d'autres sociétés que le sweep complet remonte —
+**STAR 2023, CARTE 2020, COMAR 2018, LLOYD_TUNISIEN 2018**. Tout document
+futur présentant ce motif (couche texte inexploitable sur la zone
+Annexe 13) en bénéficiera sans code dédié. Cas volontairement laissé à la
+tâche de fond « OCR fallback for scanned Annexe 13 pages » (bloc scanné
+isolé, filigrane « Projet ») : **ASTREE 2023** — ses annexes scannées sont
+titrées « Annexe 11 » à « Annexe 15 », que `_title_score` écarte
+(règle « Annexe N°X, X ≠ 13 » qui protège du piège page-4 d'AMI).
+
+**Sweep complet 10 ans (`scripts/audit_full_table_extraction.py --years 10
+--last-year 2025`, sans `--code`)** : **95/114 OK (83 %) avant → 105/114 OK
+(92 %) après**, **0 régression** — le décompte OK de CHAQUE société est ≥ à
+celui d'avant (la voie OCR n'est jamais atteinte quand la voie camelot
+réussit déjà ; elle ne peut qu'ajouter des documents, jamais en retirer).
+Gains : AMI 3→7, COTUNACE 4→6, STAR 9→10, CARTE 9→10, COMAR 8→9,
+LLOYD_TUNISIEN 8→9. Runtime ~26 min (l'OCR n'est tenté que sur les
+documents déjà en échec par les autres voies).
+
 ## 2026-09-09 — 3ᵉ catégorie de défaut : en-tête de colonnes tronqué par camelot (bandeau coloré)
 
 Trouvé en vérifiant GAT 2023 sur demande utilisateur (après STAR 2023/BIAT
@@ -77,6 +164,15 @@ fois retirés : **16 dégradations réelles**, concentrées sur BH (5 années su
 que BH publie réellement la plupart des années) et CTAMA (2/2, même
 gabarit). Aucun signal "scan manqué" sur ces cas — ce n'est pas la même
 famille de problème que STAR/ASTREE.
+
+> **MISE À JOUR 2026-09-09 (voir entrée en tête de fichier)** : la voie OCR
+> `extraction/scanned_table_extractor.py` a été construite. Résultat :
+> **AMI 3→7 OK** (2016/2017 grille 7 branches fidèle ; 2020/2023 partielles ;
+> 2019 reste échec), **COTUNACE 4→6 OK** (2019 par OCR, 2021 par le fix du
+> format de nombre). Restent non recouvrées : COTUNACE 2015/2016/2017
+> (états financiers en arabe), COTUNACE 2022 (couche texte corrompue à la
+> source), COTUNACE 2023 & AMI 2019 (scan trop dégradé). Sweep complet
+> 95→105/114.
 
 **Les 20 échecs sont concentrés sur 2 sociétés**, pas répartis uniformément :
 **COTUNACE (7/11) et AMI (5/9)**. Ce ne sont PAS des échecs "page introuvable"
