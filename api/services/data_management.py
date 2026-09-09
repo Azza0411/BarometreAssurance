@@ -77,11 +77,12 @@ def _table_width_px(ws, start_col, end_col):
     )
 
 
-def _logo_dimensions(logo_path, target_height=90, max_width=190):
+def _logo_dimensions(logo_path, target_height=48, max_width=110):
     """Taille (largeur, hauteur) en pixels pour l'export Excel — hauteur
     cible, largeur déduite du ratio RÉEL de l'image (les logos ne sont pas
     tous carrés) et plafonnée pour ne jamais empiéter sur le texte du
-    bandeau. 90px (contre 22, 40 puis 60px, toujours jugés trop petits)."""
+    bandeau. Allers-retours successifs (22→40→60→90px, tantôt trop petit,
+    tantôt trop grand) : 48px, un point milieu plus sobre."""
     try:
         from PIL import Image as PILImage
         with PILImage.open(logo_path) as im:
@@ -310,13 +311,13 @@ def _write_sheet_title(ws, last_col, title, subtitle):
     ws.cell(row=1, column=1, value=title)
     ws.cell(row=1, column=1).font = Font(color="000000", bold=True, size=14, name="Calibri")
     ws.cell(row=1, column=1).alignment = Alignment(horizontal="center", vertical="bottom")
-    ws.row_dimensions[1].height = 48
+    ws.row_dimensions[1].height = 34
     if subtitle:
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_col)
         ws.cell(row=2, column=1, value=subtitle)
         ws.cell(row=2, column=1).font = Font(color="595959", size=9.5, name="Calibri")
         ws.cell(row=2, column=1).alignment = Alignment(horizontal="center", vertical="top")
-    ws.row_dimensions[2].height = 22
+    ws.row_dimensions[2].height = 18
     ws.sheet_view.showGridLines = False
     ws.sheet_properties.tabColor = "808080"
 
@@ -381,8 +382,11 @@ _REF_HEADER_TEXT = "FFFFFF"
 
 def _write_full_grid_block(ws, row, annee, grid):
     cols = grid["colonnes"]
-    ws.cell(row=row, column=1, value=f"{annee} — tableau complet ({len(grid['lignes'])} lignes × {len(cols)} colonnes)")
-    ws.cell(row=row, column=1).font = Font(italic=True, size=10, color=DARK, name="Calibri")
+    last_col = max(1 + len(cols), 2)
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=last_col)
+    subtitle_cell = ws.cell(row=row, column=1, value=f"{annee} — tableau complet ({len(grid['lignes'])} lignes × {len(cols)} colonnes)")
+    subtitle_cell.font = Font(italic=True, size=10, color=DARK, name="Calibri")
+    subtitle_cell.alignment = Alignment(horizontal="center", vertical="center")
     row += 1
     # Libellés de ligne ET d'en-tête en MAJUSCULES — la casse du référentiel
     # canonique (CANONICAL_ROWS) sert au rattachement/à la validation, pas à
