@@ -85,6 +85,18 @@ trouvée par ailleurs. Confié à une tâche de fond séparée (voir suggestion
 un audit de PRÉVALENCE du phénomène sur l'ensemble du portefeuille, pas
 seulement STAR 2025.
 
+**3ᵉ confirmation (même jour, sur demande explicite "vérifie STAR 2023")** :
+`STAR_2023.pdf` page 36 — `page.chars=3`, `page.images=2`, texte extractible
+= 0 — pile entre l'Annexe 11 (page 35) et l'Annexe 14 (page 37), là où la
+vraie grille Non-Vie par branche devrait être. **Corrige un diagnostic
+antérieur, faux** : ce cas était attribué (avant la découverte du schéma
+"page scannée", et avant la migration camelot) à un "gabarit raccordement à
+1 colonne" — voir l'entrée "Nouveau cas identifié, non traité" plus bas,
+annotée en conséquence plutôt que supprimée. Aucune régression détectée
+par l'audit de couverture précisément parce que ce type de défaut échappe
+par construction à un contrôle binaire OK/ÉCHEC (voir §5 de la phase
+documentée dans `docs/pfe_phase_documentation.md`).
+
 ## 2026-09-09 — deux bugs trouvés sur retour utilisateur ("le tableau STAR 2025 est incomplet")
 
 ### 1. STAR 2025 : la vraie page Annexe 13 est un SCAN (pas de couche texte)
@@ -575,7 +587,7 @@ unique ne peut pas satisfaire les deux gabarits à la fois. Remis à 6pt.
 
 | Société/année | Constat |
 |---|---|
-| STAR 2023 | La page trouvée (38) est un "Tableau de raccordement du Résultat technique" à **UNE SEULE colonne de valeurs** (structure Libellé + 1 montant total), pas la grille 4 colonnes par branche des autres années. `extract_full_table()` cible spécifiquement les tableaux multi-colonnes (`MIN_DATA_CLUSTERS=4` valeurs numériques par ligne pour repérer le début des données) — une ligne de ce tableau raccordement n'a jamais que 1 valeur, donc aucune ligne de données n'est jamais détectée. Ce n'est pas un défaut de reconstruction comme le cas STAR ci-dessus : c'est un gabarit de tableau à une colonne, hors périmètre de l'algorithme actuel (conçu pour les grilles par branche). Piste pour plus tard : un chemin d'extraction séparé pour les tableaux "raccordement" à 1 colonne, plutôt que de complexifier `extract_full_table()` pour couvrir les deux formes. |
+| STAR 2023 | ⚠️ **Diagnostic corrigé le 2026-09-09 (voir entrée "audit de qualité" plus haut) — ce qui suit est l'ANCIEN diagnostic, faux, gardé pour mémoire.** À l'époque (pré-camelot), attribué à un gabarit "raccordement" à 1 seule colonne (page 38, "Annexe n°16"). Re-vérifié après la découverte du schéma "page scannée" sur STAR 2025/ASTREE 2023 : **page 36 du même document a `page.chars=3`, `page.images=2`, texte extractible = 0** — exactement entre l'Annexe 11 (page 35) et l'Annexe 14 (page 37), là où la vraie grille par branche Non-Vie (Annexe 12/13) devrait se trouver. C'est un **3ᵉ cas confirmé du même défaut** (page scannée sans couche de texte), pas un "gabarit différent" — la page 38 trouvée par l'algorithme n'est qu'un repli (Annexe n°16, une reconciliation séparée), pas la vraie source. Concerné par le chantier OCR en cours (tâche de fond "OCR fallback for scanned Annexe 13 pages"). |
 | STAR (années "OK") — dédoublement de colonnes | Le gabarit STAR (4 colonnes larges, valeurs alignées à droite) attend 4 colonnes ("Opérations brutes", "Cessions et/ou rétrocessions", "Opérations nettes 2024", "Opérations nettes 2023") mais l'extraction en produit jusqu'à 7-8 : une même colonne logique se scinde en 2 quand ses valeurs, d'une ligne à l'autre, ont des nombres de chiffres différents (donc des x0 différents une fois alignées à droite) au-delà de la tolérance `COL_GAP`. **Les VALEURS restent correctement rattachées à des colonnes cohérentes** (rien n'est perdu ni mal assigné) — seul le REGROUPEMENT des libellés d'en-tête en une colonne unique par concept est imparfait. Un correctif global (`COL_GAP` élargi) a été essayé et rejeté car il casse le gabarit à 16 colonnes/branche (voir "Essai infructueux" ci-dessus) ; accepté comme limitation connue plutôt que de risquer une régression sur le gabarit majoritaire. |
 
 ## Cas résolus en cours de route (pour mémoire)
