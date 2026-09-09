@@ -92,8 +92,10 @@ documents déjà en échec par les autres voies).
 Trouvé en vérifiant GAT 2023 sur demande utilisateur (après STAR 2023/BIAT
 2023). **Différent des cas "page scannée" (STAR/ASTREE)** : la page existe
 bien en texte natif, mais **9 des 16 colonnes de branche ressortent
-non-étiquetées** (`(colonne N)`), causant 2 écarts d'identité comptable
-faussement attribués à la colonne fantôme.
+non-étiquetées** (`(colonne N)`) — grille numériquement complète mais
+branches non identifiables. (NB : les 2 écarts d'identité comptable de GAT
+2023, initialement soupçonnés d'être liés à ce défaut, se sont révélés
+indépendants — voir « Reste non résolu » plus bas.)
 
 **Cause identifiée précisément** : sur GAT 2023, l'en-tête de colonnes est
 rendu dans un **bandeau violet coloré**, replié sur 2-3 sous-lignes visuelles
@@ -124,16 +126,109 @@ jamais si elles étaient nommées) :
   exercices), MAGHREBIA (3), GAT, CARTE, COMAR, BH, BIAT, TUNIS_RE (1-2
   chacune).
 
-**Piste de correction** (non implémentée ici, confiée à une tâche de fond
-séparée) : récupérer la sous-ligne manquante via `pdfplumber` (accès mot
-par mot indépendant de camelot) en repérant les mots positionnés
-au-dessus du bord supérieur du tableau détecté par camelot
-(`camelot.Table._bbox`), puis les rattacher à la bonne colonne par
-recoupement avec les bornes X de chaque colonne (`camelot.Table.cols`,
-disponibles mais actuellement jetées — seul `t.df` est conservé par
-`_find_table_camelot`). Nécessite une réconciliation de repère (pdfplumber
-= origine haut-gauche, `top` croissant vers le bas ; camelot = coordonnées
-PDF natives, origine bas-gauche, y croissant vers le haut).
+**Correctif implémenté (2026-09-09)** — `extraction/full_table_extractor.py` :
+
+1. `_find_table_camelot` renvoie désormais l'objet `camelot.core.Table`
+   entier (plus seulement `t.df`) : ses `.cols` (bornes X natives par
+   colonne) et `.rows` (bornes Y natives) étaient jusque-là jetés.
+2. Nouvelle fonction `_recover_truncated_column_headers()` : ouvre la même
+   page avec `pdfplumber`, prend les mots dont le CENTRE vertical est dans
+   une bande étroite (`_HEADER_RECOVERY_MARGIN = 36 pt`) juste au-dessus de
+   la 1re ligne captée par camelot (`table.rows[0][0]`), les rattache à la
+   colonne de valeur par recoupement des bornes X (`table.cols`), et
+   renvoie `{index_colonne_df: texte}`. Le texte récupéré est PRÉFIXÉ aux
+   fragments d'en-tête que camelot a bien captés (jamais en remplacement,
+   jamais de token dupliqué).
+   - **Repère de coordonnées** (vérifié empiriquement sur GAT 2023, un mot
+     connu : `Automobile` à `pdfplumber top=145.7` ↔ `camelot y≈446`) :
+     `y_camelot = page.height − pdfplumber_top` (pdfplumber = origine
+     haut-gauche `top` vers le bas ; camelot = PDF natif, origine
+     bas-gauche, y vers le haut).
+3. **Garde-fous pour ne jamais dégrader un document déjà correct** :
+   - **taux de capture camelot** : on ne récupère QUE si camelot a lui-même
+     étiqueté < 50 % des colonnes de valeur (`_HEADER_RECOVERY_MAX_CAPTURED`).
+     Écarte d'office les ~59 documents corrects, les gabarits à
+     sur-découpage de colonnes (CARTE 2021, COMAR 2024, TUNIS_RE…) et les
+     fusions de colonnes (BIAT 2019, BH 2024) — tous inchangés.
+   - **filtre de contenu** : un token portant un chiffre, ou dont un
+     sous-mot (coupé sur tiret/apostrophe) est du vocabulaire de titre
+     (`annexe`, `resultat`, `technique`, `jusqu`, `d'assurance`,
+     `Non-Vie`…) est rejeté — le titre de page, plus haut, ne fuit pas dans
+     les libellés même collé au bandeau.
+   - **filtre de plausibilité** (`_recovered_label_ok`) : on ne garde qu'un
+     libellé qui est une abréviation courte ("a.t.", "r.c"), qui se
+     rattache à une branche connue (`normalize_column_label`), ou qui est
+     1 mot plein (5-12 lettres) / ≤ 3 mots de ≥ 3 lettres. Un texte long,
+     morcelé ou en bribes de 1-2 lettres (glyphes espacés d'ASTREE) est
+     rejeté au profit d'un placeholder propre.
+
+**Résultats mesurés** — sweep sur la base `origin/ThirdVersion` juste après
+la voie OCR (`scripts/audit_full_table_extraction.py --years 10
+--last-year 2025` pour l'OK/ÉCHEC ; comptage des `(colonne N)` parmi les
+grilles ≥ 5 colonnes pour la prévalence) :
+
+| Métrique | Avant (base seule) | Après (base + ce correctif) |
+|---|---|---|
+| Sweep OK / ÉCHEC (114 docs testés) | 105 OK / 9 ÉCHEC | **105 OK / 9 ÉCHEC** (0 régression : 0 cellule de statut changée, 0 `n_colonnes` changé) |
+| Documents « grille ≥ 5 col » avec ≥ 1 `(colonne N)` | 25 / 80 | **21 / 80** |
+| Colonnes `(colonne N)` au total (toutes grilles ≥ 5 col) | 121 | **60** (−50 %) |
+
+**Cas du défaut « bandeau tronqué » spécifiquement :**
+
+| Document | Avant | Après |
+|---|---|---|
+| GAT 2023 p35 | 9 / 16 non étiquetées | **0 / 16** — les 16 branches correctes (Automobile … Montant) |
+| MAGHREBIA 2022 / 2023 / 2025 | 10 / 11 chacun | **0 / 11** chacun |
+| ASTREE 2019 p39 | 17 / 17 | **6 / 17** — 11 branches récupérées (Auto, Transport, Aviation, Incendie, Maladie, Invalidité, Individuelle, Total, Acceptations, Total 2, +1) |
+| ASTREE 2020 p37 | 17 / 17 | **6 / 17** |
+
+**Reste non résolu, honnêtement :**
+
+- **ASTREE 2019 / 2020, ~6 colonnes du milieu** (Responsabilité
+  Décennale/Civile, Risques Agricoles, Autres Dommages, Assistance A.E.A,
+  Assurance Crédit) : le texte source de ces colonnes est rendu en glyphes
+  individuellement espacés/entremêlés ("literesp biliterisques il",
+  "ass ta nce") — même famille de corruption que celle déjà documentée
+  pour ASTREE (approche pdfplumber d'origine). Ni camelot ni le repérage
+  mot-à-mot ne peuvent en tirer un libellé fiable ; le filtre de
+  plausibilité les laisse donc en placeholder plutôt que d'injecter du
+  bruit. 2-3 colonnes ressortent avec un libellé approximatif mais qui se
+  normalise correctement en aval ("re incendie" → Incendie,
+  "risques agricoles autr" → Risques agricoles).
+- **ASTREE 2021 / 2024 / 2025, GAT 2016/2017/2024/2025, CARTE, COMAR,
+  TUNIS_RE, BH 2024, BIAT 2019** (les 21 documents résiduels) : ce ne sont
+  PAS des bandeaux tronqués — camelot y étiquette > 50 % des colonnes,
+  mais **sur-découpe** une colonne (crée une colonne vide `(colonne N)`
+  sans donnée ni en-tête, ex. le `(colonne 16)` de GAT entre "autres" et
+  "montant") ou **fusionne** deux colonnes voisines ("incendie
+  construction", "transport maladie"). Défaut distinct, non traité par ce
+  correctif (le garde-fou « taux de capture » l'exclut volontairement pour
+  ne pas risquer d'injecter par-dessus des libellés déjà corrects).
+- **GAT 2023 — les 2 écarts d'identité comptable NE passent PAS à 0.**
+  Vérifié en profondeur : ils portent sur la colonne **Total** (pas sur
+  une branche) et étaient **identiques avant le correctif** (sur
+  `(colonne 16)` à l'époque). Les valeurs extraites correspondent
+  caractère pour caractère au texte du PDF : GAT imprime lui-même
+  `Charges d'acquisition et de gestion nettes` Total = (60 801 200) alors
+  que ses composantes (`Frais d'acquisition` (47 868 499) +
+  `Autres charges de gestion nettes` (12 688 407)) somment à (60 556 906),
+  avec un ±244 295 miroir sur `Solde Financier`. C'est une **incohérence
+  réelle de la source GAT** dans sa colonne Total, pas un défaut
+  d'extraction ni d'attribution de branche (l'attribution de branche, elle,
+  est maintenant entièrement correcte). Fabriquer une autre valeur pour
+  satisfaire l'identité serait faux.
+- **MAGHREBIA 2022 / 2023 / 2025 — apparition d'écarts après le correctif.**
+  Avant, ces documents n'avaient qu'1 colonne étiquetée donc quasiment
+  tout tombait en `donnees_manquantes` ; les 11 colonnes désormais
+  nommées, la validation les couvre et révèle un décalage de l'identité
+  `charges_acquisition_gestion` **présent aussi sur MAGHREBIA 2024**
+  (année « correcte », non touchée par ce correctif) — c'est donc une
+  particularité de présentation comptable propre à MAGHREBIA, pas une
+  régression. À noter aussi : l'alias `"r.s"` → *Responsabilité civile*
+  dans `annexe13_pipeline._COLUMN_ALIASES` est erroné pour MAGHREBIA (R.S =
+  *Risques spéciaux*) et fusionne `r.s`/`r.c` en une colonne dédupliquée —
+  bug d'alias préexistant, hors périmètre de ce correctif, à corriger
+  séparément.
 
 ## 2026-09-09 — audit de QUALITÉ (pas seulement de couverture), toutes sociétés/années
 
