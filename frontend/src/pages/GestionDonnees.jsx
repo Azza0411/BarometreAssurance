@@ -21,6 +21,30 @@ function Card({ children, style }) {
   );
 }
 
+// Indicateur de chargement — retour utilisateur : une action longue
+// (collecte, export) laissait la page silencieuse/figée pendant l'attente,
+// sans distinguer "ça travaille" de "rien ne se passe". `color` hérite de
+// currentColor par défaut pour s'accorder au texte du bouton qui l'utilise.
+function Spinner({ size = 13, color = "currentColor" }) {
+  return (
+    <span
+      aria-label="Chargement en cours" role="status"
+      style={{
+        display: "inline-block", width: size, height: size, borderRadius: "50%",
+        border: `2px solid ${color}`, borderTopColor: "transparent",
+        animation: "gd-spin .7s linear infinite", flexShrink: 0,
+      }}
+    />
+  );
+}
+// Keyframes injectées une seule fois (pas de fichier CSS séparé pour ce module).
+if (typeof document !== "undefined" && !document.getElementById("gd-spin-kf")) {
+  const style = document.createElement("style");
+  style.id = "gd-spin-kf";
+  style.textContent = "@keyframes gd-spin{to{transform:rotate(360deg)}}";
+  document.head.appendChild(style);
+}
+
 // Style de bouton commun aux 3 actions principales (Collecte, Exporter,
 // Générer l'export) — retour utilisateur : le bloc plein DARK/YELLOW était
 // jugé trop sombre / pas assez minimaliste. Contour clair + accent teal au
@@ -129,12 +153,14 @@ function CollecteBar() {
               style={{ ...actionBtnStyle(annulation || annulationDemandee), borderColor: "#C8102E", color: "#C8102E" }}
               onMouseEnter={e => !(annulation || annulationDemandee) && (e.currentTarget.style.background = "#FDECEC")}
               onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
+              {annulationDemandee && <Spinner />}
               {annulationDemandee ? "Annulation…" : "Annuler"}
             </button>
           )}
           <button onClick={lancer} disabled={enCours || lancement} style={actionBtnStyle(enCours || lancement)}
             onMouseEnter={e => !(enCours || lancement) && (e.currentTarget.style.background = ACCENT_BG)}
             onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
+            {(enCours || lancement) && <Spinner />}
             {enCours ? "Collecte en cours…" : "Lancer une nouvelle collecte"}
           </button>
         </div>
@@ -254,7 +280,9 @@ function DocumentsPanel({ onExporter }) {
           </thead>
           <tbody>
             {!docs ? (
-              <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: MUTED }}>Chargement…</td></tr>
+              <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: MUTED }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Spinner color={MUTED} /> Chargement…</span>
+              </td></tr>
             ) : pageRows.length === 0 ? (
               <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: MUTED }}>Aucun document.</td></tr>
             ) : pageRows.map(d => (
@@ -383,6 +411,8 @@ function ExportDrawer({ open, prefill, onClose }) {
   const [tableaux, setTableaux] = useState(new Set());
   const [societes, setSocietes] = useState(new Set());
   const [annees, setAnnees] = useState(new Set());
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportErreur, setExportErreur] = useState(null);
 
   useEffect(() => {
     fetch(`${API}/api/gestion-donnees/filtres`).then(r => r.json()).then(setOpts).catch(() => {});
@@ -449,6 +479,32 @@ function ExportDrawer({ open, prefill, onClose }) {
     return `${t} · ${s} · ${a}`;
   };
 
+  // Génère l'export via fetch (au lieu d'un <a href> nu) pour pouvoir
+  // afficher un indicateur de chargement — retour utilisateur : une
+  // génération large peut prendre jusqu'à ~1-2 minutes (voir le plafond
+  // d'extraction live côté serveur), la page restait silencieuse pendant
+  // l'attente. Le téléchargement lui-même est déclenché en JS une fois le
+  // fichier reçu (lien blob synthétique, jamais visible de l'utilisateur).
+  const genererExport = () => {
+    setExportErreur(null);
+    setExportLoading(true);
+    fetch(buildUrl())
+      .then(async r => {
+        if (!r.ok) throw new Error("echec");
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "Export_donnees.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      })
+      .catch(() => setExportErreur("Échec de la génération de l'export."))
+      .finally(() => setExportLoading(false));
+  };
+
   return (
     <div style={{
       width: open ? 460 : 0, opacity: open ? 1 : 0, padding: open ? "20px 22px" : 0,
@@ -471,7 +527,9 @@ function ExportDrawer({ open, prefill, onClose }) {
         )}
 
         {!opts ? (
-          <div style={{ color: MUTED, fontSize: 12.5, marginTop: 16 }}>Chargement des filtres…</div>
+          <div style={{ color: MUTED, fontSize: 12.5, marginTop: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            <Spinner color={MUTED} /> Chargement des filtres…
+          </div>
         ) : (
           <>
             <div style={{ margin: "18px 0 10px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -503,11 +561,14 @@ function ExportDrawer({ open, prefill, onClose }) {
               Sélection : {resume()}
             </p>
 
-            <a href={buildUrl()} style={{ ...actionBtnStyle(false), textDecoration: "none", padding: "11px 20px" }}
-              onMouseEnter={e => (e.currentTarget.style.background = ACCENT_BG)}
+            {exportErreur && <p style={{ fontSize: 12, color: "#C8102E", fontWeight: 600, margin: "0 0 8px" }}>{exportErreur}</p>}
+            <button onClick={genererExport} disabled={exportLoading}
+              style={{ ...actionBtnStyle(exportLoading), padding: "11px 20px", width: "100%" }}
+              onMouseEnter={e => !exportLoading && (e.currentTarget.style.background = ACCENT_BG)}
               onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
-              Générer l'export Excel
-            </a>
+              {exportLoading && <Spinner />}
+              {exportLoading ? "Génération en cours…" : "Générer l'export Excel"}
+            </button>
             <p style={{ fontSize: 10.5, color: "#9CA3AF", margin: "8px 0 0" }}>
               Une feuille par société, un tableau réel par annexe demandée.
             </p>

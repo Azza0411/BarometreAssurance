@@ -1,5 +1,55 @@
 # Cas particuliers — extraction "grille complète" (extraction/full_table_extractor.py)
 
+## 2026-09-09 — 4ᵉ catégorie de défaut : titre "lettres espacées" invisible à la détection de page
+
+Trouvé en revérifiant l'année 2020 sur demande utilisateur. **CARTE 2020**
+donnait 4 colonnes "(colonne N)" toutes non étiquetées — en apparence le
+même symptôme que GAT 2023 (bandeau tronqué), mais la cause est en fait
+différente et plus fondamentale : `page.extract_text()` rend le TITRE de
+page lui-même avec une lettre par mot séparée d'un espace ("E t a t d e r é
+s u l t a t t e c h n i q u e..." au lieu de "Etat de résultat
+technique...") — même artefact déjà documenté pour ASTREE, mais jamais
+corrigé au niveau de la DÉTECTION DE PAGE elle-même. Conséquence : ni
+`_is_target_page` ni `relaxed_is_annexe13_page` ne reconnaissent le titre
+(le motif regex ne peut pas matcher un texte avec un espace entre chaque
+lettre) → la page n'apparaît même pas comme candidate → le pipeline retombe
+sur le repli "Notes" (`notes_resultat_extractor.py`, qui détecte la page
+autrement, par les codes internes PRNV/CHNV) dont la reconstruction de
+colonnes est moins robuste sur ce gabarit précis → colonnes non étiquetées.
+
+**Fix général** : `_reconstructed_page_head_text()` (nouveau, `extraction/
+full_table_extractor.py`) reconstruit le texte des premières lignes de page
+à partir de `page.extract_words()` + regroupement par ligne (`_cluster_lines`,
+déjà utilisé ailleurs dans le projet) puis par écart horizontal entre mots
+consécutifs — mesuré empiriquement sur CARTE : ~0-0.3pt entre lettres d'un
+même mot rendu espacé, ~3pt entre deux mots réels. Un texte non affecté par
+le défaut traverse cette reconstruction inchangé (le seuil n'est jamais
+franchi entre deux vrais mots). Utilisé par `relaxed_is_annexe13_page` à la
+place de `page.extract_text()` brut.
+
+**Bonus, même détour** : `_COLUMN_YEAR_SUFFIX_RE` (`annexe13_pipeline.py`)
+ne retirait que la date en suffixe ("brutes au 31/12/2020" → "brutes au",
+qui ne matche aucun alias) — élargi pour retirer aussi le "au" qui précède
+souvent la date dans ce gabarit ("X au DATE" = "X à la date de...").
+
+**Résultat vérifié** : CARTE 2020 passe de 4/4 colonnes non étiquetées à
+0/4 ("Opérations brutes", "Cessions et/ou rétrocessions", "Opérations
+nettes" ×2) — colonnes ET libellé de page désormais corrects. Sweep 10 ans
+en cours pour confirmer l'absence de régression sur l'ensemble du
+portefeuille.
+
+**Non résolu, cas différent identifié dans la foulée** : ASTREE 2020 garde
+6/17 colonnes non étiquetées même après ce fix — pas un problème de titre
+de page (la page EST bien trouvée) mais un désalignement/chevauchement des
+colonnes elles-mêmes au niveau de la reconstruction camelot sur ce gabarit
+précis (ex. "risques agricoles autr" — fragment mêlant 2 libellés de
+colonnes voisines). AMI 2020 reste gravement corrompu au niveau du texte
+source lui-même (libellés de ligne avec des chiffres collés dedans, ex.
+"primes embes -235s701") — relève de la même famille que les limites déjà
+documentées pour AMI (qualité de scan/OCR à la source), pas d'un problème
+de dictionnaire. BH reste en échec total sur cette page (gabarit non couvert
+par les voies actuelles). Ni l'un ni l'autre ne sont corrigés ici.
+
 ## 2026-09-09 — voie OCR pour les documents scannés / à couche texte cassée (`extraction/scanned_table_extractor.py`)
 
 Suite à l'entrée « audit de QUALITÉ » ci-dessous, qui isolait **COTUNACE

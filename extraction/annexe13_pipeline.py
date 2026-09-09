@@ -280,10 +280,12 @@ _COLUMN_MATCH_THRESHOLD = 0.8  # plus strict que pour les lignes : les libellés
 # différentes (ex. "Vol" / "Vie").
 
 # Gabarit "raccordement" : le libellé de colonne porte souvent l'année en
-# suffixe ("Opérations nettes 31/12/2021", "operations brutes 2015") — une
-# valeur variable par nature, retirée avant comparaison (généralisable à
-# toute société utilisant ce gabarit, pas propre à une société).
-_COLUMN_YEAR_SUFFIX_RE = re.compile(r"\s*(?:\d{2}/\d{2}/)?\d{4}\s*$")
+# suffixe ("Opérations nettes 31/12/2021", "operations brutes 2015",
+# "brutes au 31/12/2020" — CARTE) — une valeur variable par nature, retirée
+# avant comparaison (généralisable à toute société utilisant ce gabarit,
+# pas propre à une société). Le "au" optionnel avant la date ("brutes AU
+# 31/12/2020" = "brutes AS OF 31/12/2020") est retiré avec elle.
+_COLUMN_YEAR_SUFFIX_RE = re.compile(r"\s*(?:au\s+)?(?:\d{2}/\d{2}/)?\d{4}\s*$")
 
 # Certaines sociétés numérotent leurs branches dans l'en-tête (ex. CARTE :
 # "1-Auto", "2-Transport"...) — préfixe sans valeur distinctive pour la
