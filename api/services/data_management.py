@@ -234,6 +234,48 @@ def get_filter_options(conn):
     return {"societes": societes, "annees": annees, "tableaux": tableaux}
 
 
+def get_reliability_stats(conn):
+    """Deux indicateurs calculés à partir de données RÉELLES déjà en base —
+    jamais une estimation :
+
+    1. Collecte : part des documents CMF référencés (trouvés sur le portail
+       source) dont le PDF est réellement présent en local (téléchargé avec
+       succès) — `fichier_local`, déjà calculé par `list_documents_for_ui`.
+    2. Fiabilité de l'extraction (Annexe 13, seule annexe dotée d'une
+       validation par identités comptables pour l'instant — voir
+       extraction/annexe13_pipeline.py) : part des vérifications
+       (Primes acquises = Primes émises + Variation, etc.) dont le résultat
+       est correct ('ok') parmi celles où une comparaison a réellement pu
+       être faite ('ok' + 'ecart' — les 'donnees_manquantes', un poste
+       absent de CE gabarit précis, ne sont pas une erreur d'extraction et
+       ne comptent donc pas contre le taux)."""
+    docs = [d for d in list_documents_for_ui(conn) if d["source"] == "CMF"]
+    total_docs = len(docs)
+    collectes = sum(1 for d in docs if d["fichier_local"])
+    collecte_pct = round(100 * collectes / total_docs, 1) if total_docs else None
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT statut, COUNT(*) FROM tableau_validations
+            WHERE tableau = 'annexe13' AND statut IN ('ok', 'ecart')
+            GROUP BY statut
+            """
+        )
+        counts = dict(cur.fetchall())
+    ok, ecart = counts.get("ok", 0), counts.get("ecart", 0)
+    total_checks = ok + ecart
+    fiabilite_pct = round(100 * ok / total_checks, 1) if total_checks else None
+
+    return {
+        "collecte": {"pct": collecte_pct, "collectes": collectes, "total": total_docs},
+        "fiabilite_extraction": {
+            "pct": fiabilite_pct, "ok": ok, "ecart": ecart, "total_verifications": total_checks,
+            "tableau": "Annexe 13",
+        },
+    }
+
+
 def _raw_tableaux_for_groups(group_keys):
     if not group_keys:
         return None
