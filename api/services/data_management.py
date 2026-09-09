@@ -56,11 +56,11 @@ def _logo_path(code):
     return path if os.path.isfile(path) else None
 
 
-def _logo_dimensions(logo_path, target_height=60, max_width=130):
+def _logo_dimensions(logo_path, target_height=90, max_width=190):
     """Taille (largeur, hauteur) en pixels pour l'export Excel — hauteur
     cible, largeur déduite du ratio RÉEL de l'image (les logos ne sont pas
     tous carrés) et plafonnée pour ne jamais empiéter sur le texte du
-    bandeau. 60px (contre 22 puis 40px, toujours jugés trop petits)."""
+    bandeau. 90px (contre 22, 40 puis 60px, toujours jugés trop petits)."""
     try:
         from PIL import Image as PILImage
         with PILImage.open(logo_path) as im:
@@ -290,14 +290,14 @@ def _write_sheet_title(ws, last_col, title, subtitle):
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_col)
     ws.cell(row=1, column=1, value=title)
     ws.cell(row=1, column=1).font = Font(color="000000", bold=True, size=14, name="Calibri")
-    ws.cell(row=1, column=1).alignment = Alignment(horizontal="left", vertical="bottom", indent=1)
-    ws.row_dimensions[1].height = 42
+    ws.cell(row=1, column=1).alignment = Alignment(horizontal="center", vertical="bottom")
+    ws.row_dimensions[1].height = 48
     if subtitle:
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_col)
         ws.cell(row=2, column=1, value=subtitle)
         ws.cell(row=2, column=1).font = Font(color="595959", size=9.5, name="Calibri")
-        ws.cell(row=2, column=1).alignment = Alignment(horizontal="left", vertical="top", indent=1)
-    ws.row_dimensions[2].height = 20
+        ws.cell(row=2, column=1).alignment = Alignment(horizontal="center", vertical="top")
+    ws.row_dimensions[2].height = 22
     ws.sheet_view.showGridLines = False
     ws.sheet_properties.tabColor = "808080"
 
