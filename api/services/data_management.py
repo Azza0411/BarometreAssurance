@@ -217,7 +217,16 @@ _TABLEAU_GROUP_TO_RAW = {key: raws for key, _label, raws in TABLEAU_GROUPS}
 
 def get_filter_options(conn):
     """Options disponibles pour les 3 filtres de l'export flexible :
-    sociétés CMF (code + nom), années CMF disponibles, groupes de tableaux."""
+    sociétés CMF (code + nom), années CMF disponibles, groupes de tableaux,
+    et `societes_par_tableau` — pour CHAQUE groupe de tableau, la liste des
+    codes société qui ont RÉELLEMENT au moins un résultat pour ce tableau
+    (tous documents/exercices confondus). Sert au frontend à désactiver dans
+    le sélecteur une société qui n'a structurellement AUCUNE donnée pour le
+    tableau choisi (ex. ATTIJARI/UIB pour Annexe 13 — sociétés Vie
+    exclusivement, jamais de résultat Non-Vie à aucune année, voir
+    extraction/annexe13_pipeline.ANNEXE13_NON_VIE_EXCLUSIONS) plutôt que de
+    la laisser sélectionnable pour produire un export vide. Généralisé à
+    TOUS les groupes de TABLEAU_GROUPS, pas seulement Annexe 13."""
     with conn.cursor() as cur:
         cur.execute("SELECT code, nom_entreprise FROM societes ORDER BY code")
         societes = [{"code": c, "nom": n} for c, n in cur.fetchall()]
@@ -230,8 +239,56 @@ def get_filter_options(conn):
             """
         )
         annees = [row[0] for row in cur.fetchall()]
+
+        societes_par_tableau = {key: set() for key, _label, _raws in TABLEAU_GROUPS}
+        cur.execute(
+            """
+            SELECT DISTINCT c.code, k.tableau
+            FROM kpi_values k
+            JOIN documents d ON d.id = k.document_id
+            JOIN sources s ON s.id = d.source_id
+            JOIN societes c ON c.id = d.cmf_id
+            WHERE s.nom = 'CMF'
+            """
+        )
+        for code, raw in cur.fetchall():
+            for key, raws in _TABLEAU_GROUP_TO_RAW.items():
+                if raw in raws:
+                    societes_par_tableau[key].add(code)
+        # Annexe 13 grille complète (extraction/annexe13_pipeline.py) : une
+        # source de vérité SÉPARÉE de kpi_values (tableau_cellules) — une
+        # société peut y avoir un résultat que le sous-ensemble narrow 7-KPI
+        # n'a pas (ou l'inverse), les deux comptent comme "a ce tableau".
+        cur.execute(
+            """
+            SELECT DISTINCT c.code
+            FROM tableau_cellules tc
+            JOIN documents d ON d.id = tc.document_id
+            JOIN sources s ON s.id = d.source_id
+            JOIN societes c ON c.id = d.cmf_id
+            WHERE s.nom = 'CMF' AND tc.tableau = 'annexe13'
+            """
+        )
+        for (code,) in cur.fetchall():
+            societes_par_tableau.setdefault("annexe13", set()).add(code)
+
+    # Garde-fou pour Annexe 13 : kpi_values (ancien extracteur 7-KPI) peut
+    # taguer à tort une société structurellement Vie-only comme ayant un
+    # résultat "Non-Vie" — constaté sur ATTIJARI (page de raccordement Vie
+    # non qualifiée "Vie" dans son titre, passe le contrôle de vraisemblance
+    # par accident, voir CAS_PARTICULIERS_FULL_TABLE.md). Le référentiel
+    # `ANNEXE13_NON_VIE_EXCLUSIONS` (construit à partir du texte réel des
+    # PDF, pas d'une heuristique de titre) reste la source de vérité — il
+    # exclut TOUJOURS ces sociétés ici, quoi que dise kpi_values/
+    # tableau_cellules.
+    from extraction.annexe13_pipeline import ANNEXE13_NON_VIE_EXCLUSIONS
+    societes_par_tableau["annexe13"] -= ANNEXE13_NON_VIE_EXCLUSIONS
+
     tableaux = [{"key": key, "label": label} for key, label, _raws in TABLEAU_GROUPS]
-    return {"societes": societes, "annees": annees, "tableaux": tableaux}
+    return {
+        "societes": societes, "annees": annees, "tableaux": tableaux,
+        "societes_par_tableau": {k: sorted(v) for k, v in societes_par_tableau.items()},
+    }
 
 
 def get_reliability_stats(conn):

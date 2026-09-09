@@ -1,5 +1,76 @@
 # Cas particuliers — extraction "grille complète" (extraction/full_table_extractor.py)
 
+## 2026-09-09 — deux bugs trouvés sur retour utilisateur ("le tableau STAR 2025 est incomplet")
+
+### 1. STAR 2025 : la vraie page Annexe 13 est un SCAN (pas de couche texte)
+
+Constaté en creusant l'export réel (5 lignes × 4 colonnes livré au lieu des
+~25 lignes × 9 colonnes attendues) : `locate_and_extract_full_table` sur
+`STAR_2025.pdf` ne trouve QUE 2 pages candidates — page 4 (ancienne page de
+réconciliation agrégée, 4 colonnes) et page 48 ("Annexe n°16 : Tableau de
+raccordement... Non-Vie", échoue). **La vraie page Annexe 13 par branche
+n'apparaît JAMAIS dans les candidats.** Inspection directe : `pdfplumber`
+extrait `page.chars` = 3 caractères, `page.extract_text()` = chaîne vide,
+mais `page.images` = 1 — la page 45 est un **SCAN inséré tel quel** (aucune
+couche de texte), pas un rendu natif. Ni `pdfplumber` (détection de page) ni
+`camelot` (reconstruction, repose sur la couche texte) ne peuvent la lire.
+
+Cause probable : contrairement aux autres années, cette page précise du
+document 2025 de STAR a été insérée comme image (signature scannée,
+correction tardive, export PDF différent pour cette page seule...) — à
+vérifier société par société si le même symptôme est isolé ou récurrent.
+**Pas corrigible par un correctif d'algorithme** — nécessiterait de l'OCR
+(le projet en a déjà pour d'autres cas, ex. `scripts/ocr_repair_validated.py`
+mentionné ailleurs) sur cette page précise avant extraction. Le pipeline
+actuel se rabat silencieusement sur la page 4 (réconciliation, 4 colonnes)
+qui passe le contrôle de vraisemblance — un résultat VALIDE mais NETTEMENT
+moins complet que la vraie grille par branche, présenté sans distinction
+comme "réussi" dans les statistiques de fiabilité actuelles. Limite connue
+de la mesure actuelle : "réussi" veut dire "une page candidate lisible a
+produit un tableau plausible", pas "la MEILLEURE page du document a été
+utilisée" — les deux se confondent silencieusement dans ce cas précis. Non
+corrigé ici (nouveau chantier, hors périmètre de cette session) — piste
+naturelle : OCR ciblé quand aucune page candidate en texte natif n'est
+trouvée mais qu'une page image existe dans la zone attendue (juste après
+l'Annexe 12).
+
+### 2. ATTIJARI (et 3 autres sociétés Vie/Takaful) : données mal-étiquetées stockées en base
+
+En vérifiant pourquoi ATTIJARI apparaissait comme ayant des données Annexe 13
+alors qu'elle est répertoriée Vie exclusivement (`ANNEXE13_NON_VIE_
+EXCLUSIONS`), découvert que **le référentiel d'exclusion n'était appliqué
+qu'au SCRIPT D'AUDIT et à `get_reliability_stats()`, jamais à la pipeline de
+stockage réelle** (`api/services/tableau_pipeline_service.py::_cmf_documents`
+n'avait aucun filtre) — chaque revalidation continuait donc à (re)tenter
+l'extraction pour ATTIJARI/UIB/GAT_VIE/etc. Pour ATTIJARI spécifiquement,
+2021-2023 retombent sur la même page de raccordement Vie mal titrée déjà
+diagnostiquée (codes internes PRV1/CHV1 = Vie, mais page non qualifiée "Vie"
+dans son titre — passe le contrôle de vraisemblance par accident) et
+produisaient un résultat "réussi" mais garbage (ex. un unique nom de colonne
+de 90 caractères concaténant tout l'en-tête). **Vérifié en base : 6
+documents contaminés au total** — ATTIJARI (3), AT_TAKAFULIA (1), GAT_VIE
+(1), ZITOUNA_TAKAFUL (1) — supprimés de `tableau_cellules`/
+`tableau_validations`. Fix définitif : `_cmf_documents` exclut désormais
+`ANNEXE13_NON_VIE_EXCLUSIONS` à la source (jamais retenté), donc plus de
+recontamination possible aux prochaines revalidations.
+
+**Nuance restante, non traitée** : l'ANCIEN extracteur 7-KPI
+(`annexe13_kpi_extractor.py`, alimente les dashboards, jamais touché dans
+cette session par consigne explicite) a le MÊME bug de fond — il tague
+aussi à tort des valeurs Vie d'ATTIJARI 2021-2023 sous le libellé brut
+"Annexe 13 - Resultat technique Non-Vie" dans `kpi_values` (racine commune :
+la page de raccordement d'ATTIJARI ne contient pas le mot "vie" dans ses 4
+premières lignes, seul signal utilisé par `_is_target_page`). Cette table
+`kpi_values` n'a pas été nettoyée (hors périmètre — sert aux dashboards) ;
+un export "tous les tableaux" ou "Annexe 12" pourrait donc encore afficher
+ces valeurs contaminées via le repli narrow (`_write_narrow_fallback_block`).
+Le nouveau garde-fou `societes_par_tableau` (voir `get_filter_options`) évite
+au moins qu'un utilisateur sélectionne ATTIJARI pour un export Annexe 13
+depuis l'interface — mais ne corrige pas la donnée source. Piste pour plus
+tard, si priorisé : élargir `_is_target_page`/`PAGE_TITLE_RE` (module
+partagé narrow) pour détecter les codes internes PRV/CHV en plus du titre de
+page, comme fait ici côté grille complète.
+
 ## 2026-09-09 (bilan) — couverture Annexe 13 2024, toutes sociétés conventionnelles
 
 Après le fix COTUNACE (ce fichier, entrée du dessous) et le repli "Notes sur
