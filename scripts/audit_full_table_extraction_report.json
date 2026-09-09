@@ -7,7 +7,15 @@
       "statut": "pas_de_pdf"
     },
     "2023": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 55,
+      "n_colonnes": 3,
+      "n_lignes": 27,
+      "colonnes": [
+        "uncendie me trarspor r",
+        "riso spx m autom objle)",
+        "tn"
+      ]
     },
     "2022": {
       "statut": "ok",
@@ -34,7 +42,13 @@
       ]
     },
     "2020": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 47,
+      "n_colonnes": 1,
+      "n_lignes": 19,
+      "colonnes": [
+        "(colonne 1)"
+      ]
     },
     "2019": {
       "statut": "echec"
@@ -55,10 +69,34 @@
       ]
     },
     "2017": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 39,
+      "n_colonnes": 7,
+      "n_lignes": 24,
+      "colonnes": [
+        "incendie",
+        "transport",
+        "risq.divers",
+        "risq.spx",
+        "automobile",
+        "groupe",
+        "total"
+      ]
     },
     "2016": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 37,
+      "n_colonnes": 7,
+      "n_lignes": 24,
+      "colonnes": [
+        "incendie",
+        "transport",
+        "riso.divers",
+        "riso.spx",
+        "automobile",
+        "groupe",
+        "total"
+      ]
     }
   },
   "ASTREE": {
@@ -706,7 +744,16 @@
       ]
     },
     "2020": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 4,
+      "n_colonnes": 4,
+      "n_lignes": 17,
+      "colonnes": [
+        "(colonne 1)",
+        "(colonne 2)",
+        "(colonne 3)",
+        "(colonne 4)"
+      ]
     },
     "2019": {
       "statut": "ok",
@@ -961,7 +1008,14 @@
       ]
     },
     "2018": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 34,
+      "n_colonnes": 2,
+      "n_lignes": 30,
+      "colonnes": [
+        "incendie at",
+        "groupe aviation"
+      ]
     },
     "2017": {
       "statut": "ok",
@@ -1010,7 +1064,13 @@
       "statut": "echec"
     },
     "2021": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 66,
+      "n_colonnes": 1,
+      "n_lignes": 26,
+      "colonnes": [
+        "credit-caution"
+      ]
     },
     "2020": {
       "statut": "ok",
@@ -1022,7 +1082,13 @@
       ]
     },
     "2019": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 63,
+      "n_colonnes": 1,
+      "n_lignes": 29,
+      "colonnes": [
+        "credit-caution"
+      ]
     },
     "2018": {
       "statut": "ok",
@@ -1425,7 +1491,15 @@
       ]
     },
     "2018": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 33,
+      "n_colonnes": 3,
+      "n_lignes": 26,
+      "colonnes": [
+        "n mn acc r dir mrn a e",
+        "v ri ncendien itransport",
+        "mn rxgtoude mm mir to t"
+      ]
     },
     "2017": {
       "statut": "ok",
@@ -1621,7 +1695,17 @@
       ]
     },
     "2023": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 36,
+      "n_colonnes": 5,
+      "n_lignes": 25,
+      "colonnes": [
+        "groupe atravail incendie",
+        "risques divers",
+        "transport aviation",
+        "acceptation",
+        "total"
+      ]
     },
     "2022": {
       "statut": "ok",
