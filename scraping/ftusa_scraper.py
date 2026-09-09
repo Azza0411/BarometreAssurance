@@ -38,6 +38,7 @@ from database.repository import (
     get_connection,          # connexion base
     get_or_create_source,      # id source FTUSA
     init_schema,                 # tables à jour
+    known_document_liens,        # URLs déjà enregistrées (voir sync_documents)
     save_document,                 # enregistre métadonnées
 )
 from utils.pdf_utils import is_valid_pdf  # vérifie PDF valide
@@ -127,10 +128,16 @@ def sync_documents():
 
     links = _collect_main_pdf_links()  # liens, récent→ancien
     print(f"[STEP] {len(links)} document(s) trouve(s) dans la zone principale de la page FTUSA")
+    known_liens = known_document_liens(conn, source_id)  # URLs déjà en base — année inconnaissable
+    # avant téléchargement ici (contrairement à CMF), donc dédup par URL,
+    # stable une fois un rapport publié, plutôt que par année.
 
     by_year = {}  # année -> url retenue
     for link in links:
         url = link if link.startswith("http") else FTUSA_BASE_URL + link  # URL absolue
+        if url in known_liens:
+            print(f"  [INFO] Deja en base (URL connue), telechargement evite : {url}")
+            continue  # déjà traité lors d'une collecte précédente
         try:
             response = _get_with_retries(url, timeout=60)  # télécharge le PDF
         except requests.RequestException as exc:

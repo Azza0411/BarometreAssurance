@@ -21,6 +21,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scraping.cmf_portal_scraper import CMFPortalScraper
 from config.company_registry import COMPANY_REGISTRY
 from extraction.kpi_extraction_pipeline import run as run_kpi_extraction
+from pipelines.control import is_cancel_requested
 
 
 def sync_documents(headless=True):
@@ -31,6 +32,9 @@ def sync_documents(headless=True):
 
     try:
         for company_key in COMPANY_REGISTRY:
+            if is_cancel_requested():
+                print("[ANNULE] Collecte annulée par l'utilisateur — synchronisation interrompue.")
+                break
             print(f"\n===== TRAITEMENT : {company_key} =====")
             try:
                 nb_nouveaux = scraper.run(company_key)
@@ -54,6 +58,8 @@ def sync_documents(headless=True):
 def main(headless=True):
     print("\n===== DEBUT DU PIPELINE CMF =====\n")
     sync_summary = sync_documents(headless=headless)
+    if is_cancel_requested():
+        return {"sync": sync_summary, "kpi": None}
     kpi_summary = run_kpi_extraction()
     return {"sync": sync_summary, "kpi": kpi_summary}
 

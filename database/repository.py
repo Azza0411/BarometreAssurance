@@ -280,6 +280,21 @@ def document_exists(conn, source_id, cmf_id, annee):
         return cur.fetchone() is not None
 
 
+def known_document_liens(conn, source_id):
+    """Renvoie l'ensemble des URLs (`lien`) déjà enregistrées pour une
+    source — utile quand l'ANNÉE d'un document ne peut être connue
+    qu'APRÈS téléchargement (ex: FTUSA, qui la lit dans le contenu du PDF,
+    pas dans l'URL) : `document_exists(source_id, cmf_id, annee)` est alors
+    inutilisable comme garde-fou AVANT de télécharger. L'URL d'un rapport
+    déjà publié reste stable d'une collecte à l'autre, donc un lien déjà
+    connu peut être sauté sans le retélécharger (2026-09-09, retour
+    utilisateur — la collecte retéléchargeait tous les rapports FTUSA à
+    chaque clic, ~9 minutes rien que pour ~10 documents déjà en base)."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT lien FROM documents WHERE source_id = %s", (source_id,))
+        return {row[0] for row in cur.fetchall()}
+
+
 def save_document(conn, source_id, cmf_id, nom_pdf, annee, lien):
     """Insère ou met à jour un document. Un SELECT explicite (plutôt qu'un
     ON DUPLICATE KEY) est utilisé car MySQL n'applique pas l'unicité entre
@@ -332,6 +347,20 @@ def list_all_documents(conn):
             """
         )
         return cur.fetchall()
+
+
+def get_document_ids_with_kpi(conn):
+    """Renvoie l'ensemble des `document_id` ayant déjà AU MOINS une valeur de
+    KPI enregistrée (`kpi_values`), toutes sources confondues — sert à
+    l'extraction KPI incrémentale (extraction/kpi_extraction_pipeline.py) :
+    sauter un document déjà traité avec succès plutôt que de le
+    retélécharger et le reparser à chaque collecte (2026-09-09, retour
+    utilisateur — la collecte re-traitait ~223 documents CMF déjà extraits
+    à chaque clic, plusieurs dizaines de minutes pour, la plupart du temps,
+    0 document réellement nouveau)."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT document_id FROM kpi_values")
+        return {row[0] for row in cur.fetchall()}
 
 
 def save_kpi_value(conn, document_id, tableau, kpi, valeur_nombre=None, valeur_texte=None):
