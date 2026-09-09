@@ -14,7 +14,7 @@ import os
 
 from database.repository import get_connection, save_tableau_result
 from extraction.annexe13_kpi_extractor import _is_target_page, RACCORDEMENT_RE, KPI_PATTERNS
-from extraction.annexe13_pipeline import process_annexe13
+from extraction.annexe13_pipeline import process_annexe13, ANNEXE13_NON_VIE_EXCLUSIONS
 from extraction.full_table_extractor import relaxed_is_annexe13_page
 from api.services.data_management import local_pdf_path
 
@@ -23,7 +23,14 @@ TABLEAU_KEY = "annexe13"
 
 def _cmf_documents(conn, codes=None, annees=None):
     """(document_id, code, nom_pdf) pour les documents CMF correspondant aux
-    filtres — mêmes filtres optionnels (codes/années) que l'export flexible."""
+    filtres — mêmes filtres optionnels (codes/années) que l'export flexible.
+    Exclut toujours les sociétés hors périmètre Non-Vie
+    (`ANNEXE13_NON_VIE_EXCLUSIONS` — Vie exclusivement/Takaful) : tenter
+    l'extraction pour elles ne peut au mieux rien trouver (page absente) et
+    au pire tomber par accident sur une page de raccordement VIE qui passe
+    le contrôle de vraisemblance (constaté sur ATTIJARI — voir CAS_
+    PARTICULIERS_FULL_TABLE.md) et pollue la base avec des cellules
+    mal-étiquetées "Non-Vie" alors qu'elles sont Vie."""
     query = """
         SELECT d.id, c.code, d.nom_pdf
         FROM documents d
@@ -32,6 +39,9 @@ def _cmf_documents(conn, codes=None, annees=None):
         WHERE s.nom = 'CMF'
     """
     params = []
+    if ANNEXE13_NON_VIE_EXCLUSIONS:
+        query += f" AND c.code NOT IN ({','.join(['%s'] * len(ANNEXE13_NON_VIE_EXCLUSIONS))})"
+        params.extend(sorted(ANNEXE13_NON_VIE_EXCLUSIONS))
     if codes:
         query += f" AND c.code IN ({','.join(['%s'] * len(codes))})"
         params.extend(codes)

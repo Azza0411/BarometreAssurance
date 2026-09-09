@@ -286,7 +286,7 @@ const fieldLabel = { display: "block", fontSize: 10, fontWeight: 700, color: "#9
 // Un bouton façon menu déroulant qui ouvre un panneau à cases à cocher,
 // plutôt qu'un mur de puces (déjà écarté comme trop volumineux) ou un
 // <select multiple> natif (peu intuitif, nécessite ctrl/cmd+clic).
-function MultiSelect({ label, options, selected, onToggle, allLabel = "Toutes" }) {
+function MultiSelect({ label, options, selected, onToggle, allLabel = "Toutes", disabledSet, disabledHint }) {
   const [openMenu, setOpenMenu] = useState(false);
   const ref = useRef(null);
 
@@ -324,17 +324,24 @@ function MultiSelect({ label, options, selected, onToggle, allLabel = "Toutes" }
           background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 8,
           boxShadow: "0 6px 18px rgba(0,0,0,.1)", maxHeight: 230, overflowY: "auto", padding: 4,
         }}>
-          {options.map(o => (
-            <label key={o.value} style={{
-              display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", fontSize: 12.5,
-              cursor: "pointer", borderRadius: 6, color: DARK,
-            }}
-              onMouseEnter={e => (e.currentTarget.style.background = "#F8F9FC")}
-              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-              <input type="checkbox" checked={selected.has(o.value)} onChange={() => onToggle(o.value)} />
-              {o.label}
-            </label>
-          ))}
+          {options.map(o => {
+            const isDisabled = disabledSet?.has(o.value);
+            return (
+              <label key={o.value}
+                title={isDisabled ? disabledHint : undefined}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", fontSize: 12.5,
+                  cursor: isDisabled ? "not-allowed" : "pointer", borderRadius: 6,
+                  color: isDisabled ? "#C2C6D2" : DARK,
+                }}
+                onMouseEnter={e => { if (!isDisabled) e.currentTarget.style.background = "#F8F9FC"; }}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                <input type="checkbox" checked={selected.has(o.value)} disabled={isDisabled}
+                  onChange={() => onToggle(o.value)} />
+                {o.label}
+              </label>
+            );
+          })}
         </div>
       )}
     </div>
@@ -364,6 +371,33 @@ function ExportDrawer({ open, prefill, onClose }) {
     next.has(value) ? next.delete(value) : next.add(value);
     return next;
   });
+
+  // Sociétés éligibles pour la sélection de tableau en cours — retour
+  // utilisateur : une société sans AUCUNE donnée pour un tableau choisi (ex.
+  // ATTIJARI/UIB pour l'Annexe 13, sociétés Vie exclusivement) doit être
+  // désactivée dans le sélecteur plutôt que de rester choisissable pour
+  // produire un export vide. Aucun tableau sélectionné = tous éligibles
+  // (pas de filtre). Plusieurs tableaux sélectionnés = éligible si la
+  // société a AU MOINS UN des tableaux choisis (union, pas intersection —
+  // sinon une société qui n'a que l'Annexe 12 serait exclue dès qu'on
+  // ajoute l'Annexe 13 à la sélection).
+  const societesDisabled = useMemo(() => {
+    if (!opts || tableaux.size === 0) return new Set();
+    const eligible = new Set();
+    tableaux.forEach(t => (opts.societes_par_tableau?.[t] || []).forEach(c => eligible.add(c)));
+    return new Set(opts.societes.map(s => s.code).filter(c => !eligible.has(c)));
+  }, [opts, tableaux]);
+
+  // Une société déjà cochée qui devient désactivée (l'utilisateur change la
+  // sélection de tableau après coup) est retirée automatiquement — jamais
+  // laissée sélectionnée mais grisée/invisible dans son propre résumé.
+  useEffect(() => {
+    if (societesDisabled.size === 0) return;
+    setSocietes(prev => {
+      const next = new Set([...prev].filter(c => !societesDisabled.has(c)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [societesDisabled]);
 
   const buildUrl = () => {
     const p = new URLSearchParams();
@@ -416,6 +450,8 @@ function ExportDrawer({ open, prefill, onClose }) {
                   label="Société"
                   options={opts.societes.map(s => ({ value: s.code, label: s.code }))}
                   selected={societes} onToggle={toggleIn(setSocietes)}
+                  disabledSet={societesDisabled}
+                  disabledHint="Aucune donnée pour le(s) tableau(x) sélectionné(s)"
                 />
                 <MultiSelect
                   label="Année"
