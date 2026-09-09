@@ -371,12 +371,9 @@ def _sorted_grid_rows(lignes):
 # Charte visuelle de ce bloc spécifiquement (grille complète Annexe 13) —
 # police Arial alignée sur le script de référence de l'utilisatrice
 # (FS_Market_Intelligence/B.py::export_to_excel). Couleur d'en-tête : bleu
-# → gris → jaune foncé → ce bandeau sombre (retours utilisateur successifs) —
-# demande explicite : "le même design que celui-là [tableau Classement des
-# compagnies, fond sombre EY] mais au lieu du jaune on met du blanc pour le
-# texte". Fond de ligne uni (blanc), pas de zébrage, comme sur ce même
-# tableau de référence.
-_REF_HEADER = DARK
+# → gris → jaune foncé → sombre (couleur EY) → ce gris moins foncé (retours
+# utilisateur successifs). Fond de ligne uni (blanc), pas de zébrage.
+_REF_HEADER = "6B7280"
 _REF_HEADER_TEXT = "FFFFFF"
 
 
