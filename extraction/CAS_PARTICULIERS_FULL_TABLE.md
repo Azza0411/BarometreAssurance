@@ -1,5 +1,53 @@
 # Cas particuliers — extraction "grille complète" (extraction/full_table_extractor.py)
 
+## 2026-09-09 — 3ᵉ catégorie de défaut : en-tête de colonnes tronqué par camelot (bandeau coloré)
+
+Trouvé en vérifiant GAT 2023 sur demande utilisateur (après STAR 2023/BIAT
+2023). **Différent des cas "page scannée" (STAR/ASTREE)** : la page existe
+bien en texte natif, mais **9 des 16 colonnes de branche ressortent
+non-étiquetées** (`(colonne N)`), causant 2 écarts d'identité comptable
+faussement attribués à la colonne fantôme.
+
+**Cause identifiée précisément** : sur GAT 2023, l'en-tête de colonnes est
+rendu dans un **bandeau violet coloré**, replié sur 2-3 sous-lignes visuelles
+(ex. "Automobile" tient sur 1 ligne, "Responsabilité civile" sur 2,
+"Autres dommages aux biens" sur 3). Vérifié directement sur l'objet
+`camelot.Table` : **la toute première sous-ligne du bandeau (celle qui
+porte "Automobile", "Transport", "Incendie"... et le début des libellés
+composés) n'est même PAS incluse dans le tableau détecté par camelot** —
+`tables.n == 1` (une seule table trouvée, pas de 2ᵉ table candidate à
+récupérer), et son `df` (24, 17) démarre directement à la 2ᵉ sous-ligne du
+bandeau ("civile", "agricole", "corporels"...). Ce n'est donc pas un
+problème de FENÊTRE de capture côté `full_table_extractor.py`
+(`header_start:first_data_idx`) — le mot n'existe nulle part dans les
+données que camelot renvoie pour cette page ; seul `pdfplumber` (accès mot
+par mot indépendant de la détection de tableau) peut encore le voir.
+
+**Prévalence réelle mesurée** (relevé sur les 84 documents déjà classés
+"grille complète" par l'audit de qualité précédent — donc un souci
+INVISIBLE à ce premier audit, qui ne comptait que le NOMBRE de colonnes,
+jamais si elles étaient nommées) :
+
+- **25 / 84 (30 %)** ont au moins 1 colonne `(colonne N)` non étiquetée.
+- **2 cas extrêmes à 100 % non étiqueté** : ASTREE 2019 (17/17) et ASTREE
+  2020 (17/17) — la grille est numériquement complète mais AUCUNE branche
+  n'est identifiable, résultat inutilisable tel quel malgré un statut
+  "réussi".
+- Sociétés touchées à des degrés divers : ASTREE (le plus touché, 7
+  exercices), MAGHREBIA (3), GAT, CARTE, COMAR, BH, BIAT, TUNIS_RE (1-2
+  chacune).
+
+**Piste de correction** (non implémentée ici, confiée à une tâche de fond
+séparée) : récupérer la sous-ligne manquante via `pdfplumber` (accès mot
+par mot indépendant de camelot) en repérant les mots positionnés
+au-dessus du bord supérieur du tableau détecté par camelot
+(`camelot.Table._bbox`), puis les rattacher à la bonne colonne par
+recoupement avec les bornes X de chaque colonne (`camelot.Table.cols`,
+disponibles mais actuellement jetées — seul `t.df` est conservé par
+`_find_table_camelot`). Nécessite une réconciliation de repère (pdfplumber
+= origine haut-gauche, `top` croissant vers le bas ; camelot = coordonnées
+PDF natives, origine bas-gauche, y croissant vers le haut).
+
 ## 2026-09-09 — audit de QUALITÉ (pas seulement de couverture), toutes sociétés/années
 
 Suite à STAR 2025/ASTREE 2023 (audit binaire OK/ÉCHEC insuffisant — voir
