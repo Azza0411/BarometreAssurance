@@ -103,6 +103,13 @@ CANONICAL_ROWS = [
     "Prévisions de recours à encaisser (exercice N-1)",
     "Provisions pour égalisation et équilibrage (exercice N)",
     "Provisions pour égalisation et équilibrage (exercice N-1)",
+    # Ajouté le 2026-09-10 (vérification TUNIS_RE, réassureur avec clientèle
+    # Takaful) : poste de commissions "Wakala" propre à ce type de contrat,
+    # absent des sociétés d'assurance directe ayant servi à construire la
+    # liste initiale. Mot court (6 lettres) : sous le seuil de score flou
+    # `_MATCH_THRESHOLD`, il finissait donc en "non reconnu" plutôt que
+    # rattaché à un poste canonique inexistant à tort — ajouté tel quel.
+    "Wakala",
 ]
 
 # Score minimal (difflib.SequenceMatcher.ratio, 0-1) pour accepter une
@@ -196,8 +203,8 @@ CANONICAL_COLUMNS = [
     "Pertes pécuniaires", "Protection juridique", "Crédit-Caution",
     "Responsabilité décennale", "Vol", "Grêle",
     "Autres dommages aux biens", "Individuelle accident", "Invalidité",
-    "Autres", "Risques techniques", "Marines", "Non marines",
-    "Total marines", "Total non marines", "Wakala",
+    "Autres", "Risques techniques", "Marines", "Non marines", "ARD",
+    "Total marines", "Total non marines", "Total non vie", "Wakala",
     # Gabarit "raccordement" (Brut/Cessions/Net) — pas des branches mais un
     # 2e type de tableau Annexe 13 rencontré sur certaines sociétés/années
     # (BH, AMI, CTAMA, COMAR — voir CAS_PARTICULIERS_FULL_TABLE.md, cas STAR
@@ -225,7 +232,14 @@ _COLUMN_ALIASES = {
     "groupe": "Groupe",
     "acceptation": "Acceptation", "acceptations": "Acceptation",
     "total": "Total", "montant": "Total", "total general": "Total",
-    "total non vie": "Total", "t o t a l": "Total",
+    "t o t a l": "Total",
+    # Distinct de "Total" (le total général Vie+Non-Vie) : certaines sociétés
+    # (ex. TUNIS_RE, réassureur Vie+Non-Vie) ont les DEUX colonnes dans le
+    # même tableau - les fusionner sous le même nom canonique "Total"
+    # provoquait une collision réglée (à tort) par le suffixe de
+    # désambiguïsation " (2)" de `normalize_table` (ex. "Total (2)"), qui
+    # masquait la vraie structure du PDF plutôt que de la refléter.
+    "total non vie": "Total non vie",
     "maladie": "Maladie",
     "construction": "Construction",
     "assistance": "Assistance", "assistances": "Assistance",
@@ -258,6 +272,10 @@ _COLUMN_ALIASES = {
     "invalidite": "Invalidité",
     "autres": "Autres", "autre s": "Autres",
     "risque tech.": "Risques techniques", "risque tech": "Risques techniques",
+    # "ARD" (branche réassurance, ex. TUNIS_RE) - abréviation d'usage sur ces
+    # gabarits, distincte de "Risques divers" (branche assureur direct) donc
+    # jamais fusionnée avec elle (voir remarque en tête de dictionnaire).
+    "ard": "ARD",
     "marines": "Marines", "non marines": "Non marines", "non m arines": "Non marines",
     "total marines": "Total marines", "total m arines": "Total marines",
     "total non marines": "Total non marines", "total non m arines": "Total non marines",
