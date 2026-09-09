@@ -141,6 +141,12 @@ def _clean_cell_value(text):
 
 
 def _find_table_camelot(pdf_path, page_num):
+    """Renvoie l'objet `camelot.core.Table` (pas seulement `.df`) de la
+    détection la plus riche de la page — on garde l'objet entier car
+    `.cols` (bornes X natives de chaque colonne) et `.rows` / `._bbox`
+    (bornes Y natives, origine bas-gauche) servent ensuite à récupérer la
+    sous-ligne d'en-tête que camelot laisse parfois hors du tableau détecté
+    (bandeau de titre coloré — voir `_recover_truncated_column_headers`)."""
     import camelot
     try:
         tables = camelot.read_pdf(pdf_path, flavor="stream", pages=str(page_num))
@@ -151,7 +157,198 @@ def _find_table_camelot(pdf_path, page_num):
     # Une page peut produire plusieurs détections (légendes, notes de bas de
     # page...) — le vrai tableau est presque toujours celui qui a le plus de
     # lignes.
-    return max((t.df for t in tables), key=lambda df: df.shape[0])
+    return max(tables, key=lambda t: t.df.shape[0])
+
+
+# ── Récupération d'un en-tête de colonnes tronqué par camelot ───────────────
+# 3ᵉ catégorie de défaut (2026-09-09, voir CAS_PARTICULIERS_FULL_TABLE.md) :
+# quand l'en-tête de colonnes est rendu dans un bandeau coloré replié sur
+# 2-3 sous-lignes visuelles, camelot (flavor='stream') laisse parfois la
+# TOUTE PREMIÈRE sous-ligne hors du tableau détecté — le mot ("Automobile",
+# "Transport"... et le début des libellés composés) n'apparaît nulle part
+# dans `t.df`. Seul pdfplumber (accès mot-à-mot, indépendant de la détection
+# de tableau) peut encore le voir. On le récupère et on le RÉINJECTE dans la
+# bonne colonne (par recoupement des bornes X `t.cols`), en PRÉFIXE des
+# fragments d'en-tête que camelot a bien captés — jamais en remplacement.
+#
+# Repères de coordonnées (à ne pas confondre) :
+#   - pdfplumber : origine haut-gauche, `top`/`bottom` croissent vers le BAS.
+#   - camelot `.cols` / `.rows` / `._bbox` : coordonnées PDF natives, origine
+#     bas-gauche, y croissant vers le HAUT.
+#   Conversion : `y_camelot = page.height - top_pdfplumber`.
+_HEADER_RECOVERY_MARGIN = 36.0  # pt au-dessus de la 1re ligne captée par camelot où
+# l'on cherche encore la sous-ligne tronquée (≈ 3-4 sous-lignes d'un bandeau
+# à petite police) ; au-delà on risquerait d'aspirer le titre de page.
+_HEADER_RECOVERY_MIN_COLS = 2   # en dessous, ce n'est pas un bandeau d'en-tête entier
+# mais un mot isolé au-dessus du tableau (bruit) — on n'injecte rien.
+_HEADER_RECOVERY_MAX_CAPTURED = 0.5  # on ne récupère QUE si camelot a lui-même
+# étiqueté moins de la moitié des colonnes de valeur ; au-dessus, sa capture
+# est complète et toute injection risquerait de dupliquer / polluer.
+
+# Un token récupéré qui matche un de ces mots (forme déjà nettoyée par
+# `_normalizer.clean` : minuscule, sans accent) appartient au PRÉAMBULE / au
+# titre de page, jamais à une branche — écarté pour qu'un titre rendu juste
+# au-dessus (ou en travers) du bandeau coloré ne fuie pas dans les libellés.
+_HEADER_RECOVERY_NOISE_TERMS = frozenset({
+    "annexe", "resultat", "technique", "categorie", "assurance", "assurances",
+    "par", "de", "la", "le", "du", "des", "au", "aux", "jusqu", "exprime",
+    "exprimes", "dinars", "dinar", "tunisiens", "tunisien", "non", "vie",
+    "en", "etats", "financiers", "societe", "decembre", "arrondis",
+    "chiffres", "unite", "note", "notes", "sur", "activite", "retakaful",
+})
+_HEADER_RECOVERY_DIGIT_RE = re.compile(r"\d")
+_HEADER_RECOVERY_VOWELS = set("aeiouy")
+
+
+def _keep_recovered_token(token):
+    """Un token pdfplumber récupéré est gardé s'il ne porte pas de chiffre et
+    qu'aucun de ses sous-mots (après séparation sur tiret/apostrophe) n'est un
+    mot de préambule/titre — "Non-Vie", "jusqu'au", "d'assurance"... sont ainsi
+    écartés même collés à un vrai mot de branche."""
+    t = token.strip(" .:-")
+    if len(t) <= 1 or _HEADER_RECOVERY_DIGIT_RE.search(t):
+        return False
+    parts = _normalizer.clean(t).replace("-", " ").split()
+    return bool(parts) and not any(p in _HEADER_RECOVERY_NOISE_TERMS for p in parts)
+
+
+def _recovered_label_ok(cleaned):
+    """Un libellé récupéré (déjà nettoyé, préfixe seul — camelot fournira la
+    suite) est jugé exploitable si :
+      - c'est une abréviation de branche courte ("a t", "r c") ; ou
+      - il se rattache à une branche connue (`normalize_column_label`) ; ou
+      - c'est 1 mot plein de 5-12 lettres, ou ≤ 3 mots de ≥ 3 lettres.
+    Au-delà (texte long, morcelé, majorité de bribes de 1-2 lettres), c'est
+    un en-tête corrompu à la source — ex. ASTREE, glyphes espacés/collés
+    "literesp biliterisques il" — et un placeholder propre vaut mieux."""
+    toks = cleaned.split()
+    if not toks or len(toks) > 4 or len(cleaned) > 30:
+        return False
+    # Abréviation de branche courte, ponctuation ignorée ("a.t.", "r.c",
+    # "a t") — fréquente en tête de colonne, ≤ 3 lettres utiles au total.
+    letters_only = re.sub(r"[^a-z]", "", cleaned)
+    if len(letters_only) <= 3 and all(len(re.sub(r"[^a-z]", "", t)) <= 2 for t in toks):
+        return True
+    from extraction.annexe13_pipeline import normalize_column_label
+    if normalize_column_label(cleaned)[1]:
+        return True
+    if len(toks) == 1:
+        return 5 <= len(toks[0]) <= 12 and bool(set(toks[0]) & _HEADER_RECOVERY_VOWELS)
+    return all(len(t) >= 3 for t in toks) and len(cleaned) <= 24
+
+
+def _recover_truncated_column_headers(pdf_path, page_num, table, min_data_cells=MIN_DATA_CELLS):
+    """Repère, via pdfplumber, les mots d'en-tête situés juste AU-DESSUS du
+    tableau détecté par camelot et les rattache à la bonne colonne de valeur
+    (recoupement des bornes X `table.cols`). Renvoie {index_colonne_df:
+    "texte récupéré"} — vide si la capture de camelot est déjà complète, si
+    rien de plausible n'est trouvé, ou si l'objet Table n'expose pas ses
+    bornes. N'est PAS spécifique à une société : la seule hypothèse est
+    "camelot a laissé une sous-ligne du bandeau d'en-tête hors du tableau".
+    Propre à la voie camelot (a besoin de `table.cols`/`table.rows` et d'un
+    accès mot-à-mot pdfplumber) — la voie OCR ne l'appelle pas."""
+    cols = getattr(table, "cols", None)
+    rows = getattr(table, "rows", None)
+    if not cols or not rows:
+        return {}
+    rows_raw = table.df.values.tolist()
+    n_cols = table.df.shape[1]
+    if len(cols) != n_cols or n_cols < 2:
+        return {}
+
+    # 1re ligne de données + fin de la zone "libellé" — même repérage que
+    # `reconstruct_grid_from_rows` (dupliqué ici car cette fonction tourne
+    # AVANT elle, sur l'objet Table ; le seuil "capture incomplète" plus bas
+    # reste grossier donc une divergence mineure est sans effet).
+    effective = min(min_data_cells, max(1, n_cols - 1))
+    first_data_idx = next(
+        (i for i, r in enumerate(rows_raw)
+         if sum(1 for c in r if _looks_numeric_cell(c)) >= effective), None
+    )
+    if not first_data_idx:  # None ou 0 -> pas de zone d'en-tête à récupérer
+        return {}
+    numeric = [i for i, c in enumerate(rows_raw[first_data_idx]) if _looks_numeric_cell(c)]
+    if not numeric:
+        return {}
+    label_col_end = min(numeric)
+    if label_col_end >= n_cols:
+        return {}
+    header_rows = rows_raw[:first_data_idx]
+
+    value_idxs = list(range(label_col_end, n_cols))
+    # Garde-fou "capture incomplète" : si camelot a déjà un fragment d'en-tête
+    # pour ≥ la moitié des colonnes de valeur, sa capture est complète — ne
+    # rien injecter (évite de polluer les ~59 documents déjà corrects et les
+    # cas de sur-découpage de colonnes, sans rapport avec ce défaut).
+    captured = sum(
+        1 for j in value_idxs
+        if any((row[j] or "").strip() for row in header_rows)
+    )
+    if value_idxs and captured / len(value_idxs) >= _HEADER_RECOVERY_MAX_CAPTURED:
+        return {}
+
+    import pdfplumber
+
+    boundary = rows[0][0]  # y natif (haut de la 1re ligne captée par camelot)
+    first_value_x = cols[label_col_end][0]
+
+    with pdfplumber.open(pdf_path) as pdf:
+        page = pdf.pages[page_num - 1]
+        height = page.height
+        words = page.extract_words(use_text_flow=False, keep_blank_chars=False)
+
+    def center_y(w):  # y natif du centre du mot
+        return height - (w["top"] + w["bottom"]) / 2.0
+
+    # Fenêtre de recherche : juste au-dessus de la 1re ligne captée par
+    # camelot (`boundary`), sur une bande étroite (`_HEADER_RECOVERY_MARGIN`,
+    # ≈ 2-3 sous-lignes d'un bandeau à petite police). Le préambule / titre de
+    # page, plus haut, est écarté par le double filtre de contenu plus bas
+    # (chiffres + vocabulaire de titre) plutôt que par un plancher
+    # positionnel — un plancher "bas de la ligne de préambule" clippait à
+    # tort la vraie ligne d'en-tête sur les gabarits où titre et en-tête sont
+    # quasi collés (ex. ASTREE, titre éclaté en travers du bandeau).
+    ceiling = boundary + _HEADER_RECOVERY_MARGIN
+
+    def overlap(a0, a1, b0, b1):
+        return max(0.0, min(a1, b1) - max(a0, b0))
+
+    per_col = {}  # index_df -> [(center_y, texte), ...]
+    for w in words:
+        cy = center_y(w)
+        if not (boundary < cy < ceiling):
+            continue
+        if w["x1"] <= first_value_x + 2:
+            continue  # dans la zone du libellé de ligne, pas un en-tête de valeur
+        best_j, best_ov = None, 0.0
+        for j in value_idxs:
+            ov = overlap(w["x0"], w["x1"], cols[j][0], cols[j][1])
+            if ov > best_ov:
+                best_ov, best_j = ov, j
+        if best_j is None:
+            continue
+        per_col.setdefault(best_j, []).append((cy, w["text"]))
+
+    recovered = {}
+    for j, items in per_col.items():
+        items.sort(key=lambda p: -p[0])  # haut -> bas = ordre de lecture
+        tokens = [t for _, txt in items for t in txt.split() if _keep_recovered_token(t)]
+        if not tokens:
+            continue
+        joined = " ".join(tokens)
+        cleaned = _normalizer.clean(joined)
+        # On écarte d'abord les bribes de 1 lettre (glyphes isolés d'un
+        # bandeau corrompu) sauf si TOUT le libellé est une abréviation
+        # courte ("a t").
+        if len(cleaned.replace(" ", "")) > 3:
+            cleaned = " ".join(t for t in cleaned.split() if len(t) >= 2)
+        if not _recovered_label_ok(cleaned):
+            continue
+        recovered[j] = cleaned
+
+    if len(recovered) < _HEADER_RECOVERY_MIN_COLS:
+        return {}
+    return recovered
 
 
 def extract_full_table_camelot(pdf_path, page_num, min_data_cells=MIN_DATA_CELLS):
@@ -159,13 +356,25 @@ def extract_full_table_camelot(pdf_path, page_num, min_data_cells=MIN_DATA_CELLS
     page `page_num` (1-indexée) via camelot. Renvoie {"colonnes":
     [labels...], "lignes": {libelle_ligne: {colonne: valeur, ...}, ...}} ou
     None si la page ne ressemble pas à ce gabarit."""
-    df = _find_table_camelot(pdf_path, page_num)
-    if df is None or df.empty:
+    table = _find_table_camelot(pdf_path, page_num)
+    if table is None or table.df.empty:
         return None
-    return reconstruct_grid_from_rows(df.values.tolist(), df.shape[1], min_data_cells)
+    # Sous-ligne d'en-tête que camelot a laissée hors du tableau détecté
+    # (bandeau coloré replié) — récupérée via pdfplumber sur l'objet Table,
+    # puis passée à la reconstruction commune pour être préfixée aux
+    # fragments captés. {} quand la capture de camelot est déjà complète :
+    # aucun effet sur les documents corrects, et la voie OCR n'y touche pas.
+    recovered_headers = _recover_truncated_column_headers(
+        pdf_path, page_num, table, min_data_cells
+    )
+    return reconstruct_grid_from_rows(
+        table.df.values.tolist(), table.df.shape[1], min_data_cells,
+        recovered_headers=recovered_headers,
+    )
 
 
-def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_CELLS):
+def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_CELLS,
+                               recovered_headers=None):
     """Reconstruit la grille {"colonnes": [...], "lignes": {...}} à partir
     d'une matrice de cellules brutes `rows_raw` (liste de listes de chaînes),
     déjà découpée en `n_cols_total` colonnes. Sortie identique au contrat de
@@ -178,7 +387,12 @@ def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_C
     reconstruction (repérage de la 1re ligne de données, zone libellé vs
     colonnes de valeurs, en-têtes repliés, libellés de ligne sandwichés…)
     plutôt que de la réécrire — le gabarit du tableau est le même, seule la
-    SOURCE des cellules change (camelot/texte natif vs OCR d'image)."""
+    SOURCE des cellules change (camelot/texte natif vs OCR d'image).
+
+    `recovered_headers` (optionnel) : {index_colonne: texte} à préfixer aux
+    libellés de colonne — fourni par la voie camelot pour combler une
+    sous-ligne d'en-tête qu'elle a laissée hors du tableau ; ignoré (vide)
+    par la voie OCR."""
     # Seuil de détection de la première ligne de données adapté à la largeur
     # réelle du tableau : une société mono-branche (ex. COTUNACE, uniquement
     # "Crédit-Caution") n'a que 1-2 colonnes de valeurs — le seuil global
@@ -259,6 +473,13 @@ def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_C
                 continue  # doublon exact du flux source — pas une colonne distincte
         kept_col_idxs.append(col_idx)
 
+    # Sous-ligne d'en-tête tronquée par camelot (bandeau coloré replié) :
+    # calculée en amont par la voie camelot (`_recover_truncated_column_
+    # headers`, qui a besoin de l'objet Table) et passée en argument ; {}
+    # pour la voie OCR et pour tout document dont camelot a capté l'en-tête
+    # complet — donc aucun effet sur les documents corrects.
+    recovered_headers = recovered_headers or {}
+
     # Libellé de chaque colonne de valeur = concaténation verticale de ses
     # cellules non vides dans les lignes d'en-tête (camelot aligne déjà
     # chaque fragment replié dans la bonne colonne — pas besoin de
@@ -266,6 +487,13 @@ def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_C
     col_names = []
     for col_idx in kept_col_idxs:
         parts = [rows_raw[r][col_idx].strip() for r in range(header_start, first_data_idx) if rows_raw[r][col_idx].strip()]
+        recovered = recovered_headers.get(col_idx)
+        if recovered:
+            # Ne préfixer que les tokens que camelot n'a PAS déjà captés pour
+            # cette colonne — jamais de doublon de libellé.
+            captured_norm = set(_normalizer.clean(" ".join(parts)).split())
+            rec_tokens = [t for t in recovered.split() if _normalizer.clean(t) not in captured_norm]
+            parts = rec_tokens + parts
         label = _normalizer.clean(" ".join(parts)) if parts else f"(colonne {col_idx})"
         col_names.append(label)
 
