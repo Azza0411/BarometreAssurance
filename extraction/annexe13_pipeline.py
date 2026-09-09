@@ -271,6 +271,7 @@ _COLUMN_ALIASES = {
     "cessions et retrocessions": "Cessions et/ou rétrocessions",
     "et/ou retrocessions": "Cessions et/ou rétrocessions",
     "retrocessions": "Cessions et/ou rétrocessions",
+    "cessions": "Cessions et/ou rétrocessions",
 }
 
 _CANONICAL_COLUMNS_NORMALIZED = [(label, _normalizer.clean(label)) for label in CANONICAL_COLUMNS]
