@@ -433,6 +433,30 @@ def locate_and_extract_full_table(pdf_path, is_target_page, kpi_patterns, raccor
         rank = (is_annexe_titled, len(result["colonnes"]))
         if best is None or rank > best[2]:
             best = (i, result, rank)
-    if best is None:
+    if best is not None:
+        return best[0] + 1, best[1]
+
+    # Repli : aucune page "Annexe N°13" unique exploitable. Quelques
+    # documents (ex. BNA 2024 = ex-AMI, année de bascule de gabarit — et
+    # AMI 2021/2022 sous l'ancien nom, même format) éclatent les mêmes
+    # chiffres Non-Vie dans la section narrative « Notes sur les Comptes de
+    # Résultats », une dizaine de petits tableaux par poste. On tente de les
+    # recoller en une grille au même contrat, filtrée par le MÊME contrôle de
+    # vraisemblance que la voie normale.
+    from extraction.notes_resultat_extractor import assemble_non_vie_grid_from_notes
+
+    try:
+        notes_page, notes_grid = assemble_non_vie_grid_from_notes(pdf_path, max_pages=max_pages)
+    except Exception:
+        # Ce chemin n'est atteint que sur des documents déjà en échec par la
+        # voie normale : un plantage du repli ne doit pas être pire qu'un
+        # échec franc.
         return None, None
-    return best[0] + 1, best[1]
+    if (
+        notes_grid
+        and len(notes_grid["colonnes"]) >= 1
+        and len(notes_grid["lignes"]) >= min_sanity_matches
+        and _sanity_ok(notes_grid["lignes"], kpi_patterns, min_sanity_matches)
+    ):
+        return notes_page, notes_grid
+    return None, None

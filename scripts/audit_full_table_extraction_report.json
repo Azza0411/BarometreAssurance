@@ -10,10 +10,28 @@
       "statut": "echec"
     },
     "2022": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 27,
+      "n_colonnes": 4,
+      "n_lignes": 15,
+      "colonnes": [
+        "operations brutes 2022",
+        "cessions 2022",
+        "operations nettes 2022",
+        "operations nettes 2021"
+      ]
     },
     "2021": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 27,
+      "n_colonnes": 4,
+      "n_lignes": 15,
+      "colonnes": [
+        "operations brutes 2021",
+        "cessions 2021",
+        "operations nettes 2021",
+        "operations nettes 2020"
+      ]
     },
     "2020": {
       "statut": "echec"
@@ -255,56 +273,6 @@
         "acceptations",
         "total (2)"
       ]
-    }
-  },
-  "ATTIJARI": {
-    "2025": {
-      "statut": "echec"
-    },
-    "2024": {
-      "statut": "echec"
-    },
-    "2023": {
-      "statut": "ok",
-      "page": 26,
-      "n_colonnes": 1,
-      "n_lignes": 10,
-      "colonnes": [
-        "total raccordement 133 936 267 prv1 1ere colonne 51 211 119 chv1 1ere colonne 100 345 158 chv2 1ere colonne"
-      ]
-    },
-    "2022": {
-      "statut": "ok",
-      "page": 28,
-      "n_colonnes": 1,
-      "n_lignes": 11,
-      "colonnes": [
-        "total raccordement 112 230 707 prv1 1ere colonne 30 611 114 chv1 1ere colonne 92 653 634 chv2 1ere colonne"
-      ]
-    },
-    "2021": {
-      "statut": "ok",
-      "page": 27,
-      "n_colonnes": 1,
-      "n_lignes": 11,
-      "colonnes": [
-        "total raccordement 133 089 821 prv1 1 colonne 29 161 855 chv1 1 colonne 111 705 061 chv2 1 colonne"
-      ]
-    },
-    "2020": {
-      "statut": "echec"
-    },
-    "2019": {
-      "statut": "echec"
-    },
-    "2018": {
-      "statut": "echec"
-    },
-    "2017": {
-      "statut": "echec"
-    },
-    "2016": {
-      "statut": "echec"
     }
   },
   "BH": {
@@ -595,7 +563,16 @@
       ]
     },
     "2024": {
-      "statut": "echec"
+      "statut": "ok",
+      "page": 28,
+      "n_colonnes": 4,
+      "n_lignes": 12,
+      "colonnes": [
+        "operations brutes 2024",
+        "cessions 2024",
+        "operations nettes 2024",
+        "operations nettes 2023"
+      ]
     },
     "2023": {
       "statut": "pas_de_pdf"
@@ -1948,38 +1925,6 @@
         "vie",
         "globale"
       ]
-    }
-  },
-  "UIB": {
-    "2025": {
-      "statut": "echec"
-    },
-    "2024": {
-      "statut": "echec"
-    },
-    "2023": {
-      "statut": "echec"
-    },
-    "2022": {
-      "statut": "echec"
-    },
-    "2021": {
-      "statut": "echec"
-    },
-    "2020": {
-      "statut": "echec"
-    },
-    "2019": {
-      "statut": "pas_de_pdf"
-    },
-    "2018": {
-      "statut": "pas_de_pdf"
-    },
-    "2017": {
-      "statut": "pas_de_pdf"
-    },
-    "2016": {
-      "statut": "pas_de_pdf"
     }
   }
 }
