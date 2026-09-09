@@ -56,12 +56,11 @@ def _logo_path(code):
     return path if os.path.isfile(path) else None
 
 
-def _logo_dimensions(logo_path, target_height=40, max_width=90):
+def _logo_dimensions(logo_path, target_height=60, max_width=130):
     """Taille (largeur, hauteur) en pixels pour l'export Excel — hauteur
     cible, largeur déduite du ratio RÉEL de l'image (les logos ne sont pas
     tous carrés) et plafonnée pour ne jamais empiéter sur le texte du
-    bandeau. 40px de haut (contre 22px avant, jugé trop petit) tient sur les
-    2 lignes du bandeau (30 + 16 = 46px) sans les déborder."""
+    bandeau. 60px (contre 22 puis 40px, toujours jugés trop petits)."""
     try:
         from PIL import Image as PILImage
         with PILImage.open(logo_path) as im:
@@ -280,29 +279,27 @@ def _safe_sheet_name(code, used):
 
 
 def _write_sheet_title(ws, last_col, title, subtitle):
-    """Bandeau de titre — un seul bloc sombre sur 2 lignes (pas de jaune,
-    hiérarchie par le poids/la couleur du texte seulement) : nom de la
-    société en blanc gras, sous-titre en gris clair discret en dessous.
-    Design volontairement sobre suite au retour "plus minimaliste, simple et
-    élégant" — le jaune EY reste utilisé ailleurs (en-têtes des autres
-    blocs) mais pas ici, sur ce bandeau."""
+    """Bandeau de titre — fond blanc, texte noir (retour utilisateur : "au
+    lieu du gris foncé mettez le blanc et le texte en noir"), un seul bloc
+    sur 2 lignes : nom de la société en noir gras, sous-titre en gris foncé
+    discret en dessous (hiérarchie par le poids/la taille du texte)."""
     last_col = max(last_col, 2)
     for r in (1, 2):
         for col_idx in range(1, last_col + 1):
-            ws.cell(row=r, column=col_idx).fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
+            ws.cell(row=r, column=col_idx).fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_col)
     ws.cell(row=1, column=1, value=title)
-    ws.cell(row=1, column=1).font = Font(color="FFFFFF", bold=True, size=14, name="Calibri")
+    ws.cell(row=1, column=1).font = Font(color="000000", bold=True, size=14, name="Calibri")
     ws.cell(row=1, column=1).alignment = Alignment(horizontal="left", vertical="bottom", indent=1)
-    ws.row_dimensions[1].height = 30
+    ws.row_dimensions[1].height = 42
     if subtitle:
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_col)
         ws.cell(row=2, column=1, value=subtitle)
-        ws.cell(row=2, column=1).font = Font(color="9AA0AC", size=9.5, name="Calibri")
+        ws.cell(row=2, column=1).font = Font(color="595959", size=9.5, name="Calibri")
         ws.cell(row=2, column=1).alignment = Alignment(horizontal="left", vertical="top", indent=1)
-    ws.row_dimensions[2].height = 16
+    ws.row_dimensions[2].height = 20
     ws.sheet_view.showGridLines = False
-    ws.sheet_properties.tabColor = DARK
+    ws.sheet_properties.tabColor = "808080"
 
 
 # ── Annexe 13 — tableau complet (toutes lignes × toutes colonnes) ──────────
@@ -352,13 +349,13 @@ def _sorted_grid_rows(lignes):
 
 
 # Charte visuelle de ce bloc spécifiquement (grille complète Annexe 13) —
-# alignée sur le script de référence de l'utilisatrice (FS_Market_Intelligence
-# /B.py::export_to_excel : fond bleu #0070C0, texte blanc, police Arial),
-# plutôt que la charte EY sombre/jaune utilisée pour le bandeau de la feuille
-# et les autres blocs KPI — demande explicite : "le design des couleurs, des
-# noms, des colonnes comme dans le dossier partagé".
-_REF_BLUE = "0070C0"
-_REF_LIGHT = "EAF2FB"
+# police Arial alignée sur le script de référence de l'utilisatrice
+# (FS_Market_Intelligence/B.py::export_to_excel), couleur GRISE (retour
+# utilisateur : "au lieu du bleu on opte pour le gris") plutôt que la charte
+# EY sombre/jaune utilisée pour le bandeau de la feuille et les autres
+# blocs KPI.
+_REF_GREY = "6B7280"
+_REF_LIGHT = "F3F4F6"
 
 
 def _write_full_grid_block(ws, row, annee, grid):
@@ -373,7 +370,7 @@ def _write_full_grid_block(ws, row, annee, grid):
     headers = ["LIBELLÉ"] + [c.upper() for c in cols]
     for col_idx, header in enumerate(headers, start=1):
         cell = ws.cell(row=row, column=col_idx, value=header)
-        cell.fill = PatternFill(start_color=_REF_BLUE, end_color=_REF_BLUE, fill_type="solid")
+        cell.fill = PatternFill(start_color=_REF_GREY, end_color=_REF_GREY, fill_type="solid")
         cell.font = Font(color="FFFFFF", bold=True, name="Arial", size=10)
         cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = _thin_border()
