@@ -144,19 +144,19 @@ function FiabiliteBar() {
     <Card style={{ padding: "14px 20px" }}>
       <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
         <StatChip
-          label="PDF collectés avec succès"
+          label="PDF collectés"
           pct={collecte.pct}
-          detail={`${collecte.collectes} / ${collecte.total} documents CMF`}
+          detail={`${collecte.collectes} / ${collecte.total} attendus`}
         />
         <StatChip
           label={`Fiabilité de l'extraction (${fe.tableau})`}
           pct={fe.pct}
-          detail={`${fe.ok} / ${fe.total_verifications} identités comptables vérifiées`}
+          detail={`${fe.reussis} / ${fe.total} documents extraits avec succès`}
         />
       </div>
       <p style={{ fontSize: 10.5, color: "#9CA3AF", margin: "10px 0 0" }}>
-        Fiabilité calculée sur les identités comptables du tableau (Primes acquises = Primes émises + Variation, etc.) —
-        seule l'Annexe 13 dispose de cette validation pour l'instant.
+        Collecte : PDF présents sur les exercices attendus pour chaque société. Fiabilité : documents dont l'extraction
+        complète a abouti, parmi les sociétés éligibles à l'Annexe 13 Non-Vie (hors sociétés Vie/Takaful).
       </p>
     </Card>
   );

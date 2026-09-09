@@ -18,14 +18,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from extraction.annexe13_kpi_extractor import _is_target_page, RACCORDEMENT_RE, KPI_PATTERNS
 from extraction.full_table_extractor import locate_and_extract_full_table, relaxed_is_annexe13_page
+from extraction.annexe13_pipeline import ANNEXE13_NON_VIE_EXCLUSIONS
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "cmf")
-
-# Sociétés hors périmètre de l'Annexe 13 (Non-Vie) par nature du modèle
-# métier, pas par échec d'extraction — exclues du taux de couverture pour
-# ne pas fausser le chiffre (voir CAS_PARTICULIERS_FULL_TABLE.md).
-VIE_ONLY = {"GAT_VIE", "LLOYD_VIE", "MAGHREBIA_VIE", "CARTE_VIE", "HAYETT"}
-TAKAFUL = {"AL_AMANAH_TAKAFUL", "AT_TAKAFULIA", "ZITOUNA_TAKAFUL"}
 
 
 def audit_one(code, annee):
@@ -58,7 +53,7 @@ def main():
     years = list(range(args.last_year, args.last_year - args.years, -1))
     codes = sorted(
         d for d in os.listdir(DATA_DIR)
-        if os.path.isdir(os.path.join(DATA_DIR, d)) and d not in VIE_ONLY and d not in TAKAFUL
+        if os.path.isdir(os.path.join(DATA_DIR, d)) and d not in ANNEXE13_NON_VIE_EXCLUSIONS
     )
     if args.code:
         codes = [args.code]

@@ -1,5 +1,36 @@
 # Cas particuliers — extraction "grille complète" (extraction/full_table_extractor.py)
 
+## 2026-09-09 — généralisation Annexe 13 2024 à toutes les sociétés conventionnelles
+
+Déclencheur : retour utilisateur explicite ("assurez-vous que toutes les
+assurances conventionnelles soient fonctionnelles pour l'annexe treize pour
+l'année deux-mille-vingt-quatre"). Diagnostic société par société des 4
+échecs 2024 identifiés (`scripts/audit_full_table_extraction.py --years 1
+--last-year 2024`), en repartant du texte brut du PDF (pas seulement du
+comportement de l'extracteur) pour chacun :
+
+| Société | Diagnostic 2024 | Traitement |
+|---|---|---|
+| **COTUNACE** | **Bug d'extraction réel, corrigé.** Deux causes cumulées : (1) le PDF source répète chaque en-tête ET chaque valeur DEUX FOIS côte à côte dans le flux de texte (probable artefact de génération du document — vérifié par dump du texte brut pdfplumber : "Crédit-Caution Crédit-Caution" / "13 301 587,065 13 301 587,065"), ce que camelot restituait donc comme 2 colonnes strictement identiques ; (2) COTUNACE est mono-branche (une seule colonne "Crédit-Caution" au lieu des 4-16 colonnes des gabarits multi-branches) — `MIN_DATA_CELLS=4` (seuil global) ne détectait jamais la première ligne de données sur un tableau aussi étroit. Deux fixes généraux (pas spécifiques à COTUNACE) : seuil de détection adaptatif `effective_min_data_cells = min(MIN_DATA_CELLS, n_cols_total - 1)`, et déduplication de colonnes adjacentes dont l'en-tête ET la totalité des valeurs sont identiques caractère pour caractère (un vrai doublon Brut/Net n'a jamais des valeurs identiques sur TOUTES les lignes — collision improbable). Vérifié : COTUNACE 2024 extrait maintenant 26 lignes, 1 colonne "Crédit-Caution", valeurs correctes. Sweep 10 ans sans régression (95/130 OK, contre 89/130 avant, hors doublons ATTIJARI ci-dessous). |
+| **ATTIJARI** | **Pas un bug — société structurellement Vie exclusivement**, mal classée. Objet social confirmé en page 9 du PDF 2024 : "la pratique des opérations d'assurance et de réassurance **sur la vie et la capitalisation**". Le document ne contient AUCUNE annexe Non-Vie (8, 9, 10, 11, 14 présentes — toutes Vie). Les "OK" 2021-2023 obtenus avant ce correctif étaient en réalité des **faux positifs** : la page trouvée était le tableau de raccordement VIE (codes PRV1/CHV1/CHV2), dont la reconstruction produisait un unique libellé de colonne illisible (`"total raccordement ... prv1 1ere colonne ... chv1 1ere colonne..."`), jamais une vraie grille par branche Non-Vie. Ajoutée à `annexe13_pipeline.ANNEXE13_NON_VIE_EXCLUSIONS`. |
+| **UIB** | **Pas un bug — société structurellement Vie exclusivement**, mal classée. Objet social confirmé en page 8 du PDF 2024 : "a pour objet toutes opérations d'assurances **sur la vie**...". Ses annexes sont numérotées 8, 9, 12 (Vie), 14, 15 (Vie) — aucune Annexe 13 Non-Vie, à aucune année (0/6 sur tout l'historique disponible). Ajoutée à `annexe13_pipeline.ANNEXE13_NON_VIE_EXCLUSIONS`. |
+| **BNA** | **Limitation réelle du document source 2024, non généralisable sans un module dédié.** BNA a bien une vraie Annexe 13 Non-Vie multi-branches (Incendie/Transport/Risques divers/Risques SPX/Automobile/Groupe) — **confirmé en extrayant 2025 avec succès** (26 lignes, 7 colonnes). Mais son document 2024 ne contient PAS cette page : les mêmes données existent, mais éclatées en une dizaine de petits tableaux séparés à l'intérieur d'une section narrative "V - Notes sur les Comptes de Résultats" (ex. "PRNV1- Primes acquises" page 28, "CHV1- Charges de sinistres" page 29, chacun son propre petit tableau Brut/Cessions/Net), jamais assemblés en une grille unique. Rapprocher ces petits tableaux en une seule grille demanderait un module d'extraction dédié à ce gabarit "Notes" (structure radicalement différente d'une page Annexe unique) — hors périmètre d'un correctif ponctuel, noté comme piste future. **Explication probable du contexte** : `config/company_registry.py` indique "BNA Assurances (**ex** : ASSURANCE MUTUELLE EL ITTIHAD - AMI -)" — BNA est la société **AMI renommée/restructurée à partir de 2024** (BNA n'a des documents CMF que depuis 2024 ; AMI, sous son ancien nom, n'en a plus après 2023) — cohérent avec un changement de gabarit de reporting au moment de la bascule. |
+
+**Gaps de COLLECTE (pas d'extraction) identifiés en marge** — AMI n'a pas de
+PDF 2024/2025 (dernier exercice disponible : 2023, cohérent avec le
+renommage en BNA ci-dessus — probablement plus rien à collecter sous ce nom)
+; CTAMA n'a que 2018 et 2020 (aucun PDF 2024 trouvé lors de la dernière
+collecte). Ce ne sont pas des échecs d'extraction — le PDF n'existe tout
+simplement pas en local. Voir `get_reliability_stats()` dans
+`api/services/data_management.py` pour la mesure du taux de collecte réel
+(par société, sur sa plage d'exercices connue).
+
+**Référentiel unique des exclusions Non-Vie** : `ANNEXE13_NON_VIE_EXCLUSIONS`
+(`extraction/annexe13_pipeline.py`) centralise désormais la liste (sociétés
+Vie exclusivement + Takaful), importée à la fois par le script d'audit et
+par `get_reliability_stats()` — pour ne plus jamais diverger entre les deux
+sur "qui est censé avoir une Annexe 13 Non-Vie".
+
 ## 2026-09-09 — migration du moteur d'extraction : pdfplumber → camelot
 
 Suite à un retour utilisateur montrant un script de référence (camelot,

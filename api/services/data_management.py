@@ -236,41 +236,74 @@ def get_filter_options(conn):
 
 def get_reliability_stats(conn):
     """Deux indicateurs calculés à partir de données RÉELLES déjà en base —
-    jamais une estimation :
+    jamais une estimation — tous deux corrigés le 2026-09-09 sur retour
+    utilisateur explicite (les deux premières versions mesuraient la
+    mauvaise chose, voir historique git) :
 
-    1. Collecte : part des documents CMF référencés (trouvés sur le portail
-       source) dont le PDF est réellement présent en local (téléchargé avec
-       succès) — `fichier_local`, déjà calculé par `list_documents_for_ui`.
-    2. Fiabilité de l'extraction (Annexe 13, seule annexe dotée d'une
-       validation par identités comptables pour l'instant — voir
-       extraction/annexe13_pipeline.py) : part des vérifications
-       (Primes acquises = Primes émises + Variation, etc.) dont le résultat
-       est correct ('ok') parmi celles où une comparaison a réellement pu
-       être faite ('ok' + 'ecart' — les 'donnees_manquantes', un poste
-       absent de CE gabarit précis, ne sont pas une erreur d'extraction et
-       ne comptent donc pas contre le taux)."""
-    docs = [d for d in list_documents_for_ui(conn) if d["source"] == "CMF"]
-    total_docs = len(docs)
-    collectes = sum(1 for d in docs if d["fichier_local"])
-    collecte_pct = round(100 * collectes / total_docs, 1) if total_docs else None
+    1. Collecte : part des PDF réellement présents en local PARMI TOUS CEUX
+       QUI DEVRAIENT L'ÊTRE — pas juste parmi les documents déjà référencés
+       en base (ce qui donnait artificiellement ~100% : un document non
+       découvert n'y apparaît jamais). L'univers attendu est calculé PAR
+       SOCIÉTÉ : tous les exercices compris entre sa PREMIÈRE et sa
+       DERNIÈRE année connue en base (jamais une plage fixe identique pour
+       les 24 sociétés) — ainsi une société récemment créée/renommée (ex.
+       "BNA Assurances", dont les dépôts CMF ne commencent qu'en 2024,
+       ex-"AMI"/Assurance Mutuelle El Ittihad qui a cessé de publier sous
+       cet ancien nom à partir de 2024) n'est jamais pénalisée pour des
+       années où elle n'existait pas encore sous ce nom, ni "AMI" pour ne
+       plus rien publier après son dernier exercice connu. Univers dérivé
+       uniquement des documents déjà découverts par le scrapeur (pas
+       d'appel réseau live dans cette route HTTP).
+    2. Fiabilité de l'extraction (Annexe 13) : part des DOCUMENTS (pas des
+       lignes/règles comptables individuelles — un document reste "fiable"
+       même avec un écart mineur sur une règle) dont l'extraction complète
+       a réellement abouti en base (`tableau_cellules`) PARMI TOUS CEUX OÙ
+       ELLE ÉTAIT ATTENDUE : documents CMF collectés d'une société
+       structurellement éligible à l'Annexe 13 Non-Vie (exclut les sociétés
+       Vie exclusivement/Takaful, voir `annexe13_pipeline.
+       ANNEXE13_NON_VIE_EXCLUSIONS` — leur absence de résultat n'est pas un
+       échec d'extraction, c'est attendu par nature du modèle métier)."""
+    from config.company_registry import COMPANY_REGISTRY
+    from extraction.annexe13_pipeline import ANNEXE13_NON_VIE_EXCLUSIONS
 
+    docs = [d for d in list_all_documents(conn) if d[1] == "CMF" and d[2]]  # (id, source, code, nom, pdf, annee, lien)
+    by_code = {}
+    for doc_id, _src, code, _nom, nom_pdf, annee, _lien in docs:
+        by_code.setdefault(code, []).append((annee, nom_pdf, doc_id))
+
+    # --- 1. Collecte : univers attendu = plage [1re, dernière] année connue,
+    # par société, comparée aux PDF réellement présents sur disque.
+    def _has_local_pdf(code, nom_pdf):
+        path = local_pdf_path("CMF", code, nom_pdf)
+        return bool(path and os.path.isfile(path))
+
+    attendus = collectes = 0
+    for code, entries in by_code.items():
+        annees = [a for a, _p, _i in entries]
+        attendus += max(annees) - min(annees) + 1
+        collectes += sum(1 for _a, nom_pdf, _i in entries if _has_local_pdf(code, nom_pdf))
+    collecte_pct = round(100 * collectes / attendus, 1) if attendus else None
+
+    # --- 2. Fiabilité de l'extraction Annexe 13 : documents éligibles
+    # (société Non-Vie-eligible, PDF présent) vs documents réellement
+    # stockés en base après extraction (tableau_cellules).
+    eligibles_ids = {
+        doc_id for code, entries in by_code.items() if code in COMPANY_REGISTRY
+        and code not in ANNEXE13_NON_VIE_EXCLUSIONS
+        for _a, nom_pdf, doc_id in entries
+        if _has_local_pdf(code, nom_pdf)
+    }
     with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT statut, COUNT(*) FROM tableau_validations
-            WHERE tableau = 'annexe13' AND statut IN ('ok', 'ecart')
-            GROUP BY statut
-            """
-        )
-        counts = dict(cur.fetchall())
-    ok, ecart = counts.get("ok", 0), counts.get("ecart", 0)
-    total_checks = ok + ecart
-    fiabilite_pct = round(100 * ok / total_checks, 1) if total_checks else None
+        cur.execute("SELECT DISTINCT document_id FROM tableau_cellules WHERE tableau = 'annexe13'")
+        reussis_ids = {row[0] for row in cur.fetchall()}
+    reussis = len(eligibles_ids & reussis_ids)
+    total_eligibles = len(eligibles_ids)
+    fiabilite_pct = round(100 * reussis / total_eligibles, 1) if total_eligibles else None
 
     return {
-        "collecte": {"pct": collecte_pct, "collectes": collectes, "total": total_docs},
+        "collecte": {"pct": collecte_pct, "collectes": collectes, "total": attendus},
         "fiabilite_extraction": {
-            "pct": fiabilite_pct, "ok": ok, "ecart": ecart, "total_verifications": total_checks,
+            "pct": fiabilite_pct, "reussis": reussis, "total": total_eligibles,
             "tableau": "Annexe 13",
         },
     }
