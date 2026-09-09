@@ -233,12 +233,77 @@ function DocumentsPanel({ onExporter }) {
   );
 }
 
+// Micro-étiquette + zone de champ compacte partagées par les 3 filtres.
+const fieldWrap = { flex: 1, minWidth: 0, position: "relative" };
+const fieldLabel = { display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 5 };
+
+// Sélection multiple compacte — retour utilisateur : pouvoir choisir
+// plusieurs sociétés/années/tableaux à la fois (le backend le supportait
+// déjà via des paramètres répétés, seule l'interface ne le permettait pas).
+// Un bouton façon menu déroulant qui ouvre un panneau à cases à cocher,
+// plutôt qu'un mur de puces (déjà écarté comme trop volumineux) ou un
+// <select multiple> natif (peu intuitif, nécessite ctrl/cmd+clic).
+function MultiSelect({ label, options, selected, onToggle, allLabel = "Toutes" }) {
+  const [openMenu, setOpenMenu] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onDocClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpenMenu(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const summary = selected.size === 0
+    ? allLabel
+    : selected.size === 1
+      ? (options.find(o => o.value === [...selected][0])?.label ?? [...selected][0])
+      : `${selected.size} sélectionnées`;
+
+  return (
+    <div ref={ref} style={fieldWrap}>
+      <label style={fieldLabel}>{label}</label>
+      <button
+        type="button" onClick={() => setOpenMenu(o => !o)}
+        style={{
+          width: "100%", textAlign: "left", background: "#fff", color: selected.size ? DARK : "#9CA3AF",
+          border: `1px solid ${openMenu ? ACCENT : BORDER}`, borderRadius: 8, font: "inherit", fontSize: 12.5,
+          padding: "8px 26px 8px 10px", cursor: "pointer", position: "relative",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+        {summary}
+        <span style={{ position: "absolute", right: 9, top: "50%", transform: `translateY(-50%) ${openMenu ? "rotate(180deg)" : ""}`, fontSize: 9, color: MUTED }}>▾</span>
+      </button>
+      {openMenu && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, zIndex: 30,
+          background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 8,
+          boxShadow: "0 6px 18px rgba(0,0,0,.1)", maxHeight: 230, overflowY: "auto", padding: 4,
+        }}>
+          {options.map(o => (
+            <label key={o.value} style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", fontSize: 12.5,
+              cursor: "pointer", borderRadius: 6, color: DARK,
+            }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#F8F9FC")}
+              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+              <input type="checkbox" checked={selected.has(o.value)} onChange={() => onToggle(o.value)} />
+              {o.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ═══════════════════════════ Export Excel (tiroir) ═══════════════════════════ */
 function ExportDrawer({ open, prefill, onClose }) {
   const [opts, setOpts] = useState(null);
-  const [tableau, setTableau] = useState("");
-  const [societe, setSociete] = useState("");
-  const [annee, setAnnee] = useState("");
+  const [tableaux, setTableaux] = useState(new Set());
+  const [societes, setSocietes] = useState(new Set());
+  const [annees, setAnnees] = useState(new Set());
 
   useEffect(() => {
     fetch(`${API}/api/gestion-donnees/filtres`).then(r => r.json()).then(setOpts).catch(() => {});
@@ -246,43 +311,36 @@ function ExportDrawer({ open, prefill, onClose }) {
 
   useEffect(() => {
     if (!open) return;
-    setSociete(prefill?.societe ?? "");
-    setAnnee(prefill?.annee ? String(prefill.annee) : "");
-    if (!prefill) setTableau("");
+    setSocietes(prefill?.societe ? new Set([prefill.societe]) : new Set());
+    setAnnees(prefill?.annee ? new Set([String(prefill.annee)]) : new Set());
+    if (!prefill) setTableaux(new Set());
   }, [open, prefill]);
+
+  const toggleIn = (setter) => (value) => setter(prev => {
+    const next = new Set(prev);
+    next.has(value) ? next.delete(value) : next.add(value);
+    return next;
+  });
 
   const buildUrl = () => {
     const p = new URLSearchParams();
-    if (tableau) p.append("tableau", tableau);
-    if (societe) p.append("societe", societe);
-    if (annee) p.append("annee", annee);
+    tableaux.forEach(t => p.append("tableau", t));
+    societes.forEach(s => p.append("societe", s));
+    annees.forEach(a => p.append("annee", a));
     return `${API}/api/gestion-donnees/export.xlsx?${p.toString()}`;
   };
 
-  // Sélection compacte (retour utilisateur : la phrase à menus déroulants
-  // dorés était jugée "pas moderne du tout" et "trop d'espace") — 3 champs
-  // courts, un par filtre, avec micro-étiquette au-dessus, plutôt qu'une
-  // grande ligne de texte.
-  const fieldWrap = { flex: 1, minWidth: 0 };
-  const fieldLabel = { display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 5 };
-  const compactSelect = {
-    width: "100%", appearance: "none", background: "#fff", color: DARK,
-    border: `1px solid ${BORDER}`, borderRadius: 8, font: "inherit", fontSize: 12.5,
-    padding: "8px 26px 8px 10px", cursor: "pointer",
-    backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236B7280'/%3E%3C/svg%3E\")",
-    backgroundRepeat: "no-repeat", backgroundPosition: "right 9px center",
-  };
   const resume = () => {
-    const t = tableau ? (opts?.tableaux.find(x => x.key === tableau)?.label ?? tableau) : "tous les tableaux";
-    const s = societe || "toutes les sociétés";
-    const a = annee || "toutes les années";
+    const t = tableaux.size ? `${tableaux.size} tableau(x)` : "tous les tableaux";
+    const s = societes.size ? [...societes].join(", ") : "toutes les sociétés";
+    const a = annees.size ? [...annees].sort().join(", ") : "toutes les années";
     return `${t} · ${s} · ${a}`;
   };
 
   return (
     <div style={{
       width: open ? 380 : 0, opacity: open ? 1 : 0, padding: open ? "20px 22px" : 0,
-      border: open ? `1px solid ${BORDER}` : "none", overflow: "hidden", flexShrink: 0,
+      border: open ? `1px solid ${BORDER}` : "none", overflow: open ? "visible" : "hidden", flexShrink: 0,
       background: "#fff", borderRadius: 14, boxShadow: open ? "0 2px 10px rgba(0,0,0,0.05)" : "none",
       transition: "width .38s cubic-bezier(.2,.8,.2,1), opacity .25s ease, padding .38s, border-width .38s",
     }}>
@@ -305,28 +363,25 @@ function ExportDrawer({ open, prefill, onClose }) {
         ) : (
           <>
             <div style={{ display: "flex", gap: 10, margin: "18px 0 10px" }}>
-              <div style={fieldWrap}>
-                <label style={fieldLabel}>Tableau</label>
-                <select value={tableau} onChange={e => setTableau(e.target.value)} style={compactSelect}>
-                  <option value="">Tous</option>
-                  {opts.tableaux.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-                </select>
-              </div>
-              <div style={fieldWrap}>
-                <label style={fieldLabel}>Société</label>
-                <select value={societe} onChange={e => setSociete(e.target.value)} style={compactSelect}>
-                  <option value="">Toutes</option>
-                  {opts.societes.map(s => <option key={s.code} value={s.code}>{s.code}</option>)}
-                </select>
-              </div>
-              <div style={fieldWrap}>
-                <label style={fieldLabel}>Année</label>
-                <select value={annee} onChange={e => setAnnee(e.target.value)} style={compactSelect}>
-                  <option value="">Toutes</option>
-                  {opts.annees.map(a => <option key={a} value={a}>{a}</option>)}
-                </select>
-              </div>
+              <MultiSelect
+                label="Tableau"
+                options={opts.tableaux.map(t => ({ value: t.key, label: t.label }))}
+                selected={tableaux} onToggle={toggleIn(setTableaux)}
+              />
+              <MultiSelect
+                label="Société"
+                options={opts.societes.map(s => ({ value: s.code, label: s.code }))}
+                selected={societes} onToggle={toggleIn(setSocietes)}
+              />
+              <MultiSelect
+                label="Année"
+                options={opts.annees.map(a => ({ value: String(a), label: String(a) }))}
+                selected={annees} onToggle={toggleIn(setAnnees)}
+              />
             </div>
+            <p style={{ fontSize: 10.5, color: "#9CA3AF", margin: "-4px 0 4px" }}>
+              Sélectionnez plusieurs valeurs par filtre si besoin.
+            </p>
 
             <p style={{ fontSize: 11.5, color: MUTED, margin: "0 0 18px" }}>
               Sélection : {resume()}
