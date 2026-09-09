@@ -114,6 +114,54 @@ function CollecteBar() {
   );
 }
 
+/* ═══════════════════════════ Fiabilité (indicateurs réels) ═══════════════════════════ */
+function StatChip({ label, pct, detail }) {
+  const color = pct == null ? MUTED : pct >= 90 ? "#16A34A" : pct >= 70 ? "#B45309" : "#C8102E";
+  return (
+    <div style={{ flex: 1, minWidth: 200 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 3 }}>
+        {label}
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span style={{ fontSize: 20, fontWeight: 800, color }}>{pct == null ? "—" : `${pct}%`}</span>
+        <span style={{ fontSize: 11.5, color: MUTED }}>{detail}</span>
+      </div>
+    </div>
+  );
+}
+
+function FiabiliteBar() {
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API}/api/gestion-donnees/fiabilite`).then(r => r.json()).then(setStats).catch(() => {});
+  }, []);
+
+  if (!stats) return null;
+  const { collecte, fiabilite_extraction: fe } = stats;
+
+  return (
+    <Card style={{ padding: "14px 20px" }}>
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+        <StatChip
+          label="PDF collectés avec succès"
+          pct={collecte.pct}
+          detail={`${collecte.collectes} / ${collecte.total} documents CMF`}
+        />
+        <StatChip
+          label={`Fiabilité de l'extraction (${fe.tableau})`}
+          pct={fe.pct}
+          detail={`${fe.ok} / ${fe.total_verifications} identités comptables vérifiées`}
+        />
+      </div>
+      <p style={{ fontSize: 10.5, color: "#9CA3AF", margin: "10px 0 0" }}>
+        Fiabilité calculée sur les identités comptables du tableau (Primes acquises = Primes émises + Variation, etc.) —
+        seule l'Annexe 13 dispose de cette validation pour l'instant.
+      </p>
+    </Card>
+  );
+}
+
 /* ═══════════════════════════ Documents ═══════════════════════════ */
 function DocumentsPanel({ onExporter }) {
   const [docs, setDocs] = useState(null);
@@ -339,12 +387,12 @@ function ExportDrawer({ open, prefill, onClose }) {
 
   return (
     <div style={{
-      width: open ? 380 : 0, opacity: open ? 1 : 0, padding: open ? "20px 22px" : 0,
+      width: open ? 460 : 0, opacity: open ? 1 : 0, padding: open ? "20px 22px" : 0,
       border: open ? `1px solid ${BORDER}` : "none", overflow: open ? "visible" : "hidden", flexShrink: 0,
       background: "#fff", borderRadius: 14, boxShadow: open ? "0 2px 10px rgba(0,0,0,0.05)" : "none",
       transition: "width .38s cubic-bezier(.2,.8,.2,1), opacity .25s ease, padding .38s, border-width .38s",
     }}>
-      <div style={{ minWidth: 336 }}>
+      <div style={{ minWidth: 416 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: DARK }}>Export Excel</h2>
           <button onClick={onClose} aria-label="Fermer" style={{
@@ -362,22 +410,24 @@ function ExportDrawer({ open, prefill, onClose }) {
           <div style={{ color: MUTED, fontSize: 12.5, marginTop: 16 }}>Chargement des filtres…</div>
         ) : (
           <>
-            <div style={{ display: "flex", gap: 10, margin: "18px 0 10px" }}>
+            <div style={{ margin: "18px 0 10px", display: "flex", flexDirection: "column", gap: 10 }}>
               <MultiSelect
                 label="Tableau"
                 options={opts.tableaux.map(t => ({ value: t.key, label: t.label }))}
                 selected={tableaux} onToggle={toggleIn(setTableaux)}
               />
-              <MultiSelect
-                label="Société"
-                options={opts.societes.map(s => ({ value: s.code, label: s.code }))}
-                selected={societes} onToggle={toggleIn(setSocietes)}
-              />
-              <MultiSelect
-                label="Année"
-                options={opts.annees.map(a => ({ value: String(a), label: String(a) }))}
-                selected={annees} onToggle={toggleIn(setAnnees)}
-              />
+              <div style={{ display: "flex", gap: 10 }}>
+                <MultiSelect
+                  label="Société"
+                  options={opts.societes.map(s => ({ value: s.code, label: s.code }))}
+                  selected={societes} onToggle={toggleIn(setSocietes)}
+                />
+                <MultiSelect
+                  label="Année"
+                  options={opts.annees.map(a => ({ value: String(a), label: String(a) }))}
+                  selected={annees} onToggle={toggleIn(setAnnees)}
+                />
+              </div>
             </div>
             <p style={{ fontSize: 10.5, color: "#9CA3AF", margin: "-4px 0 4px" }}>
               Sélectionnez plusieurs valeurs par filtre si besoin.
@@ -428,6 +478,7 @@ export default function GestionDonnees() {
 
       <div style={{ maxWidth: 1220, margin: "0 auto", padding: "24px 32px", display: "flex", flexDirection: "column", gap: 16 }}>
         <CollecteBar />
+        <FiabiliteBar />
         <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
           <DocumentsPanel onExporter={ouvrirExport} />
           <ExportDrawer open={exportOpen} prefill={prefill} onClose={() => setExportOpen(false)} />

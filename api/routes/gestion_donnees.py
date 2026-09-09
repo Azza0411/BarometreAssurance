@@ -18,7 +18,7 @@ from flask import Blueprint, jsonify, request, send_file
 from database.repository import get_connection
 from api.services.data_management import (
     list_documents_for_ui, get_local_pdf_path_for_document,
-    get_filter_options, build_flexible_export_xlsx,
+    get_filter_options, build_flexible_export_xlsx, get_reliability_stats,
 )
 from api.services import tableau_pipeline_service
 
@@ -179,6 +179,15 @@ def filtres():
     conn = get_connection()
     try:
         return jsonify(get_filter_options(conn))
+    finally:
+        conn.close()
+
+
+@bp.route("/api/gestion-donnees/fiabilite")
+def fiabilite():
+    conn = get_connection()
+    try:
+        return jsonify(get_reliability_stats(conn))
     finally:
         conn.close()
 
