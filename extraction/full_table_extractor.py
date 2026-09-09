@@ -123,16 +123,24 @@ def relaxed_is_annexe13_page(page, lines_checked=4):
     (le contrôle de vraisemblance qui suit absorbe le risque de faux
     positifs supplémentaires).
 
-    Reconstruit le texte via `_reconstructed_page_head_text` (pas `page.
-    extract_text()` brut) pour rester robuste aux pages à rendu "lettres
-    espacées" — sinon la page cible n'apparaît même pas dans la liste des
-    candidats, quel que soit le contenu réel du tableau."""
-    reconstructed = _reconstructed_page_head_text(page, lines_checked)
-    if not reconstructed.strip():
-        return False
-    normalized = _normalizer.clean(reconstructed.replace("\n", " "))
+    Essaie d'abord `page.extract_text()` brut (rapide — un simple appel
+    texte) ; seulement s'il ne matche RIEN, reconstruit via
+    `_reconstructed_page_head_text` (plus coûteux — extraction mot-par-mot
+    + regroupement géométrique) pour rattraper les pages à rendu "lettres
+    espacées", où le texte brut est ininterprétable par un motif regex —
+    sinon la page cible n'apparaît même pas dans la liste des candidats,
+    quel que soit le contenu réel du tableau. Ce repli conditionnel évite
+    de payer le coût de la reconstruction géométrique sur CHAQUE page
+    scannée alors qu'elle n'est utile que sur une poignée de documents."""
+    text = (page.extract_text() or "").strip()
+    normalized = _normalizer.clean(" ".join(text.split("\n")[:lines_checked])) if text else ""
     if not _FULL_TABLE_PAGE_TITLE_RE.search(normalized):
-        return False
+        reconstructed = _reconstructed_page_head_text(page, lines_checked)
+        if not reconstructed.strip():
+            return False
+        normalized = _normalizer.clean(reconstructed.replace("\n", " "))
+        if not _FULL_TABLE_PAGE_TITLE_RE.search(normalized):
+            return False
     if _A13_NON_VIE_RE.search(normalized):
         return True
     return not _A13_VIE_RE.search(normalized)
