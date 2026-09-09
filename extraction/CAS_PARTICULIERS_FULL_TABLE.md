@@ -1,5 +1,25 @@
 # Cas particuliers — extraction "grille complète" (extraction/full_table_extractor.py)
 
+## 2026-09-09 (bilan) — couverture Annexe 13 2024, toutes sociétés conventionnelles
+
+Après le fix COTUNACE (ce fichier, entrée du dessous) et le repli "Notes sur
+les Comptes de Résultats" pour BNA/AMI (tâche de fond séparée, voir commit
+`4bee905`, module `extraction/notes_resultat_extractor.py`), vérifié en base
+(`tableau_cellules`) : **plus AUCUNE société "conventionnelle" éligible à
+l'Annexe 13 Non-Vie ne manque pour l'exercice 2024.** Les seules sociétés
+sans résultat 2024 sont, sans exception, celles structurellement hors
+périmètre (`annexe13_pipeline.ANNEXE13_NON_VIE_EXCLUSIONS` : Vie
+exclusivement + Takaful) ou sans document 2024 du tout côté collecte (AMI,
+qui a cessé de publier sous ce nom après son renommage en BNA — pas un trou
+d'extraction). Fiabilité extraction globale (toutes années confondues,
+societes eligibles) : 107/124 documents (86,3 %) — voir `get_reliability_
+stats()` dans `api/services/data_management.py` pour la mesure à jour.
+
+Petit correctif cosmétique fait dans la foulée : le module de repli "Notes"
+nomme sa colonne de cessions "Cessions 2024" (année en suffixe direct, pas
+"et/ou rétrocessions...") — alias `"cessions"` ajouté à `_COLUMN_ALIASES`
+pour la couvrir aussi.
+
 ## 2026-09-09 (suite) — dictionnaire de normalisation LIGNES + COLONNES, toutes sociétés
 
 Déclencheur : retour utilisateur explicite ("préparer une liste de noms de
