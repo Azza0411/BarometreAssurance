@@ -218,16 +218,16 @@ function DocumentsPanel({ onExporter }) {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
           <thead>
             <tr style={{ background: "#F8F9FC" }}>
-              {["Société", "Fichier", "Année", "Local", ""].map((h, i) => (
+              {["Société", "Fichier", "Année", ""].map((h, i) => (
                 <th key={i} style={{ textAlign: "left", padding: "9px 12px", fontWeight: 700, color: MUTED, fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".3px", borderBottom: `1px solid ${BORDER}` }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {!docs ? (
-              <tr><td colSpan={5} style={{ padding: 24, textAlign: "center", color: MUTED }}>Chargement…</td></tr>
+              <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: MUTED }}>Chargement…</td></tr>
             ) : pageRows.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding: 24, textAlign: "center", color: MUTED }}>Aucun document.</td></tr>
+              <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: MUTED }}>Aucun document.</td></tr>
             ) : pageRows.map(d => (
               <tr
                 key={d.id}
@@ -239,11 +239,6 @@ function DocumentsPanel({ onExporter }) {
                 <td style={{ padding: "8px 12px" }}>{d.nom_entreprise ?? d.code ?? "—"}</td>
                 <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 11.5, color: "#4B5563" }}>{d.nom_pdf}</td>
                 <td style={{ padding: "8px 12px" }}>{d.annee}</td>
-                <td style={{ padding: "8px 12px" }}>
-                  {d.fichier_local
-                    ? <span style={{ color: "#16A34A", fontWeight: 700 }}>Oui</span>
-                    : <span style={{ color: "#9CA3AF" }}>Non</span>}
-                </td>
                 <td style={{ padding: "8px 12px", textAlign: "right" }}>
                   {(d.fichier_local || d.lien) && (
                     <a

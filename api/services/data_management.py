@@ -387,6 +387,27 @@ def _display_tableau(raw):
     return _RAW_TO_DISPLAY.get(raw, raw)
 
 
+_GROUP_DISPLAY = {key: label for key, label, _raws in TABLEAU_GROUPS}
+
+
+def _resolve_display_tableau(raw, active_group_keys):
+    """Comme `_display_tableau`, mais résout l'ambiguïté du libellé combiné
+    "Annexe 12/13" (voir commentaire sur TABLEAU_GROUPS) selon le contexte
+    de LA sélection en cours plutôt que de toujours afficher le libellé
+    combiné générique. Si `raw` n'appartient qu'à UN SEUL groupe parmi ceux
+    réellement demandés dans cet export (ex. seul "annexe13" sélectionné),
+    le libellé de CE groupe est utilisé — la donnée rejoint alors le même
+    bloc que la grille complète Annexe 13 (voir build_flexible_export_xlsx)
+    au lieu de créer une section à part, mal étiquetée. Si `raw` appartient
+    à plusieurs groupes actifs à la fois (ex. export "tous les tableaux",
+    Annexe 12 ET Annexe 13 tous deux actifs), l'ambiguïté est réelle — le
+    libellé combiné reste affiché tel quel, honnête plutôt que de deviner."""
+    owning = [k for k in active_group_keys if raw in _TABLEAU_GROUP_TO_RAW.get(k, [])]
+    if len(owning) == 1:
+        return _GROUP_DISPLAY[owning[0]]
+    return _display_tableau(raw)
+
+
 _INVALID_SHEET_CHARS = set('[]:*?/\\')
 
 
@@ -585,6 +606,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
     # grille complète échoue (voir extraction/CAS_PARTICULIERS_FULL_TABLE.md).
     include_annexe13_full = not tableau_keys or "annexe13" in tableau_keys
     _ANNEXE13_DISPLAY = _display_tableau("Annexe13")
+    active_group_keys = tableau_keys if tableau_keys else [key for key, _label, _raws in TABLEAU_GROUPS]
 
     conn = get_connection()
     try:
@@ -663,7 +685,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
     for code, nom_entreprise, annee, tableau, kpi, valeur_nombre, valeur_texte in rows:
         valeur = valeur_nombre if valeur_nombre is not None else valeur_texte
         soc = par_societe.setdefault(code, {"nom": nom_entreprise, "blocs": {}, "annexe13_grids": {}})
-        display = _display_tableau(tableau)
+        display = _resolve_display_tableau(tableau, active_group_keys)
         bloc = soc["blocs"].setdefault(display, {})
         bloc.setdefault(kpi, {})[annee] = valeur
 
