@@ -1,5 +1,39 @@
 # Cas particuliers — extraction "grille complète" (extraction/full_table_extractor.py)
 
+## 2026-09-09 — le cas "page scannée" (STAR 2025) N'EST PAS isolé : confirmé sur ASTREE 2023
+
+Vérification demandée par l'utilisatrice sur un 2e exemple (ASTREE 2023,
+captures d'écran export vs PDF réel) : même symptôme que STAR 2025, cause
+identique confirmée. `ASTREE_2023.pdf` n'a AUCUNE page candidate détectée
+titrée "Annexe 13" — seule la page 4 ("Annexe n°3 — Etat de résultat
+technique... Non-Vie", gabarit réconciliation 4 colonnes) est trouvée. Les
+vraies Annexes 11 à 15 (pages 35-40, juste après l'Annexe 10 page 34) sont
+un bloc de **6 pages scannées avec filigrane "Projet"** — `page.chars` entre
+13 et 28 par page, texte extractible réduit au seul mot "Projet". Le
+pipeline se rabat donc, comme pour STAR 2025, sur la page de réconciliation
+— mais ASTREE cumule un 2e défaut propre à ce gabarit précis : les libellés
+de ligne reconstruits sont partiellement corrompus, des fragments de valeurs
+numériques se retrouvant collés au texte du libellé (ex. "AUTRES CHARGES
+TECHNIQUES 523 2 523 7 335" au lieu de "Autres charges techniques") — à
+creuser séparément de la cause "page scannée" elle-même, propre à la
+reconstruction de lignes de `extract_full_table_camelot` sur ce gabarit à 4
+colonnes quand le texte source est lui-même dense/fragmenté.
+
+**Conclusion révisée** : le filigrane "Projet" suggère qu'au moins certains
+documents CMF contiennent, pour leurs annexes 11-15, un bloc scanné depuis
+une version BROUILLON plutôt que la version finale native — un défaut du
+DOCUMENT SOURCE tel que collecté, pas un artefact ponctuel. Le sweep de
+couverture actuel (`scripts/audit_full_table_extraction.py`) ne peut PAS
+détecter ce cas par construction (il vérifie seulement qu'UNE page candidate
+produit un tableau plausible, jamais que c'est la MEILLEURE page du
+document) — un audit dédié est nécessaire : pour chaque document marqué
+"OK", vérifier si une page de la zone Annexe 11-15 a `page.chars` quasi nul
+ET `page.images` non vide alors qu'aucune page candidate valide n'a été
+trouvée par ailleurs. Confié à une tâche de fond séparée (voir suggestion
+"OCR fallback for scanned Annexe 13 pages") — étendue par cette découverte à
+un audit de PRÉVALENCE du phénomène sur l'ensemble du portefeuille, pas
+seulement STAR 2025.
+
 ## 2026-09-09 — deux bugs trouvés sur retour utilisateur ("le tableau STAR 2025 est incomplet")
 
 ### 1. STAR 2025 : la vraie page Annexe 13 est un SCAN (pas de couche texte)
