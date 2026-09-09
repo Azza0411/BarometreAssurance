@@ -9,8 +9,6 @@ const BORDER  = "#DDE2EC";
 const MUTED   = "#6B7280";
 const ACCENT  = "#0F6E56";
 const ACCENT_BG = "#E1F5EE";
-const GOLD    = "#B8860B";
-const GOLD_BG = "#FBF3DC";
 
 const PAGE_SIZE = 15;
 
@@ -21,6 +19,21 @@ function Card({ children, style }) {
       boxShadow: "0 2px 10px rgba(0,0,0,0.05)", padding: "20px 24px", ...style,
     }}>{children}</div>
   );
+}
+
+// Style de bouton commun aux 3 actions principales (Collecte, Exporter,
+// Générer l'export) — retour utilisateur : le bloc plein DARK/YELLOW était
+// jugé trop sombre / pas assez minimaliste. Contour clair + accent teal au
+// lieu d'un pavé sombre.
+function actionBtnStyle(disabled) {
+  return {
+    padding: "9px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
+    cursor: disabled ? "not-allowed" : "pointer",
+    border: `1.5px solid ${disabled ? BORDER : ACCENT}`,
+    background: "#fff", color: disabled ? "#9CA3AF" : ACCENT,
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 7, whiteSpace: "nowrap",
+    transition: "background .12s",
+  };
 }
 
 /* ═══════════════════════════ Collecte (bande compacte) ═══════════════════════════ */
@@ -91,15 +104,9 @@ function CollecteBar() {
             )}
           </div>
         </div>
-        <button
-          onClick={lancer}
-          disabled={enCours || lancement}
-          style={{
-            padding: "10px 18px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
-            cursor: enCours ? "not-allowed" : "pointer", border: "none",
-            background: enCours ? "#D1D5DB" : DARK, color: enCours ? "#6B7280" : YELLOW,
-            display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap",
-          }}>
+        <button onClick={lancer} disabled={enCours || lancement} style={actionBtnStyle(enCours || lancement)}
+          onMouseEnter={e => !(enCours || lancement) && (e.currentTarget.style.background = ACCENT_BG)}
+          onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
           {enCours ? "⏳ Collecte en cours…" : "▶ Lancer une nouvelle collecte"}
         </button>
       </div>
@@ -121,9 +128,10 @@ function DocumentsPanel({ onExporter }) {
   // d'extraction/validation ; les autres sources (CGA, FTUSA, BVMT, INS,
   // Enquête) reviendront quand elles seront traitées de la même façon.
   const cmfDocs = useMemo(() => (docs ?? []).filter(d => d.source === "CMF"), [docs]);
-  const filtered = useMemo(() => cmfDocs.filter(d =>
-    !search || `${d.code ?? ""} ${d.nom_entreprise ?? ""} ${d.nom_pdf}`.toLowerCase().includes(search.toLowerCase())
-  ), [cmfDocs, search]);
+  const filtered = useMemo(() => cmfDocs
+    .filter(d => !search || `${d.code ?? ""} ${d.nom_entreprise ?? ""} ${d.nom_pdf}`.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => b.annee - a.annee), // le plus recent d'abord
+  [cmfDocs, search]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageSafe = Math.min(page, totalPages);
@@ -141,12 +149,9 @@ function DocumentsPanel({ onExporter }) {
             Source : CMF
           </span>
         </div>
-        <button
-          onClick={() => onExporter(null, null)}
-          style={{
-            padding: "9px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, border: "none",
-            background: DARK, color: YELLOW, cursor: "pointer", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap",
-          }}>
+        <button onClick={() => onExporter(null, null)} style={actionBtnStyle(false)}
+          onMouseEnter={e => (e.currentTarget.style.background = ACCENT_BG)}
+          onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
           ⬇ Exporter des données
         </button>
       </div>
@@ -254,12 +259,24 @@ function ExportDrawer({ open, prefill, onClose }) {
     return `${API}/api/gestion-donnees/export.xlsx?${p.toString()}`;
   };
 
-  const selectStyle = {
-    appearance: "none", background: GOLD_BG, color: "#5B4400", border: "none",
-    borderBottom: `2px solid ${GOLD}`, font: "inherit", fontWeight: 700, fontSize: 14,
-    padding: "3px 22px 3px 9px", borderRadius: "6px 6px 0 0", cursor: "pointer", margin: "0 2px",
-    backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235B4400'/%3E%3C/svg%3E\")",
-    backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center",
+  // Sélection compacte (retour utilisateur : la phrase à menus déroulants
+  // dorés était jugée "pas moderne du tout" et "trop d'espace") — 3 champs
+  // courts, un par filtre, avec micro-étiquette au-dessus, plutôt qu'une
+  // grande ligne de texte.
+  const fieldWrap = { flex: 1, minWidth: 0 };
+  const fieldLabel = { display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 5 };
+  const compactSelect = {
+    width: "100%", appearance: "none", background: "#fff", color: DARK,
+    border: `1px solid ${BORDER}`, borderRadius: 8, font: "inherit", fontSize: 12.5,
+    padding: "8px 26px 8px 10px", cursor: "pointer",
+    backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236B7280'/%3E%3C/svg%3E\")",
+    backgroundRepeat: "no-repeat", backgroundPosition: "right 9px center",
+  };
+  const resume = () => {
+    const t = tableau ? (opts?.tableaux.find(x => x.key === tableau)?.label ?? tableau) : "tous les tableaux";
+    const s = societe || "toutes les sociétés";
+    const a = annee || "toutes les années";
+    return `${t} · ${s} · ${a}`;
   };
 
   return (
@@ -287,33 +304,42 @@ function ExportDrawer({ open, prefill, onClose }) {
           <div style={{ color: MUTED, fontSize: 12.5, marginTop: 16 }}>Chargement des filtres…</div>
         ) : (
           <>
-            <p style={{ fontSize: 16, lineHeight: 2.15, color: DARK, margin: "18px 0 20px" }}>
-              Exporter{" "}
-              <select value={tableau} onChange={e => setTableau(e.target.value)} style={selectStyle}>
-                <option value="">tous les tableaux</option>
-                {opts.tableaux.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-              </select>{" "}
-              pour{" "}
-              <select value={societe} onChange={e => setSociete(e.target.value)} style={selectStyle}>
-                <option value="">toutes les sociétés</option>
-                {opts.societes.map(s => <option key={s.code} value={s.code}>{s.code}</option>)}
-              </select>{" "}
-              sur{" "}
-              <select value={annee} onChange={e => setAnnee(e.target.value)} style={selectStyle}>
-                <option value="">toutes les années</option>
-                {opts.annees.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>.
+            <div style={{ display: "flex", gap: 10, margin: "18px 0 10px" }}>
+              <div style={fieldWrap}>
+                <label style={fieldLabel}>Tableau</label>
+                <select value={tableau} onChange={e => setTableau(e.target.value)} style={compactSelect}>
+                  <option value="">Tous</option>
+                  {opts.tableaux.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </select>
+              </div>
+              <div style={fieldWrap}>
+                <label style={fieldLabel}>Société</label>
+                <select value={societe} onChange={e => setSociete(e.target.value)} style={compactSelect}>
+                  <option value="">Toutes</option>
+                  {opts.societes.map(s => <option key={s.code} value={s.code}>{s.code}</option>)}
+                </select>
+              </div>
+              <div style={fieldWrap}>
+                <label style={fieldLabel}>Année</label>
+                <select value={annee} onChange={e => setAnnee(e.target.value)} style={compactSelect}>
+                  <option value="">Toutes</option>
+                  {opts.annees.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <p style={{ fontSize: 11.5, color: MUTED, margin: "0 0 18px" }}>
+              Sélection : {resume()}
             </p>
 
-            <p style={{ fontSize: 11, color: MUTED, margin: "0 0 14px" }}>
+            <a href={buildUrl()} style={{ ...actionBtnStyle(false), textDecoration: "none", padding: "11px 20px" }}
+              onMouseEnter={e => (e.currentTarget.style.background = ACCENT_BG)}
+              onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
+              ⬇ Générer l'export Excel
+            </a>
+            <p style={{ fontSize: 10.5, color: "#9CA3AF", margin: "8px 0 0" }}>
               Une feuille par société, un tableau réel par annexe demandée.
             </p>
-
-            <a href={buildUrl()} style={{
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              padding: "12px 22px", borderRadius: 10, fontSize: 13.5, fontWeight: 700,
-              background: DARK, color: YELLOW, textDecoration: "none",
-            }}>⬇ Générer l'export Excel</a>
           </>
         )}
       </div>
