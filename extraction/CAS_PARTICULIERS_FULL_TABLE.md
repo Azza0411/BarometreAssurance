@@ -1,5 +1,91 @@
 # Cas particuliers — extraction "grille complète" (extraction/full_table_extractor.py)
 
+## 2026-09-09 (suite) — dictionnaire de normalisation LIGNES + COLONNES, toutes sociétés
+
+Déclencheur : retour utilisateur explicite ("préparer une liste de noms de
+colonnes et de noms de lignes... qui regroupe tous les noms utilisés sur
+toutes les entreprises... et non pas uniquement les noms de STAR").
+`CANONICAL_ROWS`/`normalize_row_label` existaient déjà mais avaient été
+construits en observant surtout STAR/GAT/BIAT ; aucune normalisation
+n'existait pour les COLONNES (branches).
+
+**Méthode** : relevé exhaustif (pas un échantillon) — `locate_and_extract_
+full_table` + `normalize_table` rejoués sur les 101 documents extraits avec
+succès, TOUTES sociétés conventionnelles Non-Vie confondues, tous exercices
+disponibles (2015-2025). Script de relevé conservé dans le scratchpad de
+session (non versionné — à reproduire au besoin en rejouant `scripts/
+audit_full_table_extraction.py` + `normalize_table` sur son rapport JSON).
+
+**Colonnes (`CANONICAL_COLUMNS`/`normalize_column_label`, nouveau)** :
+contrairement aux lignes (vocabulaire comptable réglementaire commun à
+toutes les sociétés), les colonnes sont les BRANCHES réellement vendues par
+chaque société — un ensemble qui varie légitimement (TUNIS_RE, réassureur,
+n'a pas les mêmes colonnes qu'un assureur direct). La normalisation ne
+fusionne donc jamais deux branches différentes, seulement les variantes
+d'orthographe/abréviation d'une même branche (ex. "AUTO" vs "AUTOMOBILE",
+"R DIVERS"/"RISQ. DIVERS" vs "RISQUES DIVERS", "ACCTRAV"/"A.TRAVAIL" vs
+"ACCIDENTS DU TRAVAIL"...) — ~30 branches canoniques + dictionnaire d'alias
+explicite (une abréviation courte n'a pas assez de lettres communes avec sa
+forme longue pour qu'une correspondance floue la retrouve de façon fiable,
+contrairement aux lignes). Gère aussi : les libellés numérotés par certaines
+sociétés ("1-Auto", "2-Transport" — CARTE), le gabarit "raccordement"
+(Brut/Cessions/Net, avec année en suffixe variable retirée avant
+comparaison), et les doublons déjà désambiguïsés en amont par
+`full_table_extractor.py` (suffixe " (2)" réappliqué après résolution de
+l'alias plutôt que de faire échouer la correspondance).
+
+**Lignes (`CANONICAL_ROWS`, complété)** : 4 nouveaux postes réellement
+récurrents détectés (pas des artefacts ponctuels — présents sur PLUSIEURS
+exercices d'une même société) : "Intérêts servis" (BIAT, 11 occurrences),
+"Primes cédées aux réassureurs" (LLOYD_TUNISIEN, 8), "Provisions
+mathématiques de rente" et "Prévisions de recours à encaisser" (COMAR).
+"Provisions pour égalisation et équilibrage" ajouté en cours de route après
+avoir détecté qu'il se faisait FAUSSEMENT rattacher à "Prévisions de recours
+à encaisser" par la correspondance floue (score suffisant par accident,
+aucun des deux postes n'étant alors assez proche) — corrigé en lui donnant
+sa propre entrée canonique plutôt qu'en resserrant le seuil global (qui
+aurait pu casser d'autres correspondances légitimes).
+
+**Piège trouvé et corrigé en cours de route (perte de données silencieuse)** :
+COMAR distingue plusieurs postes (provisions/prévisions) par EXERCICE sur 2
+lignes physiques séparées ("... Année N" / "... Année N-1"), avec des
+valeurs par branche RÉELLEMENT DIFFÉRENTES sur chacune. Les fusionner sous
+un même libellé canonique (première tentative) faisait perdre silencieusement
+la moitié des valeurs — `normalize_table` ne fait qu'un `setdefault` par
+colonne en cas de collision de libellé de ligne (comportement préexistant,
+volontaire pour ne jamais perdre une valeur en cas de VRAI doublon). Vérifié
+concrètement sur COMAR 2020 : "Provisions mathématiques de rente" fusionnée
+donnait un total de 13 825 704 (année N seule) au lieu de deux lignes
+distinctes 13 825 704 / 13 335 550. Fix : ces postes gardent 2 entrées
+canoniques distinctes ("... (exercice N)" / "... (exercice N-1)") — le
+marqueur d'exercice est détecté dans le libellé brut et réinjecté après
+correspondance plutôt que fusionné (`_YEAR_MARKER_RE` dans
+`normalize_row_label`), sans toucher au comportement des postes qui n'ont
+jamais ce marqueur (la quasi-totalité des lignes).
+
+**Limitations restantes, non traitées** (documentées pour ne pas les
+re-découvrir) :
+- CARTE 2024 : plusieurs en-têtes de colonnes fusionnés en une seule chaîne
+  par camelot (ex. "7-dommages aux bi8-credit et caution9-assistance") — un
+  vrai bug de RECONSTRUCTION de colonnes (limite de la détection de tableau
+  par blancs sur cette page précise), pas un problème de vocabulaire ; aucun
+  dictionnaire ne peut le corriger, il faudrait revoir la détection de
+  colonnes de camelot pour cette page.
+- ASTREE : une grappe de libellés de ligne fragmentés autour des rentes/
+  provisions d'invalidité ("- Arrérages de rentes à payer 19 644"...) inclut
+  parfois un MONTANT à l'intérieur même du libellé (pas juste le texte) —
+  suggère une sous-table de détail (notes) qui déborde sur la grille
+  principale plutôt qu'un problème de normalisation ; non investigué plus
+  avant (déjà présent avant ce chantier).
+- TUNIS_RE : vocabulaire de réassurance non couvert par le dictionnaire
+  ("Wakala", quelques lignes de change/devises) — spécifique à l'activité de
+  réassurance, volontairement laissé non normalisé plutôt que d'étirer le
+  dictionnaire pour une seule société.
+- Une douzaine de libellés à occurrence UNIQUE, visiblement des fusions de
+  plusieurs lignes physiques du PDF en une seule chaîne (ex. AMI 2015, COMAR
+  2017) — bug de RECONSTRUCTION de lignes propre à ces pages, même famille
+  que le cas CARTE ci-dessus, pas de vocabulaire.
+
 ## 2026-09-09 — généralisation Annexe 13 2024 à toutes les sociétés conventionnelles
 
 Déclencheur : retour utilisateur explicite ("assurez-vous que toutes les

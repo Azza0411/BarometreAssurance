@@ -82,6 +82,27 @@ CANONICAL_ROWS = [
     "Provisions pour primes non acquises (réouverture)",
     "Provisions pour sinistres à payer (clôture)",
     "Provisions pour sinistres à payer (réouverture)",
+    # Ajoutés le 2026-09-09 suite à un relevé exhaustif des libellés NON
+    # reconnus sur les 101 documents disponibles, toutes sociétés confondues
+    # (pas seulement STAR/GAT/BIAT) — voir CAS_PARTICULIERS_FULL_TABLE.md.
+    # Récurrents sur plusieurs exercices d'une même société (donc de vrais
+    # postes du tableau source, pas un artefact ponctuel) mais absents des
+    # 3 sociétés ayant servi à construire la liste initiale.
+    "Intérêts servis",
+    "Primes cédées aux réassureurs",
+    # COMAR distingue ces 2 postes par exercice (N / N-1) sur 2 lignes
+    # séparées, chacune avec ses PROPRES valeurs par branche — les fusionner
+    # sous un même libellé canonique perdrait silencieusement la moitié des
+    # valeurs (`normalize_table` ne fait qu'un `setdefault` par colonne en
+    # cas de collision). Distingués explicitement plutôt que fusionnés — le
+    # marqueur d'exercice est détecté et rattaché au bon libellé par
+    # `normalize_row_label` (voir `_PRIOR_YEAR_MARKER_RE`).
+    "Provisions mathématiques de rente (exercice N)",
+    "Provisions mathématiques de rente (exercice N-1)",
+    "Prévisions de recours à encaisser (exercice N)",
+    "Prévisions de recours à encaisser (exercice N-1)",
+    "Provisions pour égalisation et équilibrage (exercice N)",
+    "Provisions pour égalisation et équilibrage (exercice N-1)",
 ]
 
 # Score minimal (difflib.SequenceMatcher.ratio, 0-1) pour accepter une
@@ -105,6 +126,16 @@ _KNOWN_PREFIXED_VARIANTS = {
     "la participation aux resultats": "Part des réassureurs dans la participation aux résultats",
 }
 
+# COMAR distingue certains postes (provisions/prévisions) par exercice sur
+# 2 lignes physiques ("... Année N" / "... Année N-1"), avec des valeurs par
+# branche DIFFÉRENTES sur chaque ligne — le marqueur d'exercice est retiré
+# du texte AVANT la correspondance floue (sinon "Annee N" et "Annee N-1" ne
+# matcheraient pas exactement le même poste canonique) puis réinjecté APRÈS,
+# pour router vers la variante "(exercice N)"/"(exercice N-1)" de
+# CANONICAL_ROWS plutôt que de fusionner deux lignes réellement distinctes
+# (voir le commentaire sur ces entrées dans CANONICAL_ROWS).
+_YEAR_MARKER_RE = re.compile(r"[\s-]*annee\s*n([\s-]*1)?\s*$")
+
 
 def normalize_row_label(raw_label):
     """Rattache un libellé de ligne brut extrait du PDF au poste comptable
@@ -118,15 +149,22 @@ def normalize_row_label(raw_label):
     if norm in _KNOWN_PREFIXED_VARIANTS:
         return _KNOWN_PREFIXED_VARIANTS[norm], True
 
+    match_target = norm
+    year_marker = _YEAR_MARKER_RE.search(norm)
+    if year_marker:
+        base = _YEAR_MARKER_RE.sub("", norm).strip()
+        suffix = "(exercice n-1)" if year_marker.group(1) else "(exercice n)"
+        match_target = f"{base} {suffix}"
+
     best_label, best_score = None, 0.0
     for canonical, canonical_norm in _CANONICAL_NORMALIZED:
         # Un préfixe exact (ex. "primes acquises" contenu dans "primes
         # acquises brutes 31/12/2024") est un signal plus fort qu'un simple
         # ratio de similarité de chaînes — priorité absolue s'il existe.
-        if norm.startswith(canonical_norm) or canonical_norm.startswith(norm):
-            score = 0.9 + 0.1 * (len(canonical_norm) / max(len(norm), len(canonical_norm)))
+        if match_target.startswith(canonical_norm) or canonical_norm.startswith(match_target):
+            score = 0.9 + 0.1 * (len(canonical_norm) / max(len(match_target), len(canonical_norm)))
         else:
-            score = difflib.SequenceMatcher(None, norm, canonical_norm).ratio()
+            score = difflib.SequenceMatcher(None, match_target, canonical_norm).ratio()
         if score > best_score:
             best_label, best_score = canonical, score
 
@@ -135,31 +173,216 @@ def normalize_row_label(raw_label):
     return raw_label.strip().capitalize(), False
 
 
+# ── Normalisation des libellés de COLONNE (branches) ────────────────────────
+# Contrairement aux lignes (un vocabulaire comptable réglementaire commun à
+# TOUTES les sociétés), les colonnes de l'Annexe 13 sont les BRANCHES
+# d'assurance réellement vendues par chaque société — un ensemble qui varie
+# légitimement d'une société à l'autre (ex. TUNIS_RE, réassureur, a des
+# colonnes "Marines"/"Wakala" sans rapport avec le portefeuille d'un
+# assureur direct). La normalisation ici ne fusionne donc JAMAIS deux
+# branches réellement différentes — elle unifie seulement les variantes
+# d'ORTHOGRAPHE/ABRÉVIATION d'une même branche observées d'une société à
+# l'autre (ex. "AUTO" (ASTREE, BH, BIAT...) vs "AUTOMOBILE" (AMI, BNA,
+# CARTE...), "R DIVERS"/"RISQ. DIVERS" vs "RISQUES DIVERS"...). Construite le
+# 2026-09-09 par relevé exhaustif des colonnes RÉELLEMENT extraites sur les
+# 101 documents disponibles (toutes sociétés, tous exercices confondus —
+# voir scripts/audit_full_table_extraction.py pour rejouer un tel relevé),
+# pas seulement celles de STAR.
+CANONICAL_COLUMNS = [
+    "Automobile", "Transport", "Incendie", "Risques divers", "Aviation",
+    "Groupe", "Acceptation", "Total", "Maladie", "Construction",
+    "Assistance", "Responsabilité civile", "Accidents du travail",
+    "Accidents corporels", "Risques spéciaux", "Risques agricoles",
+    "Pertes pécuniaires", "Protection juridique", "Crédit-Caution",
+    "Responsabilité décennale", "Vol", "Grêle",
+    "Autres dommages aux biens", "Individuelle accident", "Invalidité",
+    "Autres", "Risques techniques", "Marines", "Non marines",
+    "Total marines", "Total non marines", "Wakala",
+    # Gabarit "raccordement" (Brut/Cessions/Net) — pas des branches mais un
+    # 2e type de tableau Annexe 13 rencontré sur certaines sociétés/années
+    # (BH, AMI, CTAMA, COMAR — voir CAS_PARTICULIERS_FULL_TABLE.md, cas STAR
+    # 2023 déjà documenté) : colonnes "Opérations brutes N" / "Cessions et/ou
+    # rétrocessions N" / "Opérations nettes N" / "Opérations nettes N-1",
+    # l'année étant un simple suffixe variable retiré avant comparaison
+    # (voir `_COLUMN_YEAR_SUFFIX_RE`).
+    "Opérations brutes", "Cessions et/ou rétrocessions", "Opérations nettes",
+]
+
+# Alias observés -> nom canonique (clé = texte déjà passé par
+# `_normalizer.clean`, donc minuscules/sans accents). Une abréviation courte
+# ("acctrav", "r.c") n'a pas assez de lettres en commun avec sa forme longue
+# pour qu'une correspondance floue (difflib) la retrouve de façon fiable —
+# contrairement aux lignes, un dictionnaire d'alias EXPLICITE est donc la
+# méthode principale ici, la correspondance floue ne servant qu'en dernier
+# recours (voir `normalize_column_label`).
+_COLUMN_ALIASES = {
+    "auto": "Automobile", "automobile": "Automobile",
+    "transport": "Transport",
+    "incendie": "Incendie",
+    "risques divers": "Risques divers", "risq. divers": "Risques divers",
+    "risq.divers": "Risques divers", "r divers": "Risques divers",
+    "aviation": "Aviation",
+    "groupe": "Groupe",
+    "acceptation": "Acceptation", "acceptations": "Acceptation",
+    "total": "Total", "montant": "Total", "total general": "Total",
+    "total non vie": "Total", "t o t a l": "Total",
+    "maladie": "Maladie",
+    "construction": "Construction",
+    "assistance": "Assistance", "assistances": "Assistance",
+    "assistance a.e.a": "Assistance", "a.e.a": "Assistance",
+    "rc gle": "Responsabilité civile", "r.c": "Responsabilité civile",
+    "rc": "Responsabilité civile", "responsabilite civile": "Responsabilité civile",
+    "civile": "Responsabilité civile", "e civile": "Responsabilité civile",
+    "r.s": "Responsabilité civile", "r.c generale": "Responsabilité civile",
+    "acctrav": "Accidents du travail", "a.travail": "Accidents du travail",
+    "a. travail": "Accidents du travail", "a t": "Accidents du travail",
+    "accident travail": "Accidents du travail",
+    "accidents de travail": "Accidents du travail",
+    "accident de travail": "Accidents du travail", "travail": "Accidents du travail",
+    "acc corp": "Accidents corporels", "accidents corporels": "Accidents corporels",
+    "accident corporel": "Accidents corporels", "corporels": "Accidents corporels",
+    "individuel accident": "Individuelle accident", "individuelle": "Individuelle accident",
+    "risq.spx": "Risques spéciaux", "risq. spx": "Risques spéciaux",
+    "risques agricoles": "Risques agricoles", "risque agricole": "Risques agricoles",
+    "agricole": "Risques agricoles",
+    "pertes pecuniaires": "Pertes pécuniaires", "pecuniaires": "Pertes pécuniaires",
+    "protection juridique": "Protection juridique", "juridique": "Protection juridique",
+    "credit-caution": "Crédit-Caution", "credit - caution": "Crédit-Caution",
+    "caution": "Crédit-Caution", "credit export": "Crédit-Caution",
+    "credit": "Crédit-Caution", "assurance credit": "Crédit-Caution",
+    "responsabilite decennale": "Responsabilité décennale", "decennale": "Responsabilité décennale",
+    "vol": "Vol",
+    "grele": "Grêle",
+    "autres dommages aux biens": "Autres dommages aux biens",
+    "dommages aux biens": "Autres dommages aux biens", "aux biens": "Autres dommages aux biens",
+    "invalidite": "Invalidité",
+    "autres": "Autres", "autre s": "Autres",
+    "risque tech.": "Risques techniques", "risque tech": "Risques techniques",
+    "marines": "Marines", "non marines": "Non marines", "non m arines": "Non marines",
+    "total marines": "Total marines", "total m arines": "Total marines",
+    "total non marines": "Total non marines", "total non m arines": "Total non marines",
+    "wakala": "Wakala",
+    "vie": "Vie", "non vie": "Non-Vie", "globale": "Globale",
+    # Gabarit "raccordement" (voir CANONICAL_COLUMNS ci-dessus) — libellés
+    # une fois le suffixe année retiré par `_COLUMN_YEAR_SUFFIX_RE`.
+    "operations brutes": "Opérations brutes", "brutes": "Opérations brutes",
+    "operations nettes": "Opérations nettes", "nettes": "Opérations nettes",
+    "cessions et/ou retrocessions": "Cessions et/ou rétrocessions",
+    "cessions et retrocessions": "Cessions et/ou rétrocessions",
+    "et/ou retrocessions": "Cessions et/ou rétrocessions",
+    "retrocessions": "Cessions et/ou rétrocessions",
+}
+
+_CANONICAL_COLUMNS_NORMALIZED = [(label, _normalizer.clean(label)) for label in CANONICAL_COLUMNS]
+_COLUMN_MATCH_THRESHOLD = 0.8  # plus strict que pour les lignes : les libellés de
+# colonne sont courts, un seuil bas confondrait des branches réellement
+# différentes (ex. "Vol" / "Vie").
+
+# Gabarit "raccordement" : le libellé de colonne porte souvent l'année en
+# suffixe ("Opérations nettes 31/12/2021", "operations brutes 2015") — une
+# valeur variable par nature, retirée avant comparaison (généralisable à
+# toute société utilisant ce gabarit, pas propre à une société).
+_COLUMN_YEAR_SUFFIX_RE = re.compile(r"\s*(?:\d{2}/\d{2}/)?\d{4}\s*$")
+
+# Certaines sociétés numérotent leurs branches dans l'en-tête (ex. CARTE :
+# "1-Auto", "2-Transport"...) — préfixe sans valeur distinctive pour la
+# correspondance, retiré avant recherche (généralisable à toute société
+# utilisant cette convention, pas propre à CARTE).
+_COLUMN_NUM_PREFIX_RE = re.compile(r"^\d{1,2}[.\-)]\s*")
+
+# Un libellé de colonne brut peut déjà porter un suffixe de désambiguïsation
+# " (2)"/" (3)" posé en amont par full_table_extractor.py (deux colonnes du
+# PDF littéralement identiques avant même la normalisation, ex. "Nettes" /
+# "Nettes" sur le gabarit raccordement sans année en en-tête) — retiré avant
+# recherche d'alias puis réappliqué au résultat, sinon "nettes (2)" ne
+# matche jamais l'alias "nettes".
+_COLUMN_DEDUP_SUFFIX_RE = re.compile(r"\s*\((\d+)\)\s*$")
+
+
+def normalize_column_label(raw_label):
+    """Équivalent de `normalize_row_label` pour les colonnes (branches).
+    Renvoie (libelle_normalise, matched). `matched=False` laisse le libellé
+    brut inchangé (jamais deviné à tort) — couvre notamment les placeholders
+    "(colonne N)" (aucun mot d'en-tête détecté sur cette colonne, voir
+    full_table_extractor.py) et les en-têtes visiblement mal reconstruits
+    (plusieurs colonnes fusionnées en une seule chaîne)."""
+    norm = _normalizer.clean(raw_label)
+    if norm in _COLUMN_ALIASES:
+        return _COLUMN_ALIASES[norm], True
+    if norm.startswith("(colonne"):
+        return raw_label, False
+
+    dedup_suffix_match = _COLUMN_DEDUP_SUFFIX_RE.search(norm)
+    dedup_suffix = f" ({dedup_suffix_match.group(1)})" if dedup_suffix_match else ""
+    base = _COLUMN_DEDUP_SUFFIX_RE.sub("", norm) if dedup_suffix_match else norm
+
+    no_year = _COLUMN_YEAR_SUFFIX_RE.sub("", base).strip()
+    if no_year in _COLUMN_ALIASES:
+        return _COLUMN_ALIASES[no_year] + dedup_suffix, True
+
+    stripped = _COLUMN_NUM_PREFIX_RE.sub("", base)
+    if stripped in _COLUMN_ALIASES:
+        return _COLUMN_ALIASES[stripped] + dedup_suffix, True
+
+    best_label, best_score = None, 0.0
+    for canonical, canonical_norm in _CANONICAL_COLUMNS_NORMALIZED:
+        score = difflib.SequenceMatcher(None, stripped, canonical_norm).ratio()
+        if score > best_score:
+            best_label, best_score = canonical, score
+    if best_score >= _COLUMN_MATCH_THRESHOLD:
+        return best_label + dedup_suffix, True
+    return raw_label.strip(), False
+
+
 def normalize_table(grid):
-    """Applique `normalize_row_label` à toutes les lignes d'une grille issue
-    de `full_table_extractor.extract_full_table` / `locate_and_extract_full_table`.
-    Renvoie {"colonnes": [...], "lignes": {libelle_normalise: {colonne: valeur}},
-    "non_reconnues": [libelles_bruts_non_rattaches...]}. Deux libellés bruts
-    distincts qui se normalisent vers le MÊME poste canonique (rare — ne
-    devrait pas arriver sur une page bien reconstruite) sont fusionnés en
-    gardant la valeur non-nulle si l'une des deux est vide, pour ne perdre
-    aucune donnée plutôt que d'écraser silencieusement."""
+    """Applique `normalize_row_label`/`normalize_column_label` à toutes les
+    lignes ET colonnes d'une grille issue de `full_table_extractor.
+    extract_full_table_camelot` / `locate_and_extract_full_table`. Renvoie
+    {"colonnes": [...], "lignes": {libelle_normalise: {colonne_normalisee:
+    valeur}}, "non_reconnues": [...], "colonnes_non_reconnues": [...]}.
+    L'ORDRE physique des colonnes (gauche->droite tel qu'extrait du PDF,
+    voir `colonne_ordre` en base) est préservé — seul le LIBELLÉ change, pas
+    la position. Deux libellés bruts (ligne ou colonne) distincts qui se
+    normalisent vers le même poste/branche canonique (rare — ne devrait pas
+    arriver sur une page bien reconstruite) sont fusionnés en gardant la
+    valeur non-nulle si l'une des deux est vide, pour ne perdre aucune
+    donnée plutôt que d'écraser silencieusement."""
+    # Colonnes : renommage préservant l'ordre, avec désambiguïsation si deux
+    # colonnes se retrouvent avec le même libellé normalisé (même principe
+    # que la déduplication déjà faite en amont sur les libellés bruts —
+    # voir full_table_extractor.py).
+    col_rename = {}
+    colonnes_normalisees = []
+    colonnes_non_reconnues = []
+    seen_cols = {}
+    for raw_col in grid["colonnes"]:
+        normalized, matched = normalize_column_label(raw_col)
+        if not matched:
+            colonnes_non_reconnues.append(raw_col)
+        n = seen_cols.get(normalized, 0) + 1
+        seen_cols[normalized] = n
+        final = normalized if n == 1 else f"{normalized} ({n})"
+        col_rename[raw_col] = final
+        colonnes_normalisees.append(final)
+
     lignes_normalisees = {}
     non_reconnues = []
     for raw_label, values in grid["lignes"].items():
         normalized, matched = normalize_row_label(raw_label)
         if not matched:
             non_reconnues.append(raw_label)
+        renamed_values = {col_rename.get(col, col): val for col, val in values.items()}
         if normalized in lignes_normalisees:
             existing = lignes_normalisees[normalized]
-            for col, val in values.items():
+            for col, val in renamed_values.items():
                 existing.setdefault(col, val)
         else:
-            lignes_normalisees[normalized] = dict(values)
+            lignes_normalisees[normalized] = renamed_values
     return {
-        "colonnes": grid["colonnes"],
+        "colonnes": colonnes_normalisees,
         "lignes": lignes_normalisees,
         "non_reconnues": non_reconnues,
+        "colonnes_non_reconnues": colonnes_non_reconnues,
     }
 
 
@@ -243,9 +466,10 @@ def validate_table(normalized_lignes, columns):
 
 def process_annexe13(pdf_path, is_target_page, kpi_patterns, raccordement_re, relaxed_page_predicate):
     """Pipeline complète pour un document : localise + extrait la grille
-    (full_table_extractor), normalise les libellés de ligne, valide par
-    règles métier. Renvoie None si aucune page valide n'a été trouvée, sinon
-    {"page", "colonnes", "lignes", "non_reconnues", "validations"}."""
+    (full_table_extractor), normalise les libellés de ligne ET de colonne,
+    valide par règles métier. Renvoie None si aucune page valide n'a été
+    trouvée, sinon {"page", "colonnes", "lignes", "non_reconnues",
+    "colonnes_non_reconnues", "validations"}."""
     from extraction.full_table_extractor import locate_and_extract_full_table
 
     page_num, grid = locate_and_extract_full_table(
@@ -262,5 +486,6 @@ def process_annexe13(pdf_path, is_target_page, kpi_patterns, raccordement_re, re
         "colonnes": normalized["colonnes"],
         "lignes": normalized["lignes"],
         "non_reconnues": normalized["non_reconnues"],
+        "colonnes_non_reconnues": normalized["colonnes_non_reconnues"],
         "validations": validations,
     }
