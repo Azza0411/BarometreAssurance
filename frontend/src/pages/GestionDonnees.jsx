@@ -107,7 +107,7 @@ function CollecteBar() {
         <button onClick={lancer} disabled={enCours || lancement} style={actionBtnStyle(enCours || lancement)}
           onMouseEnter={e => !(enCours || lancement) && (e.currentTarget.style.background = ACCENT_BG)}
           onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
-          {enCours ? "⏳ Collecte en cours…" : "▶ Lancer une nouvelle collecte"}
+          {enCours ? "Collecte en cours…" : "Lancer une nouvelle collecte"}
         </button>
       </div>
     </Card>
@@ -152,7 +152,7 @@ function DocumentsPanel({ onExporter }) {
         <button onClick={() => onExporter(null, null)} style={actionBtnStyle(false)}
           onMouseEnter={e => (e.currentTarget.style.background = ACCENT_BG)}
           onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
-          ⬇ Exporter des données
+          Exporter des données
         </button>
       </div>
       <p style={{ margin: "4px 0 14px", fontSize: 11.5, color: MUTED }}>
@@ -193,8 +193,8 @@ function DocumentsPanel({ onExporter }) {
                 <td style={{ padding: "8px 12px" }}>{d.annee}</td>
                 <td style={{ padding: "8px 12px" }}>
                   {d.fichier_local
-                    ? <span style={{ color: "#16A34A", fontWeight: 700 }}>✓ oui</span>
-                    : <span style={{ color: "#9CA3AF" }}>— non</span>}
+                    ? <span style={{ color: "#16A34A", fontWeight: 700 }}>Oui</span>
+                    : <span style={{ color: "#9CA3AF" }}>Non</span>}
                 </td>
                 <td style={{ padding: "8px 12px", textAlign: "right" }}>
                   {(d.fichier_local || d.lien) && (
@@ -292,7 +292,7 @@ function ExportDrawer({ open, prefill, onClose }) {
           <button onClick={onClose} aria-label="Fermer" style={{
             background: "none", border: `1px solid ${BORDER}`, borderRadius: 8, width: 30, height: 30,
             cursor: "pointer", fontSize: 14, color: DARK,
-          }}>✕</button>
+          }}>×</button>
         </div>
         {prefill?.societe && (
           <p style={{ margin: "10px 0 0", fontSize: 11.5, color: ACCENT, fontWeight: 700 }}>
@@ -335,7 +335,7 @@ function ExportDrawer({ open, prefill, onClose }) {
             <a href={buildUrl()} style={{ ...actionBtnStyle(false), textDecoration: "none", padding: "11px 20px" }}
               onMouseEnter={e => (e.currentTarget.style.background = ACCENT_BG)}
               onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
-              ⬇ Générer l'export Excel
+              Générer l'export Excel
             </a>
             <p style={{ fontSize: 10.5, color: "#9CA3AF", margin: "8px 0 0" }}>
               Une feuille par société, un tableau réel par annexe demandée.
