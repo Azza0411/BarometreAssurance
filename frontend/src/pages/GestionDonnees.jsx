@@ -64,6 +64,8 @@ function CollecteBar() {
     return () => clearInterval(pollRef.current);
   }, [statut?.en_cours, fetchStatut]);
 
+  const [annulation, setAnnulation] = useState(false);
+
   const lancer = () => {
     setErreur(null);
     setLancement(true);
@@ -77,8 +79,21 @@ function CollecteBar() {
       .finally(() => setLancement(false));
   };
 
+  const annuler = () => {
+    setErreur(null);
+    setAnnulation(true);
+    fetch(`${API}/api/gestion-donnees/annuler-collecte`, { method: "POST" })
+      .then(async r => {
+        if (!r.ok) { setErreur("Échec de l'annulation."); return; }
+        fetchStatut();
+      })
+      .catch(() => setErreur("Échec de l'annulation (API injoignable)."))
+      .finally(() => setAnnulation(false));
+  };
+
   const derniere = statut?.derniere_execution;
   const enCours = statut?.en_cours;
+  const annulationDemandee = statut?.annulation_demandee;
 
   return (
     <Card style={{ padding: "14px 20px" }}>
@@ -90,25 +105,39 @@ function CollecteBar() {
           </div>
           <div style={{ fontSize: 12.5, color: DARK }}>
             {enCours ? (
-              <span>Collecte en cours — reprise automatique en cas d'échec (~quelques minutes)…</span>
+              annulationDemandee
+                ? <span>Annulation en cours — arrêt au prochain document/société traité…</span>
+                : <span>Collecte en cours — seuls les documents nouveaux ou jamais traités sont extraits…</span>
             ) : derniere ? (
               <span>
                 Dernière exécution : <b>{derniere.ts?.replace("T", " ").slice(0, 16)}</b>
                 {" · "}durée {derniere.duration_s ?? "?"}s
-                {derniere.failed_sources?.length
-                  ? <span style={{ color: "#C8102E", fontWeight: 700 }}> · {derniere.failed_sources.length} source(s) en échec</span>
-                  : <span style={{ color: "#16A34A", fontWeight: 700 }}> · toutes sources OK</span>}
+                {derniere.cancelled
+                  ? <span style={{ color: "#B45309", fontWeight: 700 }}> · annulée</span>
+                  : derniere.failed_sources?.length
+                    ? <span style={{ color: "#C8102E", fontWeight: 700 }}> · {derniere.failed_sources.length} source(s) en échec</span>
+                    : <span style={{ color: "#16A34A", fontWeight: 700 }}> · toutes sources OK</span>}
               </span>
             ) : (
               <span>Aucune exécution enregistrée pour l'instant.</span>
             )}
           </div>
         </div>
-        <button onClick={lancer} disabled={enCours || lancement} style={actionBtnStyle(enCours || lancement)}
-          onMouseEnter={e => !(enCours || lancement) && (e.currentTarget.style.background = ACCENT_BG)}
-          onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
-          {enCours ? "Collecte en cours…" : "Lancer une nouvelle collecte"}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          {enCours && (
+            <button onClick={annuler} disabled={annulation || annulationDemandee}
+              style={{ ...actionBtnStyle(annulation || annulationDemandee), borderColor: "#C8102E", color: "#C8102E" }}
+              onMouseEnter={e => !(annulation || annulationDemandee) && (e.currentTarget.style.background = "#FDECEC")}
+              onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
+              {annulationDemandee ? "Annulation…" : "Annuler"}
+            </button>
+          )}
+          <button onClick={lancer} disabled={enCours || lancement} style={actionBtnStyle(enCours || lancement)}
+            onMouseEnter={e => !(enCours || lancement) && (e.currentTarget.style.background = ACCENT_BG)}
+            onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
+            {enCours ? "Collecte en cours…" : "Lancer une nouvelle collecte"}
+          </button>
+        </div>
       </div>
     </Card>
   );

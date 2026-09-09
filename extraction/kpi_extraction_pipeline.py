@@ -46,12 +46,14 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.repository import (
     ensure_database,
     get_connection,
+    get_document_ids_with_kpi,
     get_kpi_values_for_document,
     init_schema,
     list_all_documents,
     save_anomaly,
     save_kpi_value,
 )
+from pipelines.control import is_cancel_requested
 from extraction.annexe12_kpi_extractor import KPI_PATTERNS as ANNEXE12_KPI_PATTERNS
 from extraction.annexe12_kpi_extractor import extract_annexe12_kpis
 from extraction.annexe13_kpi_extractor import KPI_PATTERNS as ANNEXE13_KPI_PATTERNS
@@ -263,18 +265,26 @@ def _write_failure_report(failures):
     wb.save(FAILURE_REPORT_PATH)
 
 
-def _run_ftusa(conn):
+def _run_ftusa(conn, already_done=None):
     """Pipeline separe pour les documents de la source FTUSA (sectorielle,
     pas de societe associee) : un seul tableau, l'annexe "Compte
     d'exploitation par branche & par entreprise" (voir
     ftusa_kpi_extractor.extract_ftusa_kpis). Beaucoup plus petit que le
     pipeline CMF (une dizaine de documents au lieu de centaines) : rapporte
-    directement sur la console plutot que via un fichier Excel dedie."""
+    directement sur la console plutot que via un fichier Excel dedie.
+
+    `already_done` (ensemble de document_id déjà extraits avec succès) :
+    si fourni, ces documents sont sautés — voir `run(force=...)`."""
     documents = [doc for doc in list_all_documents(conn) if doc[1] == "FTUSA"]
+    if already_done:
+        documents = [doc for doc in documents if doc[0] not in already_done]
     print(f"\n===== EXTRACTION KPI FTUSA : {len(documents)} document(s), {len(FTUSA_KPI_NAMES)} KPI =====\n")
 
     kpi_values_saved = documents_with_kpi = download_errors = 0
     for document_id, _source_nom, _code, _nom_entreprise, nom_pdf, annee, lien in documents:
+        if is_cancel_requested():
+            print("[ANNULE] Extraction KPI FTUSA interrompue par l'utilisateur.")
+            break
         print(f"[STEP] FTUSA {annee} : {lien}")
         try:
             response = _get_with_retries(lien, timeout=60)
@@ -308,19 +318,26 @@ def _run_ftusa(conn):
     }
 
 
-def _run_bvmt(conn):
+def _run_bvmt(conn, already_done=None):
     """Pipeline separe pour les documents de la source BVMT : seuls les
     rapports ESG (PDF, nom_pdf se terminant par ".pdf") necessitent une
     extraction. Les documents de "Status de cotation" n'ont pas de PDF
     associe (nom_pdf sans extension) : leur KPI est deja enregistre pendant
-    le scraping (voir scraping.bvmt_scraper.sync_status_cotation)."""
+    le scraping (voir scraping.bvmt_scraper.sync_status_cotation).
+
+    `already_done` : voir `_run_ftusa`."""
     documents = [
         doc for doc in list_all_documents(conn) if doc[1] == "BVMT" and doc[4].lower().endswith(".pdf")
     ]
+    if already_done:
+        documents = [doc for doc in documents if doc[0] not in already_done]
     print(f"\n===== EXTRACTION KPI BVMT : {len(documents)} document(s), {len(BVMT_KPI_NAMES)} KPI =====\n")
 
     kpi_values_saved = documents_with_kpi = download_errors = 0
     for document_id, _source_nom, code, _nom_entreprise, nom_pdf, annee, lien in documents:
+        if is_cancel_requested():
+            print("[ANNULE] Extraction KPI BVMT interrompue par l'utilisateur.")
+            break
         print(f"[STEP] BVMT {code} {annee} : {lien}")
         try:
             response = _get_with_retries(lien, timeout=60)
@@ -353,7 +370,7 @@ def _run_bvmt(conn):
     }
 
 
-def _run_bvmt_bulletin(conn):
+def _run_bvmt_bulletin(conn, already_done=None):
     """Pipeline separe pour les bulletins officiels de la cote BVMT
     (documents sectoriels, cmf_id NULL, un par annee, nom_pdf de la forme
     "bulletin_{annee}.pdf" -> voir scraping.bvmt_scraper.sync_market_data) :
@@ -361,7 +378,11 @@ def _run_bvmt_bulletin(conn):
     (voir bvmt_bulletin_kpi_extractor). Le MNEMO et la denomination BVMT de
     chaque societe, necessaires a cette reconnaissance, sont lus depuis les
     KPI deja enregistres sur son document de profil (cmf_id non NULL, meme
-    source) plutot que re-scrapes ici."""
+    source) plutot que re-scrapes ici.
+
+    `already_done` : voir `_run_ftusa` — appliqué seulement aux bulletins
+    (téléchargement + parsing), jamais à la recherche mnemo/dénomination
+    (déjà une simple lecture DB, pas un coût à économiser)."""
     documents = list_all_documents(conn)
     company_docs = [doc for doc in documents if doc[1] == "BVMT" and doc[2] is not None]
 
@@ -376,10 +397,15 @@ def _run_bvmt_bulletin(conn):
             name_to_code[_normalizer.clean(denomination)] = code
 
     bulletin_docs = [doc for doc in documents if doc[1] == "BVMT" and doc[2] is None and doc[4].startswith("bulletin_")]
+    if already_done:
+        bulletin_docs = [doc for doc in bulletin_docs if doc[0] not in already_done]
     print(f"\n===== EXTRACTION KPI BVMT - Bulletins : {len(bulletin_docs)} document(s) =====\n")
 
     kpi_values_saved = documents_with_kpi = download_errors = 0
     for document_id, _source_nom, _code, _nom_entreprise, _nom_pdf, annee, lien in bulletin_docs:
+        if is_cancel_requested():
+            print("[ANNULE] Extraction KPI BVMT bulletins interrompue par l'utilisateur.")
+            break
         print(f"[STEP] BVMT bulletin {annee} : {lien}")
         try:
             response = _get_with_retries(lien, timeout=60)
@@ -412,7 +438,7 @@ def _run_bvmt_bulletin(conn):
     }
 
 
-def _run_cga(conn):
+def _run_cga(conn, already_done=None):
     """Pipeline separe pour les documents de la source CGA (sectorielle,
     pas de societe associee dans `documents` : les compagnies apparaissent
     en tant que suffixe du nom de KPI, ex: "Nombre d'agences par assureur -
@@ -420,12 +446,19 @@ def _run_cga(conn):
     KPI varient d'un document a l'autre (une compagnie ou un gouvernorat
     absent d'une annee donnee ne genere simplement pas ce KPI-la) : pas de
     liste KPI_NAMES fixe, donc pas de rapport d'echecs Excel (un KPI
-    "manquant" n'est pas necessairement une erreur ici)."""
+    "manquant" n'est pas necessairement une erreur ici).
+
+    `already_done` : voir `_run_ftusa`."""
     documents = [doc for doc in list_all_documents(conn) if doc[1] == "CGA"]
+    if already_done:
+        documents = [doc for doc in documents if doc[0] not in already_done]
     print(f"\n===== EXTRACTION KPI CGA : {len(documents)} document(s) =====\n")
 
     kpi_values_saved = documents_with_kpi = download_errors = 0
     for document_id, _source_nom, _code, _nom_entreprise, nom_pdf, annee, lien in documents:
+        if is_cancel_requested():
+            print("[ANNULE] Extraction KPI CGA interrompue par l'utilisateur.")
+            break
         print(f"[STEP] CGA {annee} : {lien}")
         try:
             response = _get_with_retries(lien, timeout=60)
@@ -463,19 +496,37 @@ def _run_cga(conn):
     }
 
 
-def run():
+def run(force=False):
+    """Lance l'extraction KPI pour tous les documents CMF déjà en base, puis
+    les sous-pipelines FTUSA/BVMT/BVMT-bulletin/CGA et la modélisation.
+
+    `force=False` (défaut, 2026-09-09 — retour utilisateur direct : la
+    collecte re-téléchargeait et re-parsait les ~223 documents CMF déjà
+    extraits À CHAQUE clic, plusieurs dizaines de minutes pour, la plupart
+    du temps, 0 changement réel) : les documents ayant déjà AU MOINS une
+    valeur de KPI enregistrée sont sautés — seuls les documents réellement
+    NOUVEAUX (venant d'être synchronisés par `cmf_pipeline.sync_documents`)
+    ou jamais traités avec succès sont (re)traités. `force=True` retraite
+    tout l'historique sans exception (utile après une amélioration d'un
+    extracteur, pour rattraper d'anciens échecs sur du contenu inchangé) —
+    à déclencher explicitement, jamais par défaut."""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     ensure_database()
     conn = get_connection()
     init_schema(conn)
-    documents = [doc for doc in list_all_documents(conn) if doc[1] == "CMF"]
+    already_done = set() if force else get_document_ids_with_kpi(conn)
+    documents = [doc for doc in list_all_documents(conn) if doc[1] == "CMF" and doc[0] not in already_done]
 
-    print(f"\n===== EXTRACTION KPI : {len(documents)} document(s) en base, {len(KPI_NAMES)} KPI =====\n")
+    print(f"\n===== EXTRACTION KPI : {len(documents)} document(s) a traiter "
+          f"({len(already_done)} deja extraits, sautes), {len(KPI_NAMES)} KPI =====\n")
 
     failures = {name: [] for name in KPI_NAMES}
     kpi_values_saved = documents_with_kpi = download_errors = balance_mismatches = yoy_anomalies = 0
 
     for document_id, _source_nom, code, nom_entreprise, nom_pdf, annee, lien in documents:
+        if is_cancel_requested():
+            print("[ANNULE] Extraction KPI CMF interrompue par l'utilisateur.")
+            break
         print(f"[STEP] {code} {annee} : {lien}")
         try:
             response = _get_with_retries(lien, timeout=30)
@@ -549,10 +600,10 @@ def run():
         balance_mismatches=balance_mismatches, yoy_anomalies=yoy_anomalies,
     )
 
-    ftusa_stats = _run_ftusa(conn)
-    bvmt_stats = _run_bvmt(conn)
-    bvmt_bulletin_stats = _run_bvmt_bulletin(conn)
-    cga_stats = _run_cga(conn)
+    ftusa_stats = _run_ftusa(conn, already_done=already_done)
+    bvmt_stats = _run_bvmt(conn, already_done=already_done)
+    bvmt_bulletin_stats = _run_bvmt_bulletin(conn, already_done=already_done)
+    cga_stats = _run_cga(conn, already_done=already_done)
 
     print("\n===== MODELISATION : KPI CALCULES =====\n")
     calculated_stats = calculated_kpi_extractor.run(conn)

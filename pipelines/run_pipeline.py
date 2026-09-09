@@ -357,13 +357,21 @@ th {{ background: #2E2E38; color: #FFE600; }}
 
 
 def main():
+    from pipelines.control import clear_cancel, is_cancel_requested
+
     started_at = datetime.now()
     _log_json("pipeline_start")
+    clear_cancel()  # une éventuelle annulation d'un run précédent ne doit jamais affecter celui-ci
 
     results = []
     failed_sources = []
     empty_sources = []
+    cancelled = False
     for name, func in SOURCES:
+        if is_cancel_requested():
+            _log_json("pipeline_cancelled", remaining_source=name)
+            cancelled = True
+            break
         ok, result, duration = run_with_retry(name, func)
         doc_count = _extract_doc_count(result) if ok else None
         kpi_count = _extract_kpi_count(result) if ok else None
@@ -383,9 +391,12 @@ def main():
             empty_sources.append(f"{name} (extraction KPI)")
             _log_json("kpi_extraction_totally_empty", source=name)
 
-    quality = _check_quality()
-    veille = _run_veille()
-    _save_notifications(results, failed_sources, quality, veille)
+    # Annulée : on saute les étapes annexes (qualité/veille), pas la peine de
+    # les faire porter sur un jeu de sources incomplet.
+    quality = _check_quality() if not cancelled else None
+    veille = _run_veille() if not cancelled else None
+    if not cancelled:
+        _save_notifications(results, failed_sources, quality, veille)
     ended_at = datetime.now()
     report_path = _write_html_report(results, quality, started_at, ended_at)
 
@@ -395,9 +406,12 @@ def main():
         empty_sources=empty_sources,
         report=report_path,
         duration_s=round((ended_at - started_at).total_seconds(), 1),
+        cancelled=cancelled,
     )
     print(f"\nRapport : {report_path}")
 
+    if cancelled:
+        return 2
     if failed_sources:
         _notify_failure(failed_sources)
         return 1

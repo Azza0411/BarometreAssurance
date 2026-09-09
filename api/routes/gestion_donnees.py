@@ -33,7 +33,7 @@ _LOG_PATH = os.path.join(
 # dev — voir app.py::app.run(..., use_reloader=False) — donc un simple
 # verrou en mémoire suffit ; pas conçu pour un déploiement multi-worker).
 _collecte_lock = threading.Lock()
-_collecte_state = {"en_cours": False, "demarree_le": None}
+_collecte_state = {"en_cours": False, "demarree_le": None, "annulation_demandee": False}
 
 
 def _last_pipeline_end_from_log():
@@ -70,6 +70,7 @@ def _run_pipeline_background():
     finally:
         with _collecte_lock:
             _collecte_state["en_cours"] = False
+            _collecte_state["annulation_demandee"] = False
 
 
 @bp.route("/api/gestion-donnees/lancer-collecte", methods=["POST"])
@@ -79,8 +80,26 @@ def lancer_collecte():
             return jsonify({"lancee": False, "raison": "deja_en_cours"}), 409
         _collecte_state["en_cours"] = True
         _collecte_state["demarree_le"] = datetime.now().isoformat(timespec="seconds")
+        _collecte_state["annulation_demandee"] = False
     threading.Thread(target=_run_pipeline_background, daemon=True).start()
     return jsonify({"lancee": True})
+
+
+@bp.route("/api/gestion-donnees/annuler-collecte", methods=["POST"])
+def annuler_collecte():
+    """Demande l'annulation de la collecte en cours — coopérative, pas
+    immédiate (voir pipelines/control.py) : le pipeline s'arrête au
+    prochain point de contrôle (entre deux sociétés ou deux documents),
+    quelques secondes à quelques dizaines de secondes au plus, jamais
+    instantané (aucun moyen propre d'interrompre un thread Python au
+    milieu d'un appel réseau/IO sans risquer un état à moitié écrit)."""
+    from pipelines.control import request_cancel
+    with _collecte_lock:
+        if not _collecte_state["en_cours"]:
+            return jsonify({"annulee": False, "raison": "aucune_collecte_en_cours"}), 409
+        _collecte_state["annulation_demandee"] = True
+    request_cancel()
+    return jsonify({"annulee": True})
 
 
 @bp.route("/api/gestion-donnees/statut-collecte")
@@ -88,10 +107,12 @@ def statut_collecte():
     with _collecte_lock:
         en_cours = _collecte_state["en_cours"]
         demarree_le = _collecte_state["demarree_le"]
+        annulation_demandee = _collecte_state.get("annulation_demandee", False)
     derniere = _last_pipeline_end_from_log()
     return jsonify({
         "en_cours": en_cours,
         "demarree_le": demarree_le,
+        "annulation_demandee": annulation_demandee,
         "derniere_execution": derniere,
     })
 
