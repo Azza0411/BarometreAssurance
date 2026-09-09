@@ -46,7 +46,7 @@ structure différente et ne sont pas couverts par ce module pour l'instant."""
 
 import re
 
-from extraction.bilan_kpi_extractor import _normalizer, ROW_CODE_PREFIX_RE, _parse_number
+from extraction.bilan_kpi_extractor import _normalizer, ROW_CODE_PREFIX_RE, _parse_number, _cluster_lines
 from extraction.annexe13_kpi_extractor import (
     NON_VIE_RE as _A13_NON_VIE_RE, VIE_RE as _A13_VIE_RE,
 )
@@ -74,6 +74,45 @@ _FULL_TABLE_PAGE_TITLE_RE = re.compile(
 )
 
 
+_LETTER_GAP_THRESHOLD = 1.5  # pt — mesuré : ~0-0.3pt entre lettres d'un même
+# mot rendu espacé, ~3pt entre deux mots réels (voir CARTE_2020.pdf page 4).
+
+
+def _reconstructed_page_head_text(page, lines_checked=4):
+    """Reconstruit le texte des `lines_checked` premières lignes visuelles
+    d'une page, en réparant au passage un rendu "lettres individuellement
+    espacées" (ex: "E t a t d e r é s u l t a t" au lieu de "Etat de
+    résultat") — artefact de police déjà rencontré (ASTREE, documenté dans
+    CAS_PARTICULIERS_FULL_TABLE.md ; retrouvé le 2026-09-09 sur CARTE, où il
+    casse purement et simplement la détection de la page : `page.
+    extract_text()` produit un texte dont AUCUN outil de correspondance par
+    motif ne peut reconnaître le titre). `page.extract_words()` isole déjà
+    chaque lettre comme un "mot" séparé sur ce genre de page (sa propre
+    tolérance de regroupement ne suffit pas) — on regroupe nous-mêmes par
+    ligne (`_cluster_lines`, déjà utilisé ailleurs dans le projet) puis par
+    écart horizontal entre mots consécutifs : un petit écart (< 1.5pt,
+    mesuré empiriquement) = même mot, un grand écart = mots différents. Un
+    texte normal (pas de rendu cassé) traverse cette reconstruction sans
+    changement, le seuil n'étant jamais franchi entre deux vrais mots."""
+    words = page.extract_words()
+    if not words:
+        return ""
+    lines = _cluster_lines(words)[:lines_checked]
+    out_lines = []
+    for line in lines:  # déjà trié par x0 (voir _cluster_lines)
+        parts, buffer, prev_x1 = [], "", None
+        for w in line:
+            if prev_x1 is not None and w["x0"] - prev_x1 > _LETTER_GAP_THRESHOLD:
+                parts.append(buffer)
+                buffer = ""
+            buffer += w["text"]
+            prev_x1 = w["x1"]
+        if buffer:
+            parts.append(buffer)
+        out_lines.append(" ".join(parts))
+    return "\n".join(out_lines)
+
+
 def relaxed_is_annexe13_page(page, lines_checked=4):
     """Variante de annexe13_kpi_extractor._is_target_page SANS l'exclusion
     "notes sur" (NOTES_SECTION_RE) — cette règle reste nécessaire au
@@ -82,11 +121,16 @@ def relaxed_is_annexe13_page(page, lines_checked=4):
     titrée "Notes sur le résultat technique par catégorie..."). À utiliser
     UNIQUEMENT comme `extra_page_predicate` de `locate_and_extract_full_table`
     (le contrôle de vraisemblance qui suit absorbe le risque de faux
-    positifs supplémentaires)."""
-    text = (page.extract_text() or "").strip()
-    if not text:
+    positifs supplémentaires).
+
+    Reconstruit le texte via `_reconstructed_page_head_text` (pas `page.
+    extract_text()` brut) pour rester robuste aux pages à rendu "lettres
+    espacées" — sinon la page cible n'apparaît même pas dans la liste des
+    candidats, quel que soit le contenu réel du tableau."""
+    reconstructed = _reconstructed_page_head_text(page, lines_checked)
+    if not reconstructed.strip():
         return False
-    normalized = _normalizer.clean(" ".join(text.split("\n")[:lines_checked]))
+    normalized = _normalizer.clean(reconstructed.replace("\n", " "))
     if not _FULL_TABLE_PAGE_TITLE_RE.search(normalized):
         return False
     if _A13_NON_VIE_RE.search(normalized):
