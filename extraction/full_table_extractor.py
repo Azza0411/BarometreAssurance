@@ -561,13 +561,69 @@ def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_C
     # complet — donc aucun effet sur les documents corrects.
     recovered_headers = recovered_headers or {}
 
+    # En-tête de GROUPE (ex. TUNIS_RE, tableau "Résultat technique par
+    # catégorie" : "NON MARINES" chapeautant Incendie/ARD/Risque Tech,
+    # "MARINES" chapeautant Transport/Aviation/Total Marines) rattaché à
+    # tort par camelot à UNE SEULE de ses sous-colonnes visuellement
+    # couvertes (empiriquement la plus proche de son centre), plutôt que
+    # reconnu comme un intitulé partagé — la concaténation verticale
+    # ci-dessous le fusionnerait alors dans le libellé propre de cette seule
+    # sous-colonne ("NON MARINES" + "ARD" -> "NON MARINES ARD" au lieu de
+    # "ARD"). Détecté sans aucune référence à une société ou un mot précis :
+    # le PDF fait TOUJOURS figurer une colonne "Total <Groupe>" au sein du
+    # même bloc d'en-tête (ex. "TOTAL" + "MARINES" -> "TOTAL MARINES"), dont
+    # le libellé complet se termine donc exactement par les mots du
+    # groupe — un texte de cellule d'en-tête qui est la fin EXACTE (mots
+    # entiers) du libellé, plus long, d'une AUTRE colonne du même tableau
+    # est ainsi reconnu comme un intitulé de groupe partagé et exclu de la
+    # concaténation de sa colonne d'atterrissage (jamais de la colonne dont
+    # il est réellement le suffixe, qui le garde normalement).
+    def _header_words(text):
+        return _normalizer.clean(text).split()
+
+    row_cells_by_col = {
+        col_idx: [
+            (r, rows_raw[r][col_idx].strip())
+            for r in range(header_start, first_data_idx)
+            if rows_raw[r][col_idx].strip()
+        ]
+        for col_idx in kept_col_idxs
+    }
+    naive_words_by_col = {
+        col_idx: [w for _, txt in cells for w in _header_words(txt)]
+        for col_idx, cells in row_cells_by_col.items()
+    }
+    # Jamais candidate à l'exclusion : la dernière ligne d'en-tête non vide
+    # PROPRE à cette colonne (son libellé "feuille" immédiatement au-dessus
+    # des données) — c'est justement ce que ce mécanisme doit préserver
+    # ("MARINES" en dernière ligne de la colonne "Total Marines" n'est pas un
+    # en-tête de groupe, c'est la 2e moitié de son propre libellé replié).
+    last_row_by_col = {col_idx: cells[-1][0] for col_idx, cells in row_cells_by_col.items() if cells}
+    spurious_group_cells = set()  # {(col_idx, row_idx), ...}
+    for col_idx, cells in row_cells_by_col.items():
+        for r, txt in cells:
+            if r == last_row_by_col.get(col_idx):
+                continue
+            cell_words = _header_words(txt)
+            if not cell_words:
+                continue
+            for other_idx, other_words in naive_words_by_col.items():
+                if other_idx == col_idx or len(other_words) <= len(cell_words):
+                    continue
+                if other_words[-len(cell_words):] == cell_words:
+                    spurious_group_cells.add((col_idx, r))
+                    break
+
     # Libellé de chaque colonne de valeur = concaténation verticale de ses
     # cellules non vides dans les lignes d'en-tête (camelot aligne déjà
     # chaque fragment replié dans la bonne colonne — pas besoin de
-    # rattachement par position).
+    # rattachement par position), hors en-têtes de groupe détectés ci-dessus.
     col_names = []
     for col_idx in kept_col_idxs:
-        parts = [rows_raw[r][col_idx].strip() for r in range(header_start, first_data_idx) if rows_raw[r][col_idx].strip()]
+        parts = [
+            rows_raw[r][col_idx].strip() for r in range(header_start, first_data_idx)
+            if rows_raw[r][col_idx].strip() and (col_idx, r) not in spurious_group_cells
+        ]
         recovered = recovered_headers.get(col_idx)
         if recovered:
             # Ne préfixer que les tokens que camelot n'a PAS déjà captés pour

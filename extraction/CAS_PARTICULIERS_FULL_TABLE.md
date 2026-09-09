@@ -935,3 +935,84 @@ unique ne peut pas satisfaire les deux gabarits à la fois. Remis à 6pt.
 | STAR — libellé et valeurs d'une même ligne logique séparés en 2 lignes visuelles | `_cluster_lines` scinde parfois libellé et valeurs si leur alignement vertical diffère légèrement | Version finale (voir tableau "Cas résolus depuis le premier relevé" ci-dessus) : le suffixe n'est consommé que si le libellé propre de la ligne de valeurs est vide/junk, pour ne jamais fusionner deux postes distincts |
 
 Ce fichier doit être mis à jour à chaque société/tableau diagnostiqué, comme les autres CAS_PARTICULIERS*.txt du projet. Prochaine étape naturelle une fois Annexe 13 stabilisée : appliquer le même module à Annexe 12 (Vie), puis Bilan (structure différente — Brut/Amortissement/Net, pas de branches — non couvert par l'algorithme actuel).
+
+## 2026-09-10 — TUNIS_RE : en-têtes de groupe fusionnés à tort + collision d'alias "Total"
+
+Retour utilisateur sur `Export_donnees (64).xlsx` (TUNIS_RE) : "les trois colonnes
+incendie ARD risque technique [...] doivent être fusionnées dans une seule nom
+de colonne qui s'appelle non marine [...] on a la colonne totale qui a dans son
+nom le numéro deux à côté, ce qui n'est pas logique". Vérifié directement sur
+`TUNIS_RE_2020.pdf` page 67 (dump `camelot.read_pdf(flavor='stream')` brut) :
+
+```
+row 3: ['RUBRIQUES','','NON MARINES','','TOTAL NON','','MARINES','TOTAL','TOTAL','','VIE','TOTAL']
+row 4: ['','INCENDIE','ARD','RISQUE TECH','MARINES','TRANSPORT','AVIATION','MARINES','NON VIE','','','GENERAL']
+```
+
+**Défaut n°1 — en-tête de GROUPE rattaché à une seule sous-colonne.** Le PDF
+fait chapeauter "NON MARINES" sur 3 sous-colonnes (Incendie/ARD/Risque Tech) et
+"MARINES" sur 3 autres (Transport/Aviation/Total Marines) — un intitulé
+partagé, pas le nom d'UNE colonne. Camelot l'assigne pourtant à une seule
+cellule de son DataFrame (empiriquement la plus proche du centre visuel du
+span). La concaténation verticale existante (`reconstruct_grid_from_rows`)
+fusionnait alors ce texte dans le libellé propre de cette seule sous-colonne :
+"NON MARINES" + "ARD" → **"NON MARINES ARD"** au lieu de "ARD" ; "MARINES" +
+"AVIATION" → **"MARINES AVIATION"** au lieu de "AVIATION".
+
+Fix généralisable (donc appliqué à toute société/gabarit similaire, pas
+seulement TUNIS_RE) : le PDF fait TOUJOURS figurer, dans le même bloc
+d'en-tête, une colonne "Total \<Groupe\>" dont le libellé complet reconstruit
+se termine exactement par les mots du groupe (ex. "TOTAL"+"MARINES" →
+"Total Marines", qui se termine bien par "Marines"). Un texte de cellule
+d'en-tête qui est la fin EXACTE (mots entiers, pas une sous-chaîne) du libellé
+— strictement plus long — d'une AUTRE colonne du même tableau est donc reconnu
+comme un intitulé de groupe partagé et exclu de la concaténation de sa colonne
+d'atterrissage. Restreint aux lignes d'en-tête AUTRES que la dernière ligne
+propre à chaque colonne (son libellé "feuille" juste au-dessus des données)
+pour ne jamais retirer par erreur la 2ᵉ moitié d'un VRAI libellé replié sur 2
+lignes ("MARINES" en dernière ligne de la colonne "Total Marines" doit rester —
+ce n'est pas un en-tête de groupe, seul son homonyme de la ligne du DESSUS
+l'est). Implémenté dans `extraction/full_table_extractor.py::
+reconstruct_grid_from_rows` (juste avant la boucle de construction de
+`col_names`).
+
+**Défaut n°2 — collision d'alias "Total".** `_COLUMN_ALIASES["total non vie"]`
+pointait vers le même nom canonique bare `"Total"` que `"total general"` —
+TUNIS_RE ayant les DEUX colonnes dans le même tableau ("Total Non Vie" ET
+"Total Général"), `normalize_table` les distinguait par le suffixe de
+désambiguïsation générique " (2)", produisant l'illogique **"Total (2)"**
+signalé par l'utilisatrice. Fix : nouveau nom canonique distinct "Total non
+vie" dans `CANONICAL_COLUMNS`, alias "total non vie" repointé vers lui au lieu
+de "Total" (`extraction/annexe13_pipeline.py`).
+
+**Défauts mineurs corrigés dans la foulée (même diagnostic, même société) :**
+"ARD" (branche réassurance Non Marines) absente de `CANONICAL_COLUMNS`/
+`_COLUMN_ALIASES` — restait en minuscules non normalisée ; ajoutée (distincte
+de "Risques divers", branche assureur direct sans rapport, jamais fusionnées).
+"Wakala" comme LIBELLÉ DE LIGNE (poste de commissions propre aux contrats
+Takaful, distinct de "Wakala" déjà connu comme nom de COLONNE/branche) absente
+de `CANONICAL_ROWS` — mot de 6 lettres, sous le seuil de correspondance floue
+`_MATCH_THRESHOLD`, finissait en "non reconnu" ; ajoutée telle quelle.
+
+**Vérifié** — grille TUNIS_RE 2020 page 67, 23/23 lignes reconnues, colonnes
+`['Incendie','ARD','Risques techniques','Total non marines','Transport',
+'Aviation','Total marines','Total non vie','(colonne 9)','Vie','Total']`
+(la colonne 9 sans nom est une VRAIE colonne vide dans le PDF source — aucune
+valeur nulle part, ni en-tête — pas un défaut d'extraction). Rejoué sur les 11
+années disponibles (2015-2025) : **2019-2025 (7 ans) structure identique et
+propre**, confirmant que le fix se généralise dans le temps pour cette société,
+pas seulement 2020. Écarts `validate_table` restants (règle
+"solde_souscription") = faux positifs déjà documentés (convention de signe
+"Charges de prestations" non négée chez TUNIS_RE — la règle générique ADDITIONNE
+en supposant un signe déjà négatif).
+
+**Cas différent, NON traité ici (gabarit distinct des années 2015-2018) :**
+2015-2018 ont un découpage de colonnes différent (ex. "Non marines" reste une
+colonne agrégée non éclatée en Incendie/ARD/Risque Tech certaines années,
+"Transport"/"Aviation" fusionnées en "transport aviation" ou "marines aviation"
+d'autres années, "Total (2)"/"Total non vie (2)" toujours en collision, 2017
+laisse fuir une date "31/12/2017" dans un libellé de colonne) — semble être un
+gabarit de page réellement différent pour ces exercices plus anciens (pas une
+régression du fix ci-dessus, qui n'a aucun effet quand la table source n'a pas
+la même structure de span). Diagnostic à reprendre séparément si ces
+années sont dans le périmètre demandé.
