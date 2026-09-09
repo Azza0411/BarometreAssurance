@@ -1,5 +1,56 @@
 # Cas particuliers — extraction "grille complète" (extraction/full_table_extractor.py)
 
+## 2026-09-09 — audit de QUALITÉ (pas seulement de couverture), toutes sociétés/années
+
+Suite à STAR 2025/ASTREE 2023 (audit binaire OK/ÉCHEC insuffisant — voir
+entrée du dessous), nouvel audit qui distingue 3 issues au lieu de 2 :
+**grille complète par branche** (≥5 colonnes, le résultat idéal) vs
+**repli dégradé** (résultat valide mais peu de colonnes — gabarit
+réconciliation/Notes) vs **échec**. Signale aussi, pour tout document qui
+N'est PAS en grille complète, si une page proche (≤60 premières) a un texte
+quasi vide ET une image — signal "scan potentiellement manqué".
+
+**Résultat (124 documents, 14 sociétés conventionnelles) :**
+
+| Statut | N | % |
+|---|---|---|
+| Grille complète par branche | 84 | 68 % |
+| Repli dégradé (valide, moins riche) | 20 | 16 % |
+| Échec | 20 | 16 % |
+
+**Sociétés à 100% grille complète : BIAT, GAT, MAGHREBIA, TUNIS_RE.**
+
+**Nuance importante sur les 20 "dégradés"** : 4 sont en réalité de FAUX
+positifs de ce script — COTUNACE (2018/2020/2024/2025), mono-branche
+"Crédit-Caution" (voir entrée dédiée plus bas), produit à raison une grille
+à 1 seule colonne que le seuil `≥5 colonnes` classe à tort "dégradé". Une
+fois retirés : **16 dégradations réelles**, concentrées sur BH (5 années sur
+7 utilisent le gabarit réconciliation, pas un défaut — semble être le format
+que BH publie réellement la plupart des années) et CTAMA (2/2, même
+gabarit). Aucun signal "scan manqué" sur ces cas — ce n'est pas la même
+famille de problème que STAR/ASTREE.
+
+**Les 20 échecs sont concentrés sur 2 sociétés**, pas répartis uniformément :
+**COTUNACE (7/11) et AMI (5/9)**. Ce ne sont PAS des échecs "page introuvable"
+isolés comme STAR 2025 — le signal "scan manqué" touche pour ces deux
+sociétés un très grand nombre de pages du document entier (jusqu'à 50-60
+pages sur COTUNACE 2017/2019/2023, 10-50 pages sur AMI) : le document
+SOURCE entier semble être un scan de mauvaise qualité (déjà documenté pour
+COTUNACE — `api/services/quality.py::PROBLEMATIC_CODES["COTUNACE"]`, "texte
+corrompu par un OCR de mauvaise qualité à la source" ; AMI n'avait qu'un
+"probablement... pages scannées" non confirmé jusqu'ici). **Différent du cas
+STAR/ASTREE** (un bloc de quelques pages scannées au milieu d'un document
+par ailleurs natif) — ici c'est potentiellement le document ENTIER,
+nécessitant un OCR plus large que le simple repli ciblé en cours de
+développement (tâche de fond "OCR fallback for scanned Annexe 13 pages").
+
+**Bilan honnête** : sur les 14 sociétés conventionnelles éligibles, 4 sont
+fiables à 100% (grille complète), 8 autres ont un taux de réussite solide
+avec quelques années isolées en dégradé/échec, et 2 (COTUNACE, AMI) ont un
+problème structurel de qualité de document source qui dépasse le périmètre
+d'un correctif d'extraction — nécessiteraient un OCR complet du document,
+pas seulement de la page Annexe 13.
+
 ## 2026-09-09 — le cas "page scannée" (STAR 2025) N'EST PAS isolé : confirmé sur ASTREE 2023
 
 Vérification demandée par l'utilisatrice sur un 2e exemple (ASTREE 2023,
