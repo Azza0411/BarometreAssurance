@@ -60,10 +60,21 @@ def _excel_col_width_to_px(width):
     """Conversion approximative largeur de colonne Excel (unités de
     caractère) → pixels — formule standard pour la police par défaut
     (Calibri 11) qu'utilise Excel lui-même. Sert à contraindre le logo à ne
-    jamais dépasser la largeur réelle de sa colonne d'ancrage."""
+    jamais dépasser la largeur réelle de ses colonnes d'ancrage."""
     if not width:
         return 64
     return int(round(width * 7 + 5))
+
+
+def _table_width_px(ws, start_col, end_col):
+    """Largeur cumulée (pixels) des colonnes [start_col, end_col] — budget
+    disponible pour le logo, ancré sur plusieurs colonnes plutôt qu'une
+    seule pour lui laisser plus de place tout en restant dans la largeur
+    réelle du tableau (jamais au-delà de sa dernière colonne)."""
+    return sum(
+        _excel_col_width_to_px(ws.column_dimensions[get_column_letter(c)].width)
+        for c in range(max(start_col, 1), end_col + 1)
+    )
 
 
 def _logo_dimensions(logo_path, target_height=90, max_width=190):
@@ -647,18 +658,22 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             _autosize_columns(ws)
             # Logo de la société (déjà disponible dans le projet, réutilisé
             # tel quel — voir _LOGO_FILES) — ajouté APRÈS l'auto-ajustement
-            # des largeurs (ci-dessus), pour connaître la largeur réelle de
-            # la dernière colonne du tableau et n'y dépasser JAMAIS (retour
-            # utilisateur : "que le logo ne dépasse pas le dernier trait de
-            # colonne du tableau, pour plus de structuration") — ancré à
-            # cette même colonne, dimensionné pour tenir dedans.
+            # des largeurs (ci-dessus), pour connaître la largeur réelle du
+            # tableau. Ancré 2 colonnes avant la dernière (pas la dernière
+            # seule, trop étroite pour un logo bien visible — retour
+            # utilisateur suivant : "agrandissez le logo") : le budget de
+            # largeur disponible couvre les 3 dernières colonnes, tout en
+            # restant borné par le bord droit réel du tableau (retour
+            # précédent : "que le logo ne dépasse pas le dernier trait de
+            # colonne, pour plus de structuration").
             logo_path = _logo_path(code)
             if logo_path:
                 try:
-                    last_col_px = _excel_col_width_to_px(ws.column_dimensions[get_column_letter(n_cols)].width)
+                    anchor_col = max(n_cols - 2, 1)
+                    budget_px = _table_width_px(ws, anchor_col, n_cols)
                     logo_img = XLImage(logo_path)
-                    logo_img.width, logo_img.height = _logo_dimensions(logo_path, max_width=max(last_col_px - 4, 30))
-                    ws.add_image(logo_img, f"{get_column_letter(n_cols)}1")
+                    logo_img.width, logo_img.height = _logo_dimensions(logo_path, max_width=max(budget_px - 4, 30))
+                    ws.add_image(logo_img, f"{get_column_letter(anchor_col)}1")
                 except Exception:
                     pass  # image illisible/corrompue : ne doit jamais faire échouer l'export
             # Pas de freeze_panes : Excel dessine une ligne de démarcation
