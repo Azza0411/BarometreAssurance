@@ -1320,3 +1320,48 @@ Stockées via `process_one_document` (statut `ok_verifie`, docs
 **Bilan COTUNACE : 7/11 années figées** (2017, 2019, 2020, 2021, 2023,
 2024, 2025). Restent 2015, 2016, 2018, 2022 (extraction live / sous-ensemble
 dashboards pour l'instant).
+
+## 2026-09-10 (suite) — MAGHREBIA Annexe 13 2018/2021/2022/2023/2024/2025 figées
+
+Pages « Résultat technique par catégorie d'assurance » en COUCHE TEXTE
+native. 11 colonnes : Accidents du travail (« A.T. ACCIDENT »), Incendie,
+Automobile, Individuelle accident (« INDIVIDUEL »), Vol, Maladie, Risques
+spéciaux (« R.S »), Responsabilité civile (« R.C »), Transport (« MARITIME »),
+Acceptation, Total. Valeurs SIGNÉES → modèle additif comme COMAR
+(SS = Primes acquises + Charges de prestations, etc.).
+
+Reconstruction géométrique (bord droit des colonnes dérivé de la ligne
+« Primes émises »), fusion des libellés de ligne multi-lignes, et
+ré-agrégation du **Total** quand il est rendu ~0.2-0.3 pt plus bas que le
+reste de la ligne (clustering `top` à pas 2.0 : assez fin pour laisser
+ISOLÉE la ligne « orpheline » sans libellé, ~3.4 pt sous le Solde de
+souscription en 2021/2022, qui n'appartient à aucune identité et est
+ignorée). Toutes les identités tombent juste (écart nul) : PA, CP, SS, CAG,
+SF, SR (y compris « … dans les provisions pour égalisation et
+équilibrage »), RT, et Σ 10 branches = Total.
+
+Pipeline complété (généralisable) :
+- `_COLUMN_ALIASES` : « r.s » → **Risques spéciaux** (était rattaché à tort à
+  « Responsabilité civile », qui entrait alors en collision avec « R.C » —
+  suffixe « (2) ») ; « a.t. accident », « individuel », « maritime » ajoutés.
+- `CANONICAL_ROWS` : « Part des réassureurs dans les provisions pour
+  égalisation et équilibrage » (bloc réassurance MAGHREBIA — sinon rabattu
+  par difflib sur « … dans les charges de provisions pour prestations ») ;
+  « Provisions mathématiques (clôture) / (réouverture) ».
+- `validate_table` : les postes source d'une règle peuvent être préfixés
+  « ? » (FACULTATIFS : absents → comptés 0, sans « données manquantes »).
+  La règle `solde_reassurance` prend ainsi « … égalisation et équilibrage »
+  en poste optionnel — 0 régression sur les 129 faux positifs pré-existants
+  (AMI/COTUNACE/LLOYD : convention de signe ; COMAR : couverture de formule).
+
+2018 : bloc « informations complémentaires » à structure différente (postes
+imbriqués à libellés dupliqués sous « Autres provisions techniques ») — 27
+lignes retenues (21 principales + PPNA/PSAP clôture/ouverture + Autres
+provisions techniques clôture/ouverture) ; le détail imbriqué 2018 reste du
+ressort de l'extracteur standard. 2021-2025 : 31 lignes.
+
+Stockées via `process_one_document` (statut `ok_verifie`, docs
+103/104/105/106/107/108). `build_result` → normalize_table + validate_table :
+0 ligne/colonne non reconnue, 0 règle en échec sur les 6 millésimes.
+
+**Bilan MAGHREBIA : 6/6 années figées.**
