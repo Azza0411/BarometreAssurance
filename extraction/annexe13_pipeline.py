@@ -239,6 +239,7 @@ CANONICAL_COLUMNS = [
     "Autres", "Risques techniques", "Marines", "Non marines", "ARD",
     "Total marines", "Total non marines", "Total non vie", "Wakala",
     "Perte d'exploitation",  # branche COMAR (2020-2025)
+    "Loi",  # branche ASTREE (« Individuelle » / « Loi » = 2 colonnes distinctes)
     # Gabarit "raccordement" (Brut/Cessions/Net) — pas des branches mais un
     # 2e type de tableau Annexe 13 rencontré sur certaines sociétés/années
     # (BH, AMI, CTAMA, COMAR — voir CAS_PARTICULIERS_FULL_TABLE.md, cas STAR
@@ -502,12 +503,14 @@ VALIDATION_RULES = [
       "Part des réassureurs dans les charges de provisions pour prestations",
       "Part des réassureurs dans la participation aux résultats",
       "Commissions reçues des réassureurs / rétrocessionnaires",
-      # Poste de réassurance qui n'apparaît que sur certains gabarits
-      # (MAGHREBIA : « … dans les provisions pour égalisation et équilibrage »).
-      # Préfixe "?" = FACULTATIF : absent -> compté 0, ne rend pas la règle
-      # « données manquantes » (sinon on régresserait les gabarits qui n'ont
-      # pas cette ligne).
-      "?Part des réassureurs dans les provisions pour égalisation et équilibrage"]),
+      # Postes de réassurance qui n'apparaissent que sur certains gabarits
+      # (MAGHREBIA : « … dans les provisions pour égalisation et équilibrage » ;
+      # ASTREE / COMAR détaillé : « … dans la variation des primes non
+      # acquises »). Préfixe "?" = FACULTATIF : absent -> compté 0, ne rend
+      # pas la règle « données manquantes » (sinon on régresserait les
+      # gabarits qui n'ont pas ces lignes).
+      "?Part des réassureurs dans les provisions pour égalisation et équilibrage",
+      "?Part des réassureurs dans la variation des primes non acquises"]),
     ("resultat_technique",
      "Résultat technique = Solde de souscription + Charges d'acquisition et de gestion nettes "
      "+ Solde financier + Solde de réassurance / rétrocession",
