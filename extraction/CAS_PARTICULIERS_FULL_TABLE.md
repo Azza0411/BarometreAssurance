@@ -1757,3 +1757,30 @@ exploitable.
 
 **Bilan COTUNACE : 8/11 figées.** Restent 2015, 2016 (annexe absente),
 2022 (scan OCR).
+
+## 2026-09-10 (suite) — LLOYD : +2015 (3/10) ; COMAR 2015-2018 indisponibles
+
+**LLOYD 2015** (p32) : Annexe 13 par catégorie, 9 colonnes (Acceptation /
+ARD / Automobile / Accidents du travail / Incendie / Transport / Grêle /
+Groupe / Total), calque texte propre, entiers, « - » isolé = cellule vide.
+Charges en magnitude positive comme 2021/2022 -> `validate_table` signale
+18 faux positifs de convention (documentés). Modèle vérifié écart nul :
+SS = PA − CP ; CAG = FA + Autres ; SF = PNP + Participation ;
+SR = Primes cédées + Σ RA(...) + Commissions ; RT = SS − CAG + SF + SR ;
++ contrôle horizontal Σ branches = Total.
+
+**LLOYD 2016, 2017, 2019, 2020, 2023, 2024** : Annexe 13 par catégorie
+présente mais formats de calque texte divergents d'une année à l'autre
+(millimes + nombres collés sans espace, comma parasite « 2 561 ,414 »,
+libellés RA éclatés sur 3 lignes). À reprendre.
+**LLOYD 2018** : pas d'Annexe 13 par catégorie — seul l'Annexe 16
+« raccordement » (Total) existe, calque texte sans espaces
+(« Primesacquises 81008695 »), extraction encore partielle. À reprendre.
+
+**COMAR 2015** : le dépôt ne contient que l'« État de résultat technique
+non vie » agrégé (Brut/Cessions/Net) — pas d'Annexe 13 par catégorie.
+**COMAR 2016, 2018** : dépôts CMF entièrement scannés (0-1 page avec couche
+texte). Indisponibles.
+
+**Bilan LLOYD : 3/10 figées** (2015, 2021, 2022). **COMAR : 8/11**
+(2015 annexe absente, 2016/2018 scans).
