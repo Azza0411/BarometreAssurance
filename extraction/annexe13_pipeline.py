@@ -64,6 +64,13 @@ CANONICAL_ROWS = [
     "Charges de prestations",
     "Prestations et frais payés",
     "Charges des provisions pour prestations diverses",
+    # Flux de résultat (composante du Solde de souscription sur les gabarits
+    # qui l'isolent — BH « C4 » / « C7 »), à ne PAS confondre avec le stock
+    # bilanciel « Autres provisions techniques (clôture/réouverture) » plus
+    # bas : sans cette entrée canonique, la normalisation floue rabattait
+    # « Variation des autres provisions techniques » sur « Autres provisions
+    # techniques (clôture) » (libellés trop proches pour difflib).
+    "Variation des autres provisions techniques",
     "Solde de souscription",
     "Frais d'acquisition",
     "Autres charges de gestion nettes",
