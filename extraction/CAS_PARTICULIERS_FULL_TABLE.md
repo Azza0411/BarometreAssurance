@@ -1164,3 +1164,36 @@ et de gestion nettes » en valeur positive, SOUSTRAITES) → 25 écarts de valid
   propre à LLOYD, avec « Primes cédées aux réassureurs » intercalée après
   « Solde financier »).
 - **2025** : pas de PDF dans le dépôt (2015-2024 seulement).
+
+## 2026-09-10 (suite) — COMAR : la plus grosse société (11 ans, 3 gabarits, 7 scannés/introuvables)
+
+Gabarit propre à COMAR, différent du standard :
+- **pas de ligne « Primes acquises » ni « Charges de prestations »** à part (ce
+  sont des en-têtes de section, sans valeurs) — les identités correspondantes
+  ne peuvent pas se valider (`donnees_manquantes`), c'est normal ;
+- **« Solde financier » détaillé en « Produits de placements » + « Autres
+  produits techniques »** (2 lignes) au lieu de « Produits nets de
+  placements » + « Participation aux résultats » ;
+- **3 lignes « Part des réassureurs »** seulement (pas de « participation aux
+  résultats ») + « Commissions reçues » ;
+- ligne finale « **RESULTAT TECHNIQUE NON VIE** » ;
+- bloc « informations complémentaires » **par exercice N / N-1**, avec 2
+  postes de plus que le standard (« participations aux bénéfices »,
+  « risques en cours »).
+
+`CANONICAL_ROWS` complété (généralisable) : « Autres produits techniques »,
+« Provisions pour participations aux bénéfices (exercice N)/(N-1) »,
+« Provisions pour risques en cours (exercice N)/(N-1) ».
+
+Répartition des 11 années :
+| Années | Gabarit | Page Annexe 13 | État |
+|---|---|---|---|
+| **2019** | 8 branches, texte natif | p.33 | ✅ **transcrite main + figée** (`annexe13_verified.py`). L'extraction native décalait les libellés de ligne (en-têtes de section « Charges de Prestations » sans valeurs → la ligne suivante prenait ce libellé ; « RESULTAT TECHNIQUE NON VIE » mappé à tort sur « Autres produits techniques »). |
+| **2017** | 8 branches, texte natif | p.13 | ⏳ à traiter (mêmes décalages de libellés probables) |
+| **2023, 2025** | 15 branches, texte natif | p.35 / p.39 | ⏳ à traiter |
+| **2020, 2021, 2022, 2024** | 15 branches, page IV.7 SCANNÉE (titre texte, tableau image) | p.33 / p.36 / p.35 / p.37 | ⏳ transcription main (grosses tables ~14 branches × ~34 lignes ; scans lisibles) |
+| **2015** | gabarit « raccordement » (Brut/Cessions/Net) | — | ⏳ à traiter séparément |
+| **2016, 2018** | page introuvable (scan ?) | — | ⏳ localiser puis transcrire |
+
+COMAR reste à finir sur plusieurs passes (année par année) — c'est de loin la
+société la plus lourde du portefeuille.
