@@ -1817,4 +1817,10 @@ Transport+Aviation ; Total non vie = TnM+TM ; Total = Total non vie+Vie.
   éclatement pathologique (nombres à 10+ chiffres reconstruits faux).
   2021, 2023-2025 : résidus moyens. À reprendre.
 
-**Bilan TUNIS_RE : 2/11 figées.**
+**Mise à jour** : correctif « signe détaché rattaché à la colonne du
+fragment SUIVANT » + recalcul des colonnes agrégées (Total non marines /
+marines / non vie / Total) depuis les colonnes atomiques -> **+2016 +2021**.
+
+**Bilan TUNIS_RE : 4/11 figées** (2015, 2016, 2021, 2022). Restent 2017
+(sauts de signe RT isolés), 2019/2023/2024/2025 (reconstruction RA
+imprécise), 2018 (libellés brouillés), 2020 (éclatement pathologique).
