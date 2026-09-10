@@ -1635,3 +1635,36 @@ ajoutée à **`NO_ANNEXE13_NON_VIE_CODES`** (nouveau sous-ensemble de
 — assureurs Non-Vie sans tableau « par catégorie » dans leurs états
 financiers. L'export n'affiche plus de faux « tableau complet » : CTAMA se
 comporte désormais comme ATTIJARI/UIB (feuille sans bloc Annexe 13).
+
+## 2026-09-10 (suite) — STAR : 11/11 figées
+
+Calque texte PROPRE pour STAR (contrairement à BH). Deux gabarits :
+
+**(a) Annexe 13 « par catégorie » — 9 colonnes** (Groupe / Accidents du
+travail / Incendie / Risques divers / Transport / Aviation / Automobile /
+Acceptation / Total). Présente pour **2015-2019, 2022, 2024**. Pages :
+2015 p28, 2016 p32, 2017 p31, 2018 p32, 2019 p36, 2022 p39, 2024 p32.
+Reconstruction géométrique (`scratchpad/star.py`) — bords de colonnes =
+centres des nombres d'une ligne pleine ; libellés tronqués gérés
+(« …prestations div », « payés » ≠ « payées », ligne-titre « …au 31/12/AAAA »
+ignorée). Modèle additif entièrement signé (PA=PE+VarPNA ; CP=Prest+ChProv ;
+SS=PA+CP ; CAG=FA+Autres charges de gestion nettes ; SF=PNP+Participation ;
+SR=Σ RA(primes/prest/ch.prov/participation)+Commissions ; RT=SS+CAG+SF+SR)
++ contrôle horizontal Σ branches=Total. **Toutes identités écart nul.**
+
+**(b) Annexe 16 « raccordement » — colonne Total seule.** Seul gabarit
+disponible pour **2020, 2021, 2023, 2025** (pas d'Annexe 13 par catégorie
+dans ces dépôts). Pages : 2020 p36, 2021 p38, 2023 p38, 2025 p48. Calque
+texte bruité : annotations de formule collées au libellé
+(« PRNV11_1°Colonne », « CHNV12+CHNV2+CHNV6_1°Colonne », « _ 2°Colonne »,
+« CHNV43+CHNV5-PRNV2 »), négatifs `-` / U+2010 / parenthèses `(18 239 877)`,
+signe `-` détaché sur sa propre ligne (2023), libellé **et** valeur éclatés
+sur 2-3 lignes (2025 : « …dans les prestations » / `(6 952 113)` /
+« payées »). Reconstruit par flux de segments typés
+(`scratchpad/star_c16.py`). Identités PA/CP/SS/CAG/SF vérifiées écart nul ;
+RT vérifiée écart nul en prenant `-|Solde de réassurance|` (la C16 imprime
+le Solde de réassurance en magnitude). `validate_table` signale donc
+2 faux positifs/an (`solde_reassurance`, `resultat_technique`) — même
+catégorie de convention que AMI / LLOYD / COTUNACE / BH C7.
+
+**Bilan STAR : 11/11 figées** (7 en 9 colonnes, 4 en Total seul).
