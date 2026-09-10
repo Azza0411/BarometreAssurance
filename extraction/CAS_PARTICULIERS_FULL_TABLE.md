@@ -1737,7 +1737,18 @@ branches = Total.
   juridique » — désalignement géométrique d'une ligne à l'autre. À
   reprendre.
 
-**Bilan GAT : 10/11 figées.** Reste 2022.
+**Mise à jour (« répare tout »)** : +2022. Le désalignement des colonnes
+serrées « Accidents du travail »/« Protection juridique » venait du split
+proportionnel des valeurs collées (« -256 099,564-3 329 486,764-4 779
+805,330 ») dont les centres x tombaient mal. Correctif : les indices de
+colonne des blocs (déjà triés par x) sont forcés STRICTEMENT croissants
+(bloc k -> max(col(xc), colonne_préc + 1)). GAT 2019/2021/2022 écart nul,
+sauf 1 cellule résiduelle en 2022 : « Produits nets de placements »
+colonne « Acceptation » = 295 874 au lieu de 390 643 (fin de ligne à 16
+valeurs millimes, digits glués) -> 2 écarts validate_table en cascade
+(SF / RT), résidu documenté.
+
+**Bilan GAT : 11/11 figées.**
 
 ## 2026-09-10 (suite) — COTUNACE : +2018 (8/11)
 
