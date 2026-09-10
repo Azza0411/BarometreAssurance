@@ -1861,3 +1861,26 @@ facultative), **2019, 2023, 2024, 2025 passent écart nul**.
   − Solde de rétrocession = 594 788, et RT Transport + RT Aviation ne
   redonne pas RT Total marines). 4 écarts validate_table = erreur de la
   source, valeurs conservées telles qu'imprimées (cf. BH 2023).
+
+## 2026-09-10 (suite « répare tout ») — AMI +2018 +2021 (5/9)
+
+- **AMI 2018** (p49) : Annexe 13 « par catégorie » 7 colonnes (Incendie /
+  Transport / Risques divers / Risques spéciaux / Automobile / Groupe /
+  Total). Séparateur milliers = espace simple (indiscernable de l'espace
+  inter-colonnes) -> reconstruction GÉOMÉTRIQUE (bords = centres des
+  nombres d'une ligne pleine). 1re ligne (« Primes acquises ») a perdu son
+  libellé -> détectée comme 1re ligne à 7 valeurs sans texte. Charges en
+  magnitude positive -> faux positifs validate_table documentés. SS = PA −
+  CP ; RT = SS − CAG + SF + SR : **écart nul**.
+- **AMI 2021** (p43) : la page Annexe 13 par catégorie est scannée ->
+  figée sur l'Annexe 16 « raccordement » (colonne Total). Annotations de
+  formule (PRNV11 1°colonne…) retirées ; ligne RA participation = « - »
+  (vide). Le RT imprimé (5 899 603) diffère de SS + CAG + SF + SR
+  (6 492 023) de **592 420** = la déduction « provisions devenues
+  exigibles » (ligne hors modèle en bas de la C16) -> **1 écart
+  validate_table documenté**.
+- **AMI 2015, 2016, 2017, 2022** : pages Annexe 13 scannées (calque texte
+  absent). Indisponibles.
+
+**Bilan AMI : 5/9 figées** (2018-2021, 2023). Restent 2015-2017, 2022
+(scans).
