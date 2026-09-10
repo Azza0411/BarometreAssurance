@@ -1821,6 +1821,20 @@ Transport+Aviation ; Total non vie = TnM+TM ; Total = Total non vie+Vie.
 fragment SUIVANT » + recalcul des colonnes agrégées (Total non marines /
 marines / non vie / Total) depuis les colonnes atomiques -> **+2016 +2021**.
 
-**Bilan TUNIS_RE : 4/11 figées** (2015, 2016, 2021, 2022). Restent 2017
-(sauts de signe RT isolés), 2019/2023/2024/2025 (reconstruction RA
-imprécise), 2018 (libellés brouillés), 2020 (éclatement pathologique).
+**Bilan TUNIS_RE : 4/11 figées** (2015, 2016, 2021, 2022). Restent :
+- **2017** : 4 résidus — la colonne « Transport » de la ligne « Produits
+  nets de placements » est reconstruite à 199 871 au lieu de ~1 558 809
+  (fragments « 1 »/« 558 » captés dans une colonne voisine). PNP n'a pas
+  d'identité locale -> l'erreur n'apparaît que via RT (Transport -> Total
+  marines -> Total non vie -> Total).
+- **2019, 2023, 2024, 2025** : ~10 résidus / an — les lignes « Part des
+  rétrocessionnaires » sont reconstruites avec de petites dérives par
+  colonne (calque texte plus dégradé sur ces millésimes).
+- **2018** : libellés de la section CAG brouillés
+  (« charges autres charges d'acquisition de gestion »).
+- **2020** : éclatement pathologique — nombres à 10+ chiffres reconstruits
+  faux.
+Chacun demande un débogage cellule par cellule de l'assignation des
+fragments ; rendement décroissant. Le parser `scratchpad/tunisre.py` et le
+modèle comptable (SS = PA-CP ; SR = RA(primes)-RA(prest)-RA(ch.prov)-Comm ;
+RT = SS-CAG+PNP-SR) restent en place pour une reprise.
