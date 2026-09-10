@@ -1137,3 +1137,30 @@ Points d'attention :
 - Pour ajouter une autre année vérifiée : compléter `VERIFIED` dans
   `extraction/annexe13_verified.py` (candidats connus non encore traités :
   AMI 2016/2017, également scannés).
+
+## 2026-09-10 (suite) — LLOYD_TUNISIEN 2020-2024
+
+Gabarit Annexe 13 « par catégorie » (IV.7) à 9 branches : Acceptation | Acc R.D |
+Auto | AccTrav | Incendie | Transport | Grêle | Groupe | TOTAL. Convention de
+signe identique à TUNIS_RE (« Charges de prestations » et « Charges d'acquisition
+et de gestion nettes » en valeur positive, SOUSTRAITES) → 25 écarts de validation
+= faux positifs de convention (règle générique qui ADDITIONNE), valeurs justes.
+
+- **2020, 2023, 2024** : page IV.7 avec couche texte → extraction camelot
+  correcte. Corrigé au passage :
+  - `_COLUMN_ALIASES` : « Acc R.D » / « acc rd » → **ARD** (= « Accidents et
+    Risques Divers », même canonique que le « ARD » de TUNIS_RE).
+  - `CANONICAL_ROWS` : ajout de « Autres provisions techniques (clôture) » et
+    « (réouverture) » — ces 2 postes matchaient à tort « Provisions pour
+    sinistres à payer (clôture)/(réouverture) » (difflib) et leurs valeurs
+    étaient perdues par collision.
+  - `normalize_table` : `_SECTION_SEPARATOR_LABELS` — les lignes de séparation
+    « Informations complémentaires » / « A déduire : », parfois captées avec
+    une valeur résiduelle (Total = 0), sont ignorées.
+- **2021, 2022** : page IV.7 SCANNÉE (image, `page.chars` ≈ 88), l'extraction
+  retombait sur la page de raccordement (Annexe 16, `total raccordement`).
+  Transcrites à la main + recoupées par les identités (toutes justes),
+  figées dans `extraction/annexe13_verified.py` (`_R_LLOYD` = ordre de lignes
+  propre à LLOYD, avec « Primes cédées aux réassureurs » intercalée après
+  « Solde financier »).
+- **2025** : pas de PDF dans le dépôt (2015-2024 seulement).
