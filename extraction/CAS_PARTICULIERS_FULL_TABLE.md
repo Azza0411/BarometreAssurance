@@ -1831,15 +1831,20 @@ En l'ajoutant au modèle (+ recollage des libellés RA éclatés sur 2-3
 lignes, + recompute des colonnes agrégées avec composante Aviation
 facultative), **2019, 2023, 2024, 2025 passent écart nul**.
 
-**Bilan TUNIS_RE : 9/11 figées** (2015, 2016, 2017, 2019, 2021-2025).
-- **2017** : le PDF SOURCE est lui-même incohérent — RT « Transport »
-  imprimé 1 953 727 alors que Solde financier − Solde de rétrocession =
-  594 788 (et RT Transport + RT Aviation ne redonne pas RT Total marines
-  via SF/SR). Valeurs conservées telles qu'imprimées -> 4 écarts
-  validate_table = erreur de la source (cf. BH 2023).
-- **2018** : pdfplumber FUSIONNE deux lignes du tableau verticalement
-  proches (« Autres charges de gestion nettes » + « Charges d'acquisition
-  et de gestion nettes ») en une seule ligne à 30 valeurs entrelacées ->
-  CAG inexploitable. Non figée.
-- **2020** : éclatement des nombres trop sévère (fragments d'une même
-  valeur répartis sur plusieurs colonnes). Non figée.
+**Bilan TUNIS_RE : 11/11 figées.**
+- **2018** : pdfplumber collait la ligne « Autres charges de gestion
+  nettes » (+ valeurs) avec le libellé « CHARGES D'ACQUISITION ET DE » sur
+  une même ligne visuelle -> dé-fusion explicite (un libellé qui contient
+  « autres charges » + « gestion » + « acquisition » ET des valeurs devient
+  « Autres charges de gestion nettes » ; la ligne suivante
+  « gestionnettes » devient le CAG). Écart nul.
+- **2020** : le clustering global des x donnait des colonnes fusionnées
+  (col0/col1 à 18 px). Détection : ratio max/min des écarts entre centres
+  > 3 -> on re-dérive les bords depuis une ligne pleine de référence
+  (Primes acquises / Charges de prestations) découpée à un grand écart x.
+  Écart nul.
+- **2017** : seule année non parfaite — le PDF SOURCE est lui-même
+  incohérent (RT « Transport » imprimé 1 953 727 alors que Solde financier
+  − Solde de rétrocession = 594 788, et RT Transport + RT Aviation ne
+  redonne pas RT Total marines). 4 écarts validate_table = erreur de la
+  source, valeurs conservées telles qu'imprimées (cf. BH 2023).
