@@ -1782,7 +1782,20 @@ non vie » agrégé (Brut/Cessions/Net) — pas d'Annexe 13 par catégorie.
 **COMAR 2016, 2018** : dépôts CMF entièrement scannés (0-1 page avec couche
 texte). Indisponibles.
 
-**Bilan LLOYD : 3/10 figées** (2015, 2021, 2022). **COMAR : 8/11**
+**Mise à jour (2026-09-10, « répare tout »)** : le format LLOYD est en
+fait ENTIER pour TOUS les millésimes (pas de milatimes) ; les échecs
+venaient d'un seuil de fusion de fragments trop large (12 px -> colonnes
+serrées de 2019-2024 fusionnées) et d'un « - » détaché non traité comme
+signe (« Résultat technique ‐ 378 644 »). Seuil ramené à 6 px + un « - »
+isolé qui jouxte (< 15 px) le nombre suivant = signe négatif.
+-> **+2016, +2017, +2019, +2020, +2023, +2024**.
+
+**Bilan LLOYD : 9/10 figées** (2015-2017, 2019-2024). 2017 garde 2 écarts
+résiduels (863 dinars sur la cellule « Autres charges de gestion nettes »
+colonne Acceptation — la plus petite du tableau, fragment mal reconstruit).
+Reste **2018** : pas d'Annexe 13 par catégorie, seul le raccordement
+(Total, calque texte SANS espaces « Primesacquises 81008695 »)
+partiellement exploitable. **COMAR : 8/11**
 (2015 annexe absente, 2016/2018 scans).
 
 ## 2026-09-10 (suite) — TUNIS_RE : +2015 +2022 (2/11)
