@@ -1365,3 +1365,39 @@ Stockées via `process_one_document` (statut `ok_verifie`, docs
 0 ligne/colonne non reconnue, 0 règle en échec sur les 6 millésimes.
 
 **Bilan MAGHREBIA : 6/6 années figées.**
+
+## 2026-09-10 (suite) — GAT ASSURANCES Annexe 13 : 8/11 années figées
+
+Pages « Résultat technique par catégorie d'assurance Non-Vie » en couche
+texte native mais TRÈS fragmentée (chaque nombre éclaté en fragments « 12 »
+« 345 » « 678 », et parfois 2 colonnes collées sans espace : « 850,74714 »).
+14-15 branches + « Montant » (= Total). Valeurs SIGNÉES, modèle additif
+comme COMAR. Négatifs : entre parenthèses (millésimes en dinars entiers)
+OU préfixe -/‐ (millésimes en millimes).
+
+Reconstruction géométrique : bord droit des colonnes = x des nombres de la
+ligne « Résultat technique » pleine (sinon clustering des x de toutes les
+lignes) ; fusion des fragments par petit écart avec coupure dès qu'un nombre
+parenthésé est complet ; re-découpe des nombres > 3 groupes (fusions
+inter-colonnes). Colonne « Autres » (avant Montant) vide partout certains
+millésimes → 15 colonnes retenues.
+
+**Figées (identités toutes vérifiées, écart nul) : 2015, 2016, 2018, 2020,
+2024, 2025.**
+
+**Figées avec anomalie DANS LE PDF (valeurs telles qu'imprimées) : 2017,
+2023.** Sur ces deux millésimes, une valeur (22 643,34 en 2017 sur
+Acceptation ; 244 294 en 2023 sur Montant) est déplacée entre « Charges
+d'acquisition et de gestion nettes » et « Solde financier » — les 2 écarts
+`validate_table` s'annulent exactement (ni FA+ACG, ni PdP+Participation ne
+recoupent le sous-total imprimé de cette seule cellule). Même nature que
+l'anomalie AMI 2020.
+
+**Restent 2019, 2021, 2022** : millésimes en millimes où la reconstruction
+géométrique laisse encore un décalage de colonnes (fusions sans espace
+multiples) — 2020/2021 passent déjà en base via camelot (112 règles ok),
+seuls 2019 et 2022 sont réellement à reprendre.
+
+Stockées via `process_one_document` (statut `ok_verifie`, docs
+219/49/50/51/53/56/57/58). Aucun changement de pipeline nécessaire (libellés
+de ligne et de colonne GAT rattachés par les canoniques/alias existants).
