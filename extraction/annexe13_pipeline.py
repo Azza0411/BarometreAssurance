@@ -510,7 +510,10 @@ VALIDATION_RULES = [
       # pas la règle « données manquantes » (sinon on régresserait les
       # gabarits qui n'ont pas ces lignes).
       "?Part des réassureurs dans les provisions pour égalisation et équilibrage",
-      "?Part des réassureurs dans la variation des primes non acquises"]),
+      "?Part des réassureurs dans la variation des primes non acquises",
+      # BIAT loge « Intérêts servis » (aux réassureurs) dans son bloc
+      # réassurance, en déduction du Solde de réassurance.
+      "?Intérêts servis"]),
     ("resultat_technique",
      "Résultat technique = Solde de souscription + Charges d'acquisition et de gestion nettes "
      "+ Solde financier + Solde de réassurance / rétrocession",
