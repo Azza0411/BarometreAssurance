@@ -16,9 +16,17 @@ from database.repository import get_connection, save_tableau_result
 from extraction.annexe13_kpi_extractor import _is_target_page, RACCORDEMENT_RE, KPI_PATTERNS
 from extraction.annexe13_pipeline import process_annexe13, ANNEXE13_NON_VIE_EXCLUSIONS
 from extraction.full_table_extractor import relaxed_is_annexe13_page
+from extraction import annexe13_verified
 from api.services.data_management import local_pdf_path
 
 TABLEAU_KEY = "annexe13"
+
+
+def _annee_de(nom_pdf):
+    """Année (int) déduite du nom de fichier `CODE_AAAA.pdf`, ou None."""
+    base = os.path.splitext(os.path.basename(nom_pdf or ""))[0]
+    part = base.rsplit("_", 1)[-1]
+    return int(part) if part.isdigit() and len(part) == 4 else None
 
 
 def _cmf_documents(conn, codes=None, annees=None):
@@ -56,7 +64,22 @@ def _cmf_documents(conn, codes=None, annees=None):
 
 def process_one_document(conn, document_id, code, nom_pdf):
     """Traite un document : extraction + normalisation + validation, puis
-    stockage. Renvoie le statut ('ok' | 'page_introuvable' | 'pdf_absent')."""
+    stockage. Renvoie le statut ('ok' | 'ok_verifie' | 'page_introuvable' |
+    'pdf_absent').
+
+    Court-circuit : pour les documents dont la page Annexe 13 est un SCAN que
+    l'OCR ne lit pas de façon fiable (AMI 2019/2020/2023, COTUNACE 2017/2019/
+    2023), une grille saisie à la main et recoupée par les identités
+    comptables est fournie par `extraction/annexe13_verified.py`. On la
+    stocke telle quelle — normalisée et validée EXACTEMENT comme la voie
+    d'extraction normale — et on ne tente pas l'OCR : une revalidation
+    ultérieure ne peut donc jamais écraser ces valeurs par du bruit OCR."""
+    annee = _annee_de(nom_pdf)
+    if annee is not None and annexe13_verified.has(code, annee):
+        save_tableau_result(conn, document_id, TABLEAU_KEY,
+                            annexe13_verified.build_result(code, annee))
+        return "ok_verifie"
+
     pdf_path = local_pdf_path("CMF", code, nom_pdf)
     if not pdf_path or not os.path.isfile(pdf_path):
         return "pdf_absent"
@@ -78,7 +101,8 @@ def process_all(codes=None, annees=None, progress_callback=None):
     conn = get_connection()
     try:
         docs = _cmf_documents(conn, codes, annees)
-        summary = {"total": len(docs), "ok": 0, "page_introuvable": 0, "pdf_absent": 0, "erreur": 0}
+        summary = {"total": len(docs), "ok": 0, "ok_verifie": 0,
+                   "page_introuvable": 0, "pdf_absent": 0, "erreur": 0}
         for i, (document_id, code, nom_pdf) in enumerate(docs, 1):
             try:
                 statut = process_one_document(conn, document_id, code, nom_pdf)
