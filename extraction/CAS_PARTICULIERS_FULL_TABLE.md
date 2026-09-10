@@ -1095,3 +1095,45 @@ d'atteindre notre logique de colonnes — la faute vient de la segmentation
 de mot de Tesseract lui-même, pas de notre code). Documenté comme limite de
 qualité de scan/OCR, dans la même famille que les cas déjà connus
 (COTUNACE 2023 filets épais, STAR/ASTREE pages scannées).
+
+## 2026-09-10 (suite) — AMI 2019/2020/2023 + COTUNACE 2017/2019/2023 : saisie manuelle vérifiée
+
+L'OCR de ces 6 pages Annexe 13 scannées plafonne à ~70 % de cellules exactes
+(voir plus haut) — insuffisant pour l'objectif « presque idéal ». Ces 6
+tableaux ont donc été **transcrits à la main depuis les PDF source** et
+recoupés par les identités comptables de chaque document (chaque identité
+tombe juste, écart ≤ 1 millime), puis figés dans
+`extraction/annexe13_verified.py` (dict `VERIFIED`, structure = matrice
+24 lignes × colonnes, `None` = tiret « néant »).
+
+`api/services/tableau_pipeline_service.py::process_one_document` consulte ce
+module AVANT camelot/OCR : si `(code, année)` y figure, la grille vérifiée
+est normalisée + validée EXACTEMENT comme la voie normale
+(`normalize_table` + `validate_table`) puis stockée (`save_tableau_result`),
+et l'OCR n'est pas tenté (statut `ok_verifie`). Une revalidation ultérieure
+ne peut donc jamais écraser ces valeurs par du bruit OCR. Résultat : ces 6
+années apparaissent dans l'export et les tableaux exactement comme les
+autres (mêmes libellés canoniques, même ordre de colonnes).
+
+Points d'attention :
+- **AMI 2020, Résultat technique / colonne Total = 5 880 087** alors que la
+  somme des 6 branches vaut 10 264 890 : anomalie DANS LE PDF source (les 7
+  colonnes se recoupent entre elles, seule cette cellule ne cadre pas).
+  Valeur laissée telle qu'imprimée.
+- **COTUNACE 2017** : dépôt CMF EN ARABE, présente un « État de résultat
+  technique » (Brut/Cessions/Net) et NON une Annexe 13 « par catégorie ».
+  Seules les lignes qui correspondent sont reportées (colonne NET 2017,
+  page 4) ; les sous-totaux propres à l'Annexe 13 (Solde de souscription,
+  Solde financier, Solde de réassurance) et le détail « Part des
+  réassureurs » n'existent pas sous cette forme dans ce dépôt.
+- Écarts de validation résiduels sur AMI 2019/2020 et COTUNACE 2019/2023 :
+  ce sont les **faux positifs de convention de signe déjà connus** (règle
+  générique `VALIDATION_RULES` qui ADDITIONNE alors que ces documents
+  soustraient « Charges de prestations » / « Participation aux résultats » /
+  « Part des réassureurs dans les primes acquises »). Les VALEURS sont
+  justes — mêmes écarts que ce que produisent déjà LLOYD_TUNISIEN et
+  TUNIS_RE. AMI 2023 : 0 écart (ce dépôt-là utilise des valeurs déjà
+  signées).
+- Pour ajouter une autre année vérifiée : compléter `VERIFIED` dans
+  `extraction/annexe13_verified.py` (candidats connus non encore traités :
+  AMI 2016/2017, également scannés).
