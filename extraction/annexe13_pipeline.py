@@ -454,6 +454,47 @@ VALIDATION_RULES = [
 ]
 
 
+_GROUP_TERMINAL_RE = re.compile(r"^total\s+(.+)$", re.IGNORECASE)
+
+
+def derive_column_groups(colonnes):
+    """À partir de la liste ORDONNÉE des noms de colonnes déjà normalisés,
+    retrouve les groupes que le PDF source affiche avec un en-tête de groupe
+    fusionné au-dessus de plusieurs sous-colonnes (ex. TUNIS_RE : "NON
+    MARINES" au-dessus d'Incendie/ARD/Risques techniques — retour
+    utilisateur du 2026-09-10, capture d'écran du PDF original). L'en-tête de
+    groupe lui-même n'existe plus comme colonne à part entière (voir
+    `full_table_extractor.py::reconstruct_grid_from_rows`, qui l'exclut de la
+    concaténation de la sous-colonne où camelot l'avait posé par erreur) mais
+    sa PRÉSENCE reste déductible : ce type de gabarit fait toujours suivre la
+    série de sous-colonnes d'un groupe par une colonne "Total <Groupe>" — le
+    nom de cette colonne, une fois le préfixe "Total " retiré, EST le nom du
+    groupe (ex. "Total non marines" -> groupe "Non marines"). Généralisable à
+    toute société utilisant ce gabarit (pas une règle propre à TUNIS_RE) :
+    fonctionne sur la seule liste de noms, donc aussi bien sur une grille
+    fraîchement extraite que sur une grille relue depuis la base.
+
+    Renvoie une liste de {"libelle": nom_du_groupe, "debut": idx_première_
+    colonne_membre, "fin": idx_dernière_colonne_membre} (indices dans
+    `colonnes`, bornes incluses, EXCLUANT la colonne "Total <Groupe>"
+    elle-même — elle reste une colonne à part entière à sa propre droite,
+    comme dans le PDF). Aucun groupe n'est produit si la portée calculée est
+    vide (colonne "Total X" immédiatement adjacente à la frontière du groupe
+    précédent — ex. "Total non vie" juste après "Total marines" — ou en tout
+    début de tableau) : jamais de regroupement fabriqué artificiellement."""
+    groups = []
+    boundary = 0  # 1re colonne pas encore rattachée à un groupe précédent
+    for idx, name in enumerate(colonnes):
+        m = _GROUP_TERMINAL_RE.match((name or "").strip())
+        if not m:
+            continue
+        start, end = boundary, idx - 1
+        if end >= start:
+            groups.append({"libelle": m.group(1).strip().capitalize(), "debut": start, "fin": end})
+        boundary = idx + 1
+    return groups
+
+
 def validate_table(normalized_lignes, columns):
     """Applique `VALIDATION_RULES` colonne par colonne (chaque branche, plus
     Total). Renvoie une liste de résultats {regle, colonne, attendu, trouve,
