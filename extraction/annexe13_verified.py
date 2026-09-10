@@ -1677,6 +1677,100 @@ _BIAT_2025 = _grid(_BIAT_COLS_10, 38, [
     [4224975, 437028, 1319574, 860938, 631551, 155135, 1236228, -602831, 1350339, 9612937],
 ], rows=_R_BIAT)
 
+# ── BH ASSURANCE — Annexe 13 « C4 » (7 colonnes : AUTO/ARD/INCENDIE/ENG/
+# TRANSPORT/MALADIE/Total). PDF au libellé ENROULÉ de façon pathologique
+# (partie de libellé AVANT les données, valeurs de Total scindées sur 2-3
+# lignes autour de leur ligne). Modèle additif :
+# CP = Prest. payés + Ch. provisions ;
+# SS = Primes acquises + CP + Variation des autres provisions techniques ;
+# CAG = FA + Var. frais d'acq. reportés + Frais d'administration + Autres
+#       charges techniques ;
+# SF = Produits nets de placements + Participation aux résultats ;
+# SR = Primes cédées + RA(prest. payées) + RA(prov. primes non émises) +
+#      RA(charges provisions) + Commissions reçues ;
+# RT = SS + CAG + SF + SR.
+# 2019 & 2021 vérifiés (écart nul). 2022-2025 : 3-6 cellules résiduelles
+# enroulées non reconstructibles par la position ; 2020 = SCAN.
+_R_BH = [
+    'Primes acquises',
+    'Primes émises',
+    'Variation des primes non acquises',
+    'Charges de prestations',
+    'Prestations et frais payés',
+    'Charges des provisions pour prestations diverses',
+    'Variation des autres provisions techniques',
+    'Solde de souscription',
+    "Frais d'acquisition",
+    "Variation des frais d'acquisition reportés",
+    "Frais d'administration",
+    'Autres charges techniques',
+    "Charges d'acquisition et de gestion nettes",
+    'Produits nets de placements',
+    'Participation aux résultats',
+    'Solde financier',
+    'Primes cédées',
+    'Part des réassureurs dans les prestations payées',
+    'Part des réassureurs dans la variation des primes non acquises',
+    'Part des réassureurs dans les charges de provisions pour prestations',
+    'Commissions reçues des réassureurs / rétrocessionnaires',
+    'Solde de réassurance / rétrocession',
+    'Résultat technique',
+]
+_BH_COLS = ["Automobile", "ARD", "Incendie", "Responsabilité décennale",
+            "Transport", "Maladie", "Total"]
+
+_BH_2019 = _grid(_BH_COLS, 39, [
+    [23761424, 2003057, 9094312, 2918983, 3326618, 32569833, 73674227],
+    [24279078, 1922063, 9127052, 3071721, 3376457, 32510654, 74287025],
+    [-517654, 80994, -32740, -152738, -49839, 59179, -612798],
+    [-16862346, -28409, -1331392, -692302, -736351, -24709860, -44360660],
+    [-14550137, -354584, -1192716, -701815, -574953, -23522915, -40897120],
+    [-2312209, 326175, -138676, 9513, -161398, -1186945, -3463540],
+    [None, None, None, None, None, None, None],
+    [6899078, 1974648, 7762920, 2226681, 2590267, 7859973, 29313567],
+    [-2424392, -189947, -1529861, -361573, -458733, -2490774, -7455280],
+    [65164, -19526, 75292, 36225, -2545, -5344, 149266],
+    [-4616252, -829232, -1885563, -1459722, -851395, -3146305, -12788469],
+    [None, None, None, None, None, None, None],
+    [-6975480, -1038705, -3340132, -1785070, -1312673, -5642423, -20094483],
+    [2788560, 171517, 523867, 716797, 105833, 356277, 4662851],
+    [None, None, -60725, -14145, -150000, -355000, -579870],
+    [2788560, 171517, 463142, 702652, -44167, 1277, 4082981],
+    [-1071882, -1262514, -6476534, -2412541, -1628847, None, -12852318],
+    [11119, 166711, 849885, 701320, 120381, None, 1849416],
+    [None, -6993, -137703, 100749, 113219, None, 69272],
+    [-61941, -4865, -554917, -55572, 164961, None, -512334],
+    [None, 145134, 1974012, 730317, 350340, None, 3199803],
+    [-1122704, -962527, -4345257, -935727, -879946, None, -8246161],
+    [1589454, 144933, 540673, 208536, 353481, 2218827, 5055904],
+], rows=_R_BH)
+
+_BH_2021 = _grid(_BH_COLS, 40, [
+    [28298380, 2187531, 10797489, 3224477, 4075575, 43580907, 92164359],
+    [29657861, 2288412, 11227190, 2391705, 4101731, 43609956, 93276855],
+    [-1359481, -100881, -429701, 832772, -26156, -29049, -1112496],
+    [-19071022, -758107, -1494904, -697425, -256404, -33951198, -56229060],
+    [-15385163, -212738, -5752449, -545970, -785495, -32219454, -54901269],
+    [-3685859, -545369, 4257545, -151455, 529091, -1731744, -1327791],
+    [None, None, None, None, None, None, None],
+    [9227358, 1429424, 9302585, 2527052, 3819171, 9629709, 35935299],
+    [-2909288, -219978, -1961011, -304801, -628950, -4042447, -10066475],
+    [117828, 9313, 136079, -28059, 116, 1587, 236864],
+    [-6177924, -630901, -1908630, -1298420, -719082, -4003043, -14738000],
+    [None, None, None, None, None, None, None],
+    [-8969384, -841566, -3733562, -1631280, -1347916, -8043903, -24567611],
+    [2905041, 177422, 458540, 656545, 67342, 528454, 4793344],
+    [None, -655, -51897, None, -100338, -228278, -381168],
+    [2905041, 176767, 406643, 656545, -32996, 300176, 4412176],
+    [-1337314, -1425551, -8208381, -1715927, -2271138, None, -14958311],
+    [46570, 167284, 4944796, 530858, 452288, None, 6141796],
+    [None, 33342, 233807, 131460, 135307, None, 533916],
+    [116722, 210899, -3599648, 272800, 119970, None, -2879257],
+    [None, 261300, 2290657, 557593, 736385, None, 3845935],
+    [-1174022, -752726, -4338769, -223216, -827188, None, -7315921],
+    [1988993, 11899, 1636897, 1329101, 1611071, 1885982, 8463943],
+], rows=_R_BH)
+
 VERIFIED = {
     ("AMI", 2019): _AMI_2019, ("AMI", 2020): _AMI_2020, ("AMI", 2023): _AMI_2023,
     ("COTUNACE", 2017): _COT_2017, ("COTUNACE", 2019): _COT_2019,
@@ -1707,6 +1801,7 @@ VERIFIED = {
     ("BIAT", 2023): _BIAT_2023,
     ("BIAT", 2024): _BIAT_2024,
     ("BIAT", 2025): _BIAT_2025,
+    ("BH", 2019): _BH_2019, ("BH", 2021): _BH_2021,
 }
 
 
