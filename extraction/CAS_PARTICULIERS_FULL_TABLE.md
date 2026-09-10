@@ -1883,13 +1883,17 @@ facultative), **2019, 2023, 2024, 2025 passent écart nul**.
   libellé -> détectée comme 1re ligne à 7 valeurs sans texte. Charges en
   magnitude positive -> faux positifs validate_table documentés. SS = PA −
   CP ; RT = SS − CAG + SF + SR : **écart nul**.
-- **AMI 2021** (p43) : la page Annexe 13 par catégorie est scannée ->
-  figée sur l'Annexe 16 « raccordement » (colonne Total). Annotations de
-  formule (PRNV11 1°colonne…) retirées ; ligne RA participation = « - »
-  (vide). Le RT imprimé (5 899 603) diffère de SS + CAG + SF + SR
-  (6 492 023) de **592 420** = la déduction « provisions devenues
-  exigibles » (ligne hors modèle en bas de la C16) -> **1 écart
-  validate_table documenté**.
+- **AMI 2021** (retour utilisatrice « regardez la différence ») : la vraie
+  Annexe 13 « par catégorie » EXISTE, **éclatée sur 2 pages** — en-tête +
+  « Primes acquises » / « Primes émises » en bas de p40, corps (« Variation
+  des primes non acquises » -> …) sur p41. 7 colonnes, valeurs SIGNÉES.
+  PA/PE transcrites (séparateur milliers = espace, indissociable de
+  l'inter-colonnes) ; corps p41 reconstruit géométriquement. Modèle :
+  SS = PA + CP ; **RT = SS + CAG + SF − SR** (le Solde de réassurance est
+  DÉDUIT, pas ajouté) : toutes identités + contrôle horizontal écart nul.
+  `validate_table` (règle RT = …+ SR) signale 6 faux positifs de
+  convention, documentés. (La C16 raccordement p43 « se recoupe » de la
+  même façon — l'écart de 592 420 vu au 1er essai n'était que 2×SR.)
 - **AMI 2015, 2016, 2017, 2022** : pages Annexe 13 scannées (calque texte
   absent). Indisponibles.
 
