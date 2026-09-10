@@ -1784,3 +1784,37 @@ texte). Indisponibles.
 
 **Bilan LLOYD : 3/10 figées** (2015, 2021, 2022). **COMAR : 8/11**
 (2015 annexe absente, 2016/2018 scans).
+
+## 2026-09-10 (suite) — TUNIS_RE : +2015 +2022 (2/11)
+
+Table « RESULTAT TECHNIQUE PAR CATEGORIE » (principale, PAS la sous-table
+RETAKAFUL). 10 colonnes : Incendie / ARD / Risques techniques / Total non
+marines / Transport / Aviation / Total marines / Total non vie / Vie /
+Total. Pages (1-based) : 2015 p57, 2016 p64, 2017 p65, 2018 p65, 2019 p75,
+2020 p67, 2021 p69, 2022 p75, 2023 p71, 2024 p78, 2025 p83.
+
+**Piège majeur** : calque texte à ESPACES PARASITES dans les grands
+nombres (« 6 4 744 348 » = 64 744 348 ; « 1 52 246 858 » = 152 246 858).
+Solution : assigner CHAQUE fragment de chiffres à la colonne la plus
+proche (x), puis RE-CONCATÉNER les fragments d'une colonne dans l'ordre
+des x (`scratchpad/tunisre.py`). Sous-lignes Takaful / Ordinaire ignorées.
+
+Modèle (magnitude positive pour les charges) :
+SS = PA − CP ; CAG = FA + Autres charges de gestion nettes ;
+SR = Part rétro.(primes) − Part rétro.(prest) − Part rétro.(ch.prov) −
+Commissions ; **RT = SS − CAG + Produits nets de placements − SR** — le
+« Solde financier » imprimé inclut une allocation de produits non
+détaillée en ligne et n'entre PAS dans RT. Contrôles horizontaux :
+Total non marines = Incendie+ARD+Risques tech ; Total marines =
+Transport+Aviation ; Total non vie = TnM+TM ; Total = Total non vie+Vie.
+
+- **2015, 2022** : toutes identités écart nul -> figées. `validate_table`
+  signale 20 faux positifs de convention (magnitude), documentés comme
+  AMI / LLOYD / COTUNACE / BH C7.
+- **2016, 2017, 2019** : 6-10 résidus de reconstruction (1-2 cellules
+  éclatées mal recollées / signe). **2018** : libellés brouillés
+  (« charges autres charges d'acquisition de gestion »). **2020** :
+  éclatement pathologique (nombres à 10+ chiffres reconstruits faux).
+  2021, 2023-2025 : résidus moyens. À reprendre.
+
+**Bilan TUNIS_RE : 2/11 figées.**

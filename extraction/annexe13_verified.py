@@ -2855,6 +2855,89 @@ _LL_2015 = _grid(_LL_COLS_NV, 32, [
 ], rows=_R_LLOYD_NV)
 
 
+# ── TUNIS RE — Annexe 13 « RESULTAT TECHNIQUE PAR CATEGORIE » (table
+# principale). 10 colonnes : Incendie / ARD / Risques techniques / Total
+# non marines / Transport / Aviation / Total marines / Total non vie / Vie
+# / Total. Calque texte à ESPACES PARASITES (« 6 4 744 348 » = 64 744 348)
+# -> chaque fragment de chiffres est assigné à la colonne la plus proche
+# puis les fragments d'une colonne sont RE-CONCATÉNÉS dans l'ordre des x
+# (scratchpad/tunisre.py). Charges en MAGNITUDE positive -> faux positifs
+# validate_table documentés. Modèle : SS = PA − CP ; CAG = FA + Autres ;
+# SR = Part rétro.(primes) − Part rétro.(prest) − Part rétro.(ch.prov) −
+# Commissions ; RT = SS − CAG + Produits nets de placements − SR
+# (le « Solde financier » imprimé inclut une allocation non détaillée et
+# n'entre pas dans RT). Contrôles horizontaux : Total non marines =
+# Incendie+ARD+Risques tech ; Total marines = Transport+Aviation ;
+# Total non vie = TnM+TM ; Total = Total non vie + Vie.
+# 2015 & 2022 : toutes identités écart nul. 2016/2017/2019 : résidus de
+# reconstruction (1-2 cellules) ; 2018 : libellés brouillés ; 2020-2021,
+# 2023-2025 : éclatement plus sévère — à reprendre.
+_R_TUNISRE = [    'Primes acquises',
+    'Primes émises',
+    'Variation des primes non acquises',
+    'Charges de prestations',
+    'Prestations et frais payés',
+    'Charges des provisions pour prestations diverses',
+    'Solde de souscription',
+    "Frais d'acquisition",
+    'Autres charges de gestion nettes',
+    "Charges d'acquisition et de gestion nettes",
+    'Produits nets de placements',
+    'Solde financier',
+    'Part des réassureurs dans les primes acquises',
+    'Part des réassureurs dans les prestations payées',
+    'Part des réassureurs dans les charges de provisions pour prestations',
+    'Commissions reçues des réassureurs / rétrocessionnaires',
+    'Solde de réassurance / rétrocession',
+    'Résultat technique',
+]
+_TUNISRE_COLS = ["Incendie", "ARD", "Risques techniques", "Total non marines",
+                 "Transport", "Aviation", "Total marines", "Total non vie",
+                 "Vie", "Total"]
+
+_TUNISRE_2015 = _grid(_TUNISRE_COLS, 57, [
+    [33911439, 14640198, 15788139, 64339776, 15250909, 15791985, 31042894, 95382669, 5806846, 101189516],
+    [34902485, 14666056, 17251218, 66819758, 14965875, 12805776, 27771651, 94591410, 5994195, 100585605],
+    [-991046, -25858, -1463078, -2479983, 285033, 2986209, 3271242, 791260, -187349, 603911],
+    [15763652, 9216465, 5821994, 30802111, 8426923, 9371091, 17798014, 48600125, 2387306, 50987430],
+    [13113280, 5198574, 4765173, 23077027, 6274413, 12986597, 19261011, 42338038, 2370079, 44708117],
+    [2650371, 4017891, 1056821, 7725084, 2152509, -3615506, -1462997, 6262087, 17227, 6279314],
+    [18147787, 5423733, 9966145, 33537665, 6823986, 6420894, 13244880, 46782545, 3419541, 50202085],
+    [10314074, 2613846, 4565766, 17493685, 4215682, 190313, 4405995, 21899680, 2977313, 24876993],
+    [2579768, 832017, 1437115, 4848901, 989955, 1310295, 2300250, 7149151, 305910, 7455061],
+    [12893843, 3445863, 6002881, 22342586, 5205637, 1500608, 6706245, 29048831, 3283223, 32332054],
+    [595349, 399071, 616203, 1610623, 176278, 8932, 185210, 1795833, 90167, 1886000],
+    [5849294, 2376941, 4579467, 12805702, 1794626, 4929218, 6723844, 19529547, 226484, 19756031],
+    [16057158, 1530454, 8144386, 25731998, 4136512, 14453729, 18590241, 44322239, 16216, 44338455],
+    [4848419, 543988, 1768617, 7161023, 1628095, 16277552, 17905647, 25066670, None, 25066670],
+    [3241458, 484183, 236728, 3962369, 1471786, -7967831, -6496045, -2533676, None, -2533676],
+    [5430873, 359189, 2232567, 8022630, 372589, 187933, 560522, 8583152, 848, 8583999],
+    [2536409, 143094, 3906473, 6585976, 664042, 5956075, 6620118, 13206094, 15368, 13221462],
+    [3312885, 2233847, 672994, 6219726, 1130584, -1026857, 103727, 6323453, 211116, 6534569],
+], rows=_R_TUNISRE)
+
+_TUNISRE_2022 = _grid(_TUNISRE_COLS, 75, [
+    [71045459, 32931186, 23521406, 127498051, 29809996, 14434635, 44244631, 171742682, 10436655, 182179337],
+    [74380137, 34288800, 24994182, 133663120, 30131510, 19845522, 49977031, 183640151, 11698753, 195338904],
+    [-3334678, -1357614, -1472776, -6165069, -321514, -5410886, -5732400, -11897468, -1262098, -13159567],
+    [24288212, 19175388, 10532188, 53995788, 16738846, 3085699, 19824545, 73820333, 6961989, 80782322],
+    [39206598, 13897811, 8303943, 61408353, 9897797, 617813, 10515609, 71923962, 6668524, 78592486],
+    [-14918386, 5277577, 2228245, -7412564, 6841049, 2467886, 9308935, 1896371, 293465, 2189836],
+    [46757247, 13755798, 12989218, 73502263, 13071150, 11348936, 24420087, 97922350, 3474666, 101397015],
+    [20394922, 5340616, 7212213, 32947751, 7351842, 159734, 7511576, 40459327, 3697105, 44156432],
+    [7066378, 2894155, 2132495, 12093028, 2735983, 725839, 3461822, 15554851, 911344, 16466194],
+    [27461300, 8234771, 9344708, 45040779, 10087825, 885573, 10973398, 56014177, 4608449, 60622626],
+    [886463, 2885368, 1134031, 4905862, 126916, 830459, 957375, 5863237, 479159, 6342396],
+    [20182411, 8406395, 4778540, 33367346, 3110242, 11293822, 14404063, 47771410, -654625, 47116785],
+    [None, None, None, None, None, None, None, None, None, None],
+    [None, None, None, None, None, None, None, None, None, None],
+    [None, None, None, None, None, None, None, None, None, None],
+    [2043077, 477439, 1985101, 4505617, 92837, 76673, 169510, 4675127, None, 4675127],
+    [18218400, -1980627, 5119097, 21356870, 1899091, 11238370, 13137461, 34494331, -275548, 34218784],
+    [1964011, 10387022, -340557, 12010476, 1211151, 55452, 1266602, 13277078, -379077, 12898001],
+], rows=_R_TUNISRE)
+
+
 VERIFIED = {
     ("AMI", 2019): _AMI_2019, ("AMI", 2020): _AMI_2020, ("AMI", 2023): _AMI_2023,
     ("COTUNACE", 2017): _COT_2017, ("COTUNACE", 2018): _COT_2018, ("COTUNACE", 2019): _COT_2019,
@@ -2863,6 +2946,7 @@ VERIFIED = {
     ("COTUNACE", 2025): _COT_2025,
     ("LLOYD_TUNISIEN", 2021): _LL_2021, ("LLOYD_TUNISIEN", 2022): _LL_2022,
     ("LLOYD_TUNISIEN", 2015): _LL_2015,
+    ("TUNIS_RE", 2015): _TUNISRE_2015, ("TUNIS_RE", 2022): _TUNISRE_2022,
     ("COMAR", 2017): _CM_2017, ("COMAR", 2019): _CM_2019,
     ("COMAR", 2020): _CM_2020, ("COMAR", 2021): _CM_2021, ("COMAR", 2022): _CM_2022,
     ("COMAR", 2023): _CM_2023, ("COMAR", 2024): _CM_2024, ("COMAR", 2025): _CM_2025,
