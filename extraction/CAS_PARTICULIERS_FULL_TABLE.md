@@ -1552,3 +1552,63 @@ via `process_one_document` (docs 131, 133).
 reconstructibles par position — transcription manuelle ou passe dédiée
 supplémentaire nécessaire) ; **2020** (page C4 = SCAN, couche texte
 illisible « 3l DECEMBRE 2O2O »).
+
+## 2026-09-10 (suite) — BH ASSURANCE : 2022-2025 figées via la C7 (Total seul) → 6/7
+
+Retour utilisateur : l'export BH « toujours pas idéal » (2022-2025 encore
+en repli camelot 4 colonnes Brut/Cessions/Net, ou grille C4 aux colonnes
+permutées), capture de la page **« C7 - TABLEAU DE RACCORDEMENT DU RÉSULTAT
+TECHNIQUE NON-VIE »** à l'appui.
+
+La C4 « par catégorie » (7 colonnes) est **irrécupérable** pour 2022-2025 :
+au-delà des libellés enroulés, le calque texte permute des colonnes
+entières (Incendie ↔ voisines sur 2024) et brouille des colonnes complètes
+(Responsabilité décennale 2024 = 352 / 929 / 908 au lieu des vrais
+montants). La **C7**, elle, est **propre** : une seule colonne « Total »,
+mêmes ~23 lignes que la C4 + informations complémentaires. Pages (1-based) :
+2019 p42, 2021 p43, 2022 p41, 2023 p41, 2024 p42, 2025 p41.
+
+Parser C7 dédié (`scratchpad/bh_c7.py`) — quirks du calque texte gérés :
+- valeur sur la ligne SUIVANT le libellé (2023-2025 : « Charges des
+  provisions pour sinistres \n -8 126 968 ») ;
+- **2022** : les libellés « Variation des autres provisions techniques » et
+  « Autres charges techniques » ne sont pas rendus — seules restent les
+  valeurs orphelines « 164 352 » et « -122 997 », récupérées par position.
+  Le sous-total « Charges de prestation » de la C7 2022 agrège déjà la
+  variation (+164 352), « Charges d'acquisition… » agrège déjà les autres
+  charges techniques (-122 997) ;
+- coupures OCR de groupes de chiffres : « 11 0970 904 » → 110 970 904,
+  « 70 97 593 » → 7 097 593, « -1682 925 » → -1 682 925, « 20 638413 »,
+  « -24322243 », « 6557985 » ; « - 1 112 496 » (espace après le moins) ;
+- **2023** : « Variation des autres provisions techniques » imprimée
+  « 367 349 » sans signe ; l'identité Solde de souscription impose
+  **-367 349** (signe de variation BH notoirement incohérent — cf.
+  COTUNACE). Forçage de signe explicite dans le parser.
+
+**Identités C7 vérifiées écart nul : 2022, 2024, 2025.**
+**2023** : RT source = 505 525 (identité confirmée sur la C4 :
+SS + CAG + SF + SR avec CAG hors « Autres charges techniques -236 225 »).
+La C7 2023 replie ces -236 225 (absents de son calque texte) dans le
+sous-total CAG puis les neutralise au niveau RT → `validate_table` signale
+1 écart RT de 236 225, **faux positif documenté** (même catégorie que les
+écarts de convention AMI / LLOYD / COTUNACE).
+Écarts `validate_table` sur les C7 BH = faux positifs de convention :
+`solde_souscription` ne modélise pas la « Variation des autres provisions
+techniques » (que BH inclut dans SS) ; `resultat_technique` ne modélise pas
+« Autres charges techniques » hors CAG. Ajouter ces sources en `?`-optionnel
+**régresse COMAR** (8 années : COMAR loge déjà « Autres charges techniques »
+DANS le CAG) → règles laissées inchangées.
+
+**Correctif généralisable** : `"Variation des autres provisions techniques"`
+ajouté à `CANONICAL_ROWS` (`annexe13_pipeline.py`). Sans lui, la
+normalisation floue (difflib) rabattait ce flux de résultat sur le stock
+bilanciel « Autres provisions techniques (clôture) » — libellés trop
+proches. Non-régression vérifiée sur les 59 entrées VERIFIED (139 écarts
+inchangés).
+
+**2020** : C7 comme C4 = SCAN (OCR « C7-TanI,BAU », « s0 835 839 »,
+« -8 280 39s ») — cellules camelot bancales (doc 132) supprimées de la
+base, l'export affiche « tableau complet non disponible ».
+
+**Bilan BH : 6/7 figées** — 2019, 2021 (C4, 7 colonnes) ; 2022, 2023, 2024,
+2025 (C7, colonne « Total » seule). Reste **2020** (scan).

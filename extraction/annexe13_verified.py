@@ -1689,8 +1689,9 @@ _BIAT_2025 = _grid(_BIAT_COLS_10, 38, [
 # SR = Primes cédées + RA(prest. payées) + RA(prov. primes non émises) +
 #      RA(charges provisions) + Commissions reçues ;
 # RT = SS + CAG + SF + SR.
-# 2019 & 2021 vérifiés (écart nul). 2022-2025 : 3-6 cellules résiduelles
-# enroulées non reconstructibles par la position ; 2020 = SCAN.
+# 2019 & 2021 vérifiés ici en C4 7 colonnes (écart nul). 2022-2025 : la C4
+# est irrécupérable (colonnes permutées) -> figées via la C7 « Total seul »
+# (bloc _R_BH_C7 plus bas). 2020 = SCAN.
 _R_BH = [
     'Primes acquises',
     'Primes émises',
@@ -1771,6 +1772,185 @@ _BH_2021 = _grid(_BH_COLS, 40, [
     [1988993, 11899, 1636897, 1329101, 1611071, 1885982, 8463943],
 ], rows=_R_BH)
 
+# ── BH ASSURANCE — Annexe 13, variante « C7 - RACCORDEMENT DU RESULTAT
+# TECHNIQUE NON-VIE » (colonne « Total » seule). Pour 2022-2025 le calque
+# texte de la C4 « par categorie » (7 colonnes) est illisible : colonnes
+# permutees, valeurs de cellule enroulees sur 2-3 lignes. La C7, elle, est
+# propre. On fige donc ces 4 millesimes sur la C7 (2019 & 2021 gardent leur
+# C4 7 colonnes, ci-dessus). Identites C7 verifiees :
+#   PA = PE + Var. primes non acquises ; CP = Prest. payes + Ch. provisions
+#   (2022 : CP agrege aussi Var. autres prov. tech. +164 352) ;
+#   SS = PA + CP (+ Var. autres prov. tech. si hors CP) ;
+#   CAG = FA + Var. FA reportes + Frais admin (2022 : + Autres charges tech.
+#   -122 997 deja agregees) ; SF = Produits nets placements + Participation ;
+#   SR = Primes cedees + RA(primes) + RA(prest.) + RA(ch. prov.) + Commissions ;
+#   RT = SS + CAG + SF + SR (+ Autres charges tech. quand hors CAG).
+# 2022/2024/2025 : ecart nul. 2023 : RT source = 505 525 (identite C4
+# verifiee) mais la C7 2023 replie « Autres charges techniques » (-236 225,
+# absent de son calque texte) dans le sous-total CAG puis le neutralise au
+# niveau RT -> validate_table signale 1 ecart RT de 236 225, faux positif
+# documente. 2020 = SCAN (indisponible).
+_R_BH_C7 = [
+    'Primes acquises',
+    'Primes émises',
+    'Variation des primes non acquises',
+    'Charges de prestations',
+    'Prestations et frais payés',
+    'Charges des provisions pour prestations diverses',
+    'Variation des autres provisions techniques',
+    'Solde de souscription',
+    "Frais d'acquisition",
+    "Variation des frais d'acquisition reportés",
+    "Frais d'administration",
+    'Autres charges techniques',
+    "Charges d'acquisition et de gestion nettes",
+    'Produits nets de placements',
+    'Participation aux résultats',
+    'Solde financier',
+    'Primes cédées',
+    'Part des réassureurs dans les primes acquises',
+    'Part des réassureurs dans les prestations payées',
+    'Part des réassureurs dans les charges de provisions pour prestations',
+    'Commissions reçues des réassureurs / rétrocessionnaires',
+    'Solde de réassurance / rétrocession',
+    'Résultat technique',
+    'Provisions pour primes non acquises (clôture)',
+    'Provisions pour primes non acquises (réouverture)',
+    'Provisions pour sinistres à payer (clôture)',
+    'Provisions pour sinistres à payer (réouverture)',
+    'Provisions pour participations aux bénéfices (exercice N)',
+    'Provisions pour participations aux bénéfices (exercice N-1)',
+]
+
+_BH_2022 = _grid(["Total"], 41, [[v] for v in [
+    93063473,
+    93706798,
+    -643325,
+    -64368975,
+    -55749479,
+    -8783848,
+    164352,
+    28694498,
+    -9419305,
+    122389,
+    -15163381,
+    -122997,
+    -24583294,
+    6095254,
+    -606182,
+    5489072,
+    -15962474,
+    1597055,
+    2605161,
+    4472206,
+    3152056,
+    -4135996,
+    5464280,
+    25998825,
+    25355500,
+    68832210,
+    60048362,
+    804076,
+    986073,
+]], rows=_R_BH_C7)
+
+_BH_2023 = _grid(["Total"], 41, [[v] for v in [
+    99759739,
+    103170470,
+    -3410731,
+    -68407814,
+    -60280846,
+    -8126968,
+    -367349,
+    30984576,
+    -10274363,
+    246584,
+    -16270541,
+    None,
+    -26298320,
+    7097593,
+    -1508510,
+    5589083,
+    -17416583,
+    944161,
+    3676174,
+    -1682925,
+    4473134,
+    -10006039,
+    505525,
+    29409556,
+    25998825,
+    76959178,
+    68832210,
+    1171425,
+    804076,
+]], rows=_R_BH_C7)
+
+_BH_2024 = _grid(["Total"], 42, [[v] for v in [
+    108320535,
+    110970904,
+    -2650369,
+    -89496986,
+    -87306431,
+    -2190555,
+    270094,
+    19093643,
+    -10824314,
+    364519,
+    -16679750,
+    -1376221,
+    -27139545,
+    7454930,
+    -2453149,
+    5001781,
+    -18518847,
+    -482732,
+    20638413,
+    563005,
+    3957641,
+    6157480,
+    1737138,
+    32059925,
+    29409556,
+    79149733,
+    76959178,
+    901331,
+    1171425,
+]], rows=_R_BH_C7)
+
+_BH_2025 = _grid(["Total"], 41, [[v] for v in [
+    115849668,
+    120477756,
+    -4628088,
+    -83080426,
+    -71391874,
+    -11688552,
+    -590815,
+    32178427,
+    -12621243,
+    385156,
+    -17950835,
+    -177849,
+    -30186922,
+    8918076,
+    -930257,
+    7987819,
+    -24322243,
+    1422889,
+    4102107,
+    -853790,
+    6557985,
+    -13093052,
+    -3291577,
+    36688013,
+    32059925,
+    90838285,
+    79149733,
+    1492147,
+    901331,
+]], rows=_R_BH_C7)
+
+
 VERIFIED = {
     ("AMI", 2019): _AMI_2019, ("AMI", 2020): _AMI_2020, ("AMI", 2023): _AMI_2023,
     ("COTUNACE", 2017): _COT_2017, ("COTUNACE", 2019): _COT_2019,
@@ -1802,6 +1982,8 @@ VERIFIED = {
     ("BIAT", 2024): _BIAT_2024,
     ("BIAT", 2025): _BIAT_2025,
     ("BH", 2019): _BH_2019, ("BH", 2021): _BH_2021,
+    ("BH", 2022): _BH_2022, ("BH", 2023): _BH_2023,
+    ("BH", 2024): _BH_2024, ("BH", 2025): _BH_2025,
 }
 
 
