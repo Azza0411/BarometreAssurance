@@ -521,6 +521,12 @@ VALIDATION_RULES = [
 
 
 _GROUP_TERMINAL_RE = re.compile(r"^total\s+(.+)$", re.IGNORECASE)
+# « Total non vie » (et « Total non-vie ») est un SOUS-TOTAL courant, pas un
+# en-tête de groupe fusionné : le PDF source affiche un en-tête PLAT au-dessus
+# des branches (constaté sur ASTREE — capture utilisateur du 2026-09-10). Ne
+# jamais en dériver un regroupement (sinon l'export Excel fabrique une fusion
+# « Non vie » qui n'existe pas dans le PDF).
+_GROUP_TERMINAL_EXCLUDE = {"non vie", "non-vie", "nonvie"}
 
 
 def derive_column_groups(colonnes):
@@ -553,6 +559,13 @@ def derive_column_groups(colonnes):
     for idx, name in enumerate(colonnes):
         m = _GROUP_TERMINAL_RE.match((name or "").strip())
         if not m:
+            continue
+        gname = m.group(1).strip()
+        # « Total non vie », ou un suffixe de désambiguïsation « Total (2) »
+        # (collision de noms résolue par normalize_table sur une extraction
+        # camelot bancale) : ce n'est pas un vrai en-tête de groupe fusionné.
+        if gname.lower() in _GROUP_TERMINAL_EXCLUDE or re.fullmatch(r"\(\d+\)", gname):
+            boundary = idx + 1  # colonne total consommée, aucun groupe produit
             continue
         start, end = boundary, idx - 1
         if end >= start:
