@@ -155,6 +155,50 @@ def _remove_rules(gray):
     return cv2.bitwise_not(cv2.bitwise_and(bw, cv2.bitwise_not(rules)))
 
 
+def _detect_column_lines(gray):
+    """Positions X des filets verticaux du quadrillage (bordures RÉELLES de
+    colonnes), détectées par la même morphologie OpenCV que `_remove_rules`
+    mais en CAPTURANT ces positions au lieu de simplement les effacer —
+    constaté sur AMI 2020 (7 colonnes étroites, Incendie/Transport/Risq.
+    Divers/Risq. Spx/Automobile/Groupe/Total) : le regroupement des CENTRES
+    de cellules numériques OCR (`_column_bands`) est trop fragile dès qu'un
+    chiffre est tronqué ou que deux cellules voisines se touchent presque
+    (le centre apparent d'une cellule se déplace alors, et plusieurs vraies
+    colonnes finissent regroupées en une seule bande) — alors que le
+    quadrillage lui-même, imprimé par le document, donne la frontière EXACTE
+    entre colonnes, indépendamment de ce que l'OCR a lu dans chacune.
+    Renvoie une liste triée de X (repère de `gray`) — vide si aucun filet
+    vertical net n'est détecté (tableau non quadrillé : `_column_bands`
+    retombe alors sur son repli existant par regroupement de centres)."""
+    import cv2
+    import numpy as np
+
+    bw = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 15, 10
+    )
+    h, _w = bw.shape
+    v_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(20, h // 40)))
+    verticals = cv2.morphologyEx(bw, cv2.MORPH_OPEN, v_kernel)
+    # Un vrai filet de colonne traverse la quasi-totalité de la hauteur du
+    # tableau — seuil à 30 % de la colonne de pixels la plus "pleine" pour
+    # écarter le bruit (glyphes verticaux isolés, artefacts de scan).
+    col_sums = (verticals > 0).sum(axis=0)
+    if col_sums.max() == 0:
+        return []
+    threshold = col_sums.max() * 0.3
+    xs = np.where(col_sums > threshold)[0]
+    if xs.size == 0:
+        return []
+    lines, start, prev = [], xs[0], xs[0]
+    for x in xs[1:]:
+        if x - prev > 5:  # rupture = filet suivant (chaque filet fait plusieurs px de large)
+            lines.append((start + prev) / 2)
+            start = x
+        prev = x
+    lines.append((start + prev) / 2)
+    return lines
+
+
 def _prep(pdf_path, page_index, dpi=RENDER_DPI):
     from PIL import Image
 
@@ -227,10 +271,35 @@ def _ocr_rows(pil_img, config=_FRA_CONFIG):
     return out
 
 
-def _row_label_and_cells(tokens, page_width):
+
+# Un nombre comptable de ce tableau (une branche/soci\u00e9t\u00e9 tunisienne, jamais
+# le march\u00e9 entier) ne d\u00e9passe pas ~10 chiffres significatifs (quelques
+# milliards de TND au grand maximum). Au-del\u00e0, une fusion de tokens
+# num\u00e9riques proches a presque certainement recoll\u00e9 DEUX valeurs
+# distinctes (deux colonnes/cellules voisines mal s\u00e9par\u00e9es par l'OCR)
+# plut\u00f4t qu'un seul grand nombre \u2014 constat\u00e9 sur AMI 2020 ("35 327" +
+# "114 936" fusionn\u00e9s en "35327114936", 35 milliards absurdes pour une
+# ligne de r\u00e9sultat technique). Mieux vaut refuser la fusion (deux cellules
+# plus courtes, coh\u00e9rentes avec le reste du tableau) qu'un nombre plausible
+# en apparence mais faux.
+_MAX_MERGED_DIGITS = 10
+
+
+def _line_between(x1, x0, col_lines):
+    return any(x1 < ln < x0 for ln in col_lines)
+
+
+def _row_label_and_cells(tokens, page_width, col_lines=None):
     """Separe le libelle (tokens de gauche) des cellules numeriques ; fusionne
     les tokens numeriques proches (ecart < 2,5 % de la largeur) en un nombre,
-    un ecart plus grand ouvrant une colonne."""
+    un ecart plus grand ouvrant une colonne. Une fusion qui produirait plus
+    de `_MAX_MERGED_DIGITS` chiffres est refus\u00e9e (voir note ci-dessus) : les
+    deux tokens restent deux cellules distinctes plut\u00f4t qu'un nombre
+    invraisemblable. `col_lines` (filets verticaux du quadrillage, voir
+    `_detect_column_lines`) bloque aussi la fusion des qu'un VRAI filet de
+    colonne separe les deux tokens, meme si l'ecart en pixels est petit
+    (deux cellules imprimees pres du bord de leur colonne peuvent etre plus
+    proches en X que deux fragments d'un meme nombre coupe par l'OCR)."""
     merge_gap = page_width * 0.025
     label_parts, cells = [], []
     cur_txt, cur_x0, cur_x1 = "", None, None
@@ -238,7 +307,9 @@ def _row_label_and_cells(tokens, page_width):
     for x0, x1, txt in tokens:
         if _tok_is_num(txt):
             seen_number = True
-            if cur_txt and (x0 - cur_x1) <= merge_gap:
+            merged_digit_count = len(re.sub(r"\D", "", cur_txt + txt))
+            blocked = cur_txt and col_lines and _line_between(cur_x1, x0, col_lines)
+            if cur_txt and not blocked and (x0 - cur_x1) <= merge_gap and merged_digit_count <= _MAX_MERGED_DIGITS:
                 cur_txt += "" if txt in ("-", "\u2013", "\u2014") else txt
                 cur_x1 = x1
             else:
@@ -260,9 +331,21 @@ def _cell_value(text):
     return None if val is None else sign * val
 
 
-def _column_bands(rows_cells, page_width):
-    """Bandes X des colonnes de valeurs, deduites des centres des cellules
-    numeriques des lignes de donnees (>= 2 cellules)."""
+def _column_bands(rows_cells, page_width, col_lines=None):
+    """Bandes X des colonnes de valeurs. Priorité au quadrillage détecté
+    (`col_lines`, voir `_detect_column_lines`) quand il en donne assez pour
+    borner ≥ 2 colonnes : chaque bande = le milieu entre deux filets
+    consécutifs, ne sont gardées que celles qui reçoivent réellement au
+    moins un centre de cellule numérique (élimine la large bande "Libellés"
+    à gauche du 1er filet, et toute bande vide au-delà du dernier — jamais
+    de colonne fabriquée sans données réelles). Bien plus fiable que le
+    regroupement de centres ci-dessous sur un tableau à colonnes étroites
+    (AMI : 7 colonnes) où un chiffre tronqué déplace le centre apparent
+    d'une cellule et fait fusionner à tort deux vraies colonnes voisines.
+
+    Repli (tableau non quadrillé, ou quadrillage mal détecté) : bandes
+    déduites des centres des cellules numériques des lignes de données
+    (>= 2 cellules), comme avant — comportement inchangé pour ces cas."""
     centers = []
     for cells in rows_cells:
         if len(cells) >= 2:
@@ -272,6 +355,22 @@ def _column_bands(rows_cells, page_width):
             centers.extend((a + b) / 2 for a, b, _ in cells)
     if not centers:
         return []
+
+    if col_lines and len(col_lines) >= 2:
+        edges = [0.0] + sorted(col_lines) + [page_width]
+        candidate_bands = [(edges[i] + edges[i + 1]) / 2 for i in range(len(edges) - 1)]
+        support = page_width * 0.035
+        # >= 3 (pas juste >= 1) : ecarte une bande fantome creee par un
+        # UNIQUE point isole tombant par hasard dans sa marge de tolerance
+        # (ex. COTUNACE 2019 : un artefact OCR en bord de page, au-dela du
+        # dernier filet reel, cassait la fusion des 2 colonnes "Credit-
+        # Caution" dupliquees en la faisant porter sur 3 bandes au lieu de 2
+        # -- voir `_reconcile_doubled_columns`, qui n'agit que si
+        # `len(col_names) == 2`).
+        kept = [x for x in candidate_bands if sum(1 for c in centers if abs(c - x) <= support) >= 3]
+        if len(kept) >= 2:
+            return kept
+
     centers.sort()
     gap = page_width * 0.045
     bands = [[centers[0]]]
@@ -285,20 +384,61 @@ def _column_bands(rows_cells, page_width):
     return [sum(b) / len(b) for b in chosen]
 
 
-def _header_names(rows, bands, page_width):
+def _header_names(rows, bands, page_width, first_data_yc=None, reocr_fn=None):
     """Libelles de colonne : sur la ligne d'en-tete (la plus riche en
     mots-branches, hors titre), chaque mot est rattache a la bande X la plus
-    proche. Placeholder "(colonne k)" si une bande ne recoit aucun mot."""
-    best_row, best_hits = None, 0
-    for _yc, toks in rows[:14]:
+    proche. Placeholder "(colonne k)" si une bande ne recoit aucun mot.
+
+    Repli position (`first_data_yc`, y du centre de la 1re ligne de
+    DONNÉES) : sur un scan très dégradé, l'OCR peut rendre les mots de
+    branche trop mal pour que `_BRANCH_HEADER_RE` en reconnaisse ≥ 2 (ex.
+    AMI 2020 : "Pncendie"/"Tramspor"/"Autorehbite" pour Incendie/Transport/
+    Automobile) alors que la ligne elle-même reste lisible par un humain
+    (quasi-mots reconnaissables) — dans ce cas, la DERNIÈRE ligne non-titre
+    juste au-dessus de la 1re ligne de données est structurellement la
+    ligne d'en-tête même sans confirmation par le vocabulaire, et ses mots
+    (aussi imparfaits soient-ils) restent bien plus utiles à l'utilisatrice
+    que des "(colonne k)" muets.
+
+    `reocr_fn(yc) -> [(x0,x1,texte), ...] ou None` (optionnel) : une fois la
+    ligne d'en-tête choisie, un second passage OCR ciblé sur SA seule bande
+    horizontale (isolée du reste du tableau) lit nettement mieux les mots
+    courts que la même ligne noyée dans le bloc de page entier — constaté
+    sur AMI 2020, ligne d'en-tête relue "Pncendie/Tramspor/Automebile" au
+    lieu de "lnmnflic/-trlmpurl/autorehbite" pour la même ligne. N'affecte
+    que le CHOIX des mots, jamais celui de la ligne (décidé ci-dessus sur la
+    lecture de page entière, moins coûteuse)."""
+    best_row, best_yc, best_hits = None, None, 0
+    for yc, toks in rows[:14]:
         joined = _normalizer.clean(" ".join(t[2] for t in toks))
         if _FULL_TABLE_PAGE_TITLE_RE.search(joined):
             continue
         hits = len(_BRANCH_HEADER_RE.findall(joined)) + (2 if _HEADER_HINT_RE.search(joined) else 0)
         if hits > best_hits:
-            best_row, best_hits = toks, hits
+            best_row, best_yc, best_hits = toks, yc, hits
+    if (not best_row or best_hits < 2) and first_data_yc is not None:
+        candidate, candidate_yc = None, None
+        for yc, toks in rows[:14]:
+            if yc >= first_data_yc:
+                break
+            joined = _normalizer.clean(" ".join(t[2] for t in toks))
+            if _FULL_TABLE_PAGE_TITLE_RE.search(joined) or not joined:
+                continue
+            # Une vraie ligne d'en-tête est majoritairement du TEXTE (mots de
+            # branche, même mal lus) — écarte une ligne de données mal
+            # étiquetée par erreur (ex. 1re ligne de valeurs sans libellé
+            # propre dans le PDF source, dont le seul token non numérique
+            # est un artefact OCR isolé comme "|").
+            if len(_LABEL_ALPHA_RE.findall(joined)) >= 6:
+                candidate, candidate_yc = toks, yc
+        if candidate:
+            best_row, best_yc = candidate, candidate_yc
+    if best_row and reocr_fn and best_yc is not None:
+        refined = reocr_fn(best_yc)
+        if refined:
+            best_row = refined
     names = ["(colonne %d)" % (i + 1) for i in range(len(bands))]
-    if best_row and best_hits >= 2:
+    if best_row:
         buckets = [[] for _ in bands]
         for x0, x1, txt in best_row:
             if _HEADER_HINT_RE.fullmatch(txt) or _tok_is_num(txt):
@@ -355,8 +495,52 @@ def _title_score(ocr_text):
     return score
 
 
+def _reocr_band(cleaned, yc, config=_FRA_CONFIG, half_height=35):
+    """Ré-OCR ciblé d'une seule bande horizontale (une ligne), isolée du
+    reste du tableau, de l'image déjà nettoyée du quadrillage (`cleaned` —
+    même image que celle passée à `_ocr_rows`, même repère X/Y). Tesseract
+    (--psm 6, "bloc de texte uniforme") lit sensiblement mieux un mot court
+    quand il n'a que cette seule ligne à segmenter, sans les lignes/colonnes
+    voisines pour brouiller sa mise en page interne — utilisé uniquement
+    pour raffiner la ligne d'en-tête déjà choisie (voir `_header_names`),
+    jamais pour le repérage initial (coûterait un passage OCR par ligne).
+    Renvoie [(x0,x1,texte), ...] ou None si rien d'exploitable."""
+    import pytesseract
+    from PIL import Image
+
+    h = cleaned.shape[0]
+    y0, y1 = max(0, int(yc - half_height)), min(h, int(yc + half_height))
+    if y1 <= y0:
+        return None
+    data = pytesseract.image_to_data(
+        Image.fromarray(cleaned[y0:y1, :]), config=config, output_type=pytesseract.Output.DICT
+    )
+    toks = []
+    for i in range(len(data["text"])):
+        t = data["text"][i].strip()
+        if not t:
+            continue
+        try:
+            if float(data["conf"][i]) < 0:
+                continue
+        except (TypeError, ValueError):
+            continue
+        x, w = data["left"][i], data["width"][i]
+        toks.append((x, x + w, t))
+    toks.sort()
+    return toks or None
+
+
 def _page_grid(pdf_path, page_index, dpi=RENDER_DPI):
-    rows = _ocr_rows(_prep(pdf_path, page_index, dpi))
+    from PIL import Image
+
+    gray = _render_gray(pdf_path, page_index, dpi)
+    # Filets de colonne détectés AVANT le retrait du quadrillage (qui les
+    # efface pour la lecture OCR elle-même, voir `_remove_rules`) — position
+    # dans le même repère (déjà recadré de la reliure par `_render_gray`).
+    col_lines = _detect_column_lines(gray)
+    cleaned = _remove_rules(gray)
+    rows = _ocr_rows(Image.fromarray(cleaned))
     if len(rows) < 8:
         return None
     page_width = max((t[1] for _yc, toks in rows for t in toks), default=0)
@@ -364,18 +548,24 @@ def _page_grid(pdf_path, page_index, dpi=RENDER_DPI):
         return None
 
     parsed = []  # (label, [(x0, x1, text), ...])
-    for _yc, toks in rows:
-        label, cells = _row_label_and_cells(toks, page_width)
+    first_data_yc = None
+    for yc, toks in rows:
+        label, cells = _row_label_and_cells(toks, page_width, col_lines)
         if cells and len(_LABEL_ALPHA_RE.findall(label)) >= 3:
             parsed.append((label, cells))
+            if first_data_yc is None:
+                first_data_yc = yc
     if len(parsed) < _MIN_VALUE_ROWS:
         return None
 
-    bands = _column_bands([c for _l, c in parsed], page_width)
+    bands = _column_bands([c for _l, c in parsed], page_width, col_lines)
     if not bands:
         return None
     n_cols = len(bands)
-    col_names = _header_names(rows, bands, page_width)
+    col_names = _header_names(
+        rows, bands, page_width, first_data_yc,
+        reocr_fn=lambda yc: _reocr_band(cleaned, yc),
+    )
 
     lignes = {}
     for label, cells in parsed:

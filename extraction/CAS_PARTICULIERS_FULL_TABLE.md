@@ -1016,3 +1016,82 @@ gabarit de page réellement différent pour ces exercices plus anciens (pas une
 régression du fix ci-dessus, qui n'a aucun effet quand la table source n'a pas
 la même structure de span). Diagnostic à reprendre séparément si ces
 années sont dans le périmètre demandé.
+
+## 2026-09-10 — AMI : colonnes OCR effondrées en 1 seule ("(colonne 1)")
+
+Passage à AMI (méthode "une société à la fois, validée avec l'utilisatrice
+entre deux") après TUNIS_RE. AMI_2020.pdf page 47 est un SCAN IMAGE pur
+(`page.chars`=4, aucune couche texte) — voie OCR (`scanned_table_extractor.
+py`). Avant correction : `locate_and_extract_full_table` renvoyait une
+grille à une seule colonne `['(colonne 1)']`, alors que le PDF (vérifié par
+rendu image, `pdfplumber.to_image`) montre clairement 7 colonnes nettes
+Incendie/Transport/Risq. Divers/Risq. Spx/Automobile/Groupe/Total, dans un
+tableau quadrillé bien imprimé (pas un scan dégradé).
+
+**Cause racine.** `_column_bands` déduisait les colonnes en regroupant les
+CENTRES des cellules numériques lues par l'OCR (tolérance 4,5 % de la
+largeur de page). Sur un tableau à 7 colonnes étroites, un seul chiffre
+tronqué ou deux cellules voisines qui se touchent presque suffit à décaler
+le centre apparent d'une cellule et à faire fusionner à tort plusieurs
+vraies colonnes en une seule bande — ce qui s'est produit ici de façon quasi
+totale.
+
+**Fix généralisable (`_detect_column_lines`, nouveau)** : le tableau est
+QUADRILLÉ dans le PDF — ses filets verticaux, imprimés par le document
+lui-même, donnent la frontière EXACTE entre colonnes, indépendamment de ce
+que l'OCR a lu dans chacune. Détectés par la même morphologie OpenCV que
+`_remove_rules` (qui les efface pour la lecture OCR) mais en CAPTURANT leurs
+positions X avant effacement. `_column_bands` les utilise en priorité :
+chaque bande = le milieu entre deux filets consécutifs, gardée seulement si
+elle reçoit réellement ≥ 3 centres de cellule numérique (repli sur
+l'ancien regroupement de centres si le quadrillage est absent/mal détecté).
+`_row_label_and_cells` bloque aussi la fusion de deux tokens numériques
+proches dès qu'un VRAI filet de colonne les sépare, même si l'écart en
+pixels est petit. Vérifié sur AMI_2020 p.47 : filets détectés à
+[457,1855,2056,2258,2462,2664,2868,3070,3272,3720] (repère du scan à 340
+dpi) → 7 bandes exactement alignées sur les 7 colonnes réelles.
+
+**Régression détectée et corrigée en cours de route (COTUNACE 2019).** Le
+seuil de "support" minimal pour garder une bande fondée sur le quadrillage
+était `≥ 1` centre de cellule — trop permissif : un unique artefact OCR en
+bord de page (au-delà du dernier filet réel) tombait par hasard dans sa
+marge de tolérance et créait une 3ᵉ bande fantôme, cassant la fusion des 2
+colonnes "Crédit-Caution" dupliquées (`_reconcile_doubled_columns`, qui
+n'agit que si `len(colonnes) == 2` après dédoublonnage) — sortie passée de
+`['Crédit-Caution']` (correct) à `['Crédit-Caution', 'Crédit-Caution (2)',
+'(colonne)']` (cassé). Relevé le seuil à `≥ 3` : re-vérifié, COTUNACE 2019
+revient à `['Crédit-Caution']`.
+
+**En-têtes de colonne toujours mal lus malgré la structure correcte.**
+Même avec les 7 bonnes bandes, les noms de branche restaient méconnaissables
+("lnmnflic", "-trlmpurl", "rkq. dm mi"...) — l'OCR page entière (Tesseract
+--psm 6) lit mal les mots courts de l'en-tête, noyés dans le bloc de tableau
+complet. `_header_names` gagne un repli `reocr_fn` : une fois la ligne
+d'en-tête identifiée (par vocabulaire de branche si possible, sinon par
+POSITION — dernière ligne à ≥ 6 lettres juste au-dessus de la 1re ligne de
+données, nouveau repli lui aussi générique), elle est RE-OCRisée seule, sa
+bande horizontale isolée du reste du tableau — Tesseract segmente et lit
+nettement mieux une ligne isolée qu'au sein d'un bloc entier. Résultat sur
+AMI 2020 : "lnmnflic/-trlmpurl/rkq. dm mi/autorehbite/cmltycl" →
+"kmcendie/trampor/fiq.piver/automebile/grope" — toujours imparfait mais
+désormais lisible/reconnaissable pour un francophone (contre illisible
+avant), et bien préférable à un "(colonne k)" muet.
+
+**État final AMI 2020** : 7 colonnes correctement délimitées et nommées
+(imparfaitement mais lisiblement), 20/23 lignes reconnues (3 non reconnues :
+"Annexe" et "Arnexes aux états financiers..." = bruit de bas de page capté
+à tort comme lignes de données — préambule/pied de page, pas des postes du
+tableau ; "Commissions reçues..." reste non reconnue car son propre libellé
+est trop dégradé par l'OCR pour matcher). 1 seul écart de validation
+(`charges_acquisition_gestion`, colonne Total) contre de nombreux avant —
+dû à un chiffre encore mal fusionné par l'OCR sur cette cellule précise
+(limite résiduelle de qualité de lecture, pas de structure).
+
+**Limite reconnue, non résolue ici** : contrairement à TUNIS_RE (bug de
+logique pur,100 % corrigible), AMI_2020 reste un scan image et certaines
+cellules individuelles restent mal lues par Tesseract (chiffres fusionnés
+entre eux, ex. "9853" + "-10484" recollés en un seul mot OCR AVANT même
+d'atteindre notre logique de colonnes — la faute vient de la segmentation
+de mot de Tesseract lui-même, pas de notre code). Documenté comme limite de
+qualité de scan/OCR, dans la même famille que les cas déjà connus
+(COTUNACE 2023 filets épais, STAR/ASTREE pages scannées).
