@@ -3589,8 +3589,120 @@ _TUNISRE_2022 = _grid(_TUNISRE_COLS, 75, [
 ], rows=_R_TUNISRE)
 
 
+# ── AMI — compléments 2018 + 2021.
+# 2018 (p49) : Annexe 13 « par catégorie » 7 colonnes (Incendie / Transport
+# / Risques divers / Risques spéciaux / Automobile / Groupe / Total).
+# Séparateur milliers = espace simple -> reconstruction géométrique
+# (scratchpad/ami2018.py). 1re ligne (« Primes acquises ») a perdu son
+# libellé. Charges en magnitude positive -> faux positifs validate_table
+# documentés. SS = PA − CP ; RT = SS − CAG + SF + SR : écart nul.
+# 2021 (p43) : pas d'Annexe 13 par catégorie exploitable (scan) -> Annexe
+# 16 « raccordement » (colonne Total). Le RT imprimé (5 899 603) diffère de
+# SS + CAG + SF + SR (6 492 023) de 592 420 = la déduction « provisions
+# devenues exigibles » (hors modèle) -> 1 écart validate_table documenté.
+_R_AMI18 = [
+    'Primes acquises',
+    'Primes émises',
+    'Variation des primes non acquises',
+    'Charges de prestations',
+    'Prestations et frais payés',
+    'Charges des provisions pour prestations diverses',
+    'Solde de souscription',
+    "Frais d'acquisition",
+    'Autres charges de gestion nettes',
+    "Charges d'acquisition et de gestion nettes",
+    'Produits nets de placements',
+    'Participation aux résultats',
+    'Solde financier',
+    'Part des réassureurs dans les primes acquises',
+    'Part des réassureurs dans les prestations payées',
+    'Part des réassureurs dans les charges de provisions pour prestations',
+    'Part des réassureurs dans la participation aux résultats',
+    'Commissions reçues des réassureurs / rétrocessionnaires',
+    'Solde de réassurance / rétrocession',
+    'Résultat technique',
+    'Provisions pour primes non acquises (clôture)',
+    'Provisions pour primes non acquises (réouverture)',
+    'Provisions pour sinistres à payer (clôture)',
+    'Provisions pour sinistres à payer (réouverture)',
+]
+_AMI_2018 = _grid(_AMI_COLS, 49, [
+    [4049078, 1982039, 2053954, 956840, 148048158, 10090767, 167180836],
+    [3194478, 2004836, 1880702, 765761, 146727479, 10090767, 164664023],
+    [854601, -22797, 173252, 191078, 1320679, 0, 2516813],
+    [738000, 638520, 381965, 198169, 169764143, 12131132, 183851930],
+    [45931, 38716, 819284, 102409, 108617323, 12090835, 121714499],
+    [692070, 599804, -437319, 95760, 61146820, 40297, 62137431],
+    [3311078, 1343519, 1671989, 758671, -21715985, -2040365, -16671094],
+    [614223, 154131, 230212, 92088, 17911477, 235212, 19237342],
+    [776226, 487155, 456992, 186072, 35653290, 2451954, 40011688],
+    [1390449, 641286, 687204, 278160, 53564767, 2687166, 59249030],
+    [110038, 40518, 82113, 36956, 9305408, 82169, 9657202],
+    [0, 0, 0, 0, 0, -94398, -94398],
+    [110038, 40518, 82113, 36956, 9305408, -12229, 9562804],
+    [-2654589, -1462309, -851633, -457282, -3971003, 0, -9396817],
+    [23418, 42031, 688684, 87835, 939705, 0, 1781673],
+    [424995, 604699, -555142, 86141, 3740858, 0, 4301551],
+    [None, None, None, None, None, None, 0],
+    [681574, 259895, 123926, 120135, 0, 0, 1185530],
+    [-1524602, -555684, -594166, -163170, 709560, 0, -2128063],
+    [506065, 187067, 472733, 354296, -65265784, -4739760, -68485383],
+    [-1736383, -368134, -464149, -846316, -55713400, 0, -59128381],
+    [2590983, 345336, 637401, 1037395, 57034079, 0, 61645195],
+    [2518125, 1539672, 2466030, 562171, 332803381, 3257819, 343147198],
+    [-1826055, -939868, -2903350, -466411, -272259032, -3217522, -281612238],
+], rows=_R_AMI18)
+
+_R_AMI21 = [
+    'Primes acquises',
+    'Primes émises',
+    'Variation des primes non acquises',
+    'Charges de prestations',
+    'Prestations et frais payés',
+    'Charges des provisions pour prestations diverses',
+    'Solde de souscription',
+    "Charges d'acquisition et de gestion nettes",
+    'Produits nets de placements',
+    'Participation aux résultats',
+    'Solde financier',
+    'Part des réassureurs dans les primes acquises',
+    'Part des réassureurs dans les prestations payées',
+    'Part des réassureurs dans les charges de provisions pour prestations',
+    'Commissions reçues des réassureurs / rétrocessionnaires',
+    'Solde de réassurance / rétrocession',
+    'Résultat technique',
+    'Provisions pour primes non acquises (clôture)',
+    'Provisions pour primes non acquises (réouverture)',
+    'Provisions pour sinistres à payer (clôture)',
+    'Provisions pour sinistres à payer (réouverture)',
+]
+_AMI_2021 = _grid(["Total"], 43, [[v] for v in [
+    135483631,
+    134687879,
+    795752,
+    -93658162,
+    -115551627,
+    21893465,
+    41825469,
+    -46817038,
+    11300482,
+    -113100,
+    11187382,
+    6168562,
+    -2018845,
+    -2704485,
+    -1149022,
+    296210,
+    5899603,
+    53584145,
+    54379898,
+    325313418,
+    347394031,
+]], rows=_R_AMI21)
+
 VERIFIED = {
     ("AMI", 2019): _AMI_2019, ("AMI", 2020): _AMI_2020, ("AMI", 2023): _AMI_2023,
+    ("AMI", 2018): _AMI_2018, ("AMI", 2021): _AMI_2021,
     ("COTUNACE", 2017): _COT_2017, ("COTUNACE", 2018): _COT_2018, ("COTUNACE", 2019): _COT_2019,
     ("COTUNACE", 2020): _COT_2020, ("COTUNACE", 2021): _COT_2021,
     ("COTUNACE", 2023): _COT_2023, ("COTUNACE", 2024): _COT_2024,
