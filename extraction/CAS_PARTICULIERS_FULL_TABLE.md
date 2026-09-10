@@ -1401,3 +1401,35 @@ seuls 2019 et 2022 sont réellement à reprendre.
 Stockées via `process_one_document` (statut `ok_verifie`, docs
 219/49/50/51/53/56/57/58). Aucun changement de pipeline nécessaire (libellés
 de ligne et de colonne GAT rattachés par les canoniques/alias existants).
+
+## 2026-09-10 (suite) — ASTREE : investigation, PAS encore figée
+
+Gabarit ASTREE Annexe 13 = le plus difficile rencontré :
+- **17 colonnes** : 14 branches (Auto, Transport, Aviation, Incendie, Resp.
+  décennale, Resp. civile, Risques agricoles, Autres dommages aux biens,
+  Assistance A.E.A, Assurance Crédit, Maladie, Invalidité, Individuelle Loi,
+  Pertes pécuniaires) + **« Total » (direct)** + **Acceptations** +
+  **« Total » (général)** — trois colonnes de type total quasi adjacentes à
+  droite, difficiles à séparer géométriquement.
+- **En-têtes rendus lettre-à-lettre** (« Re D s é p c o e n n s n a a b l i
+  e lité ») et, sur 2025, certaines lignes de données réassurance aussi.
+- **Conventions de signe mélangées** dans un même PDF : `-`, `‐` (U+2010),
+  `<...>` (2016-2021), `(...)`.
+- **2015** : montants en milliers à virgule (« 43 202,097 ») ET en unités à
+  espace (« -6 044 444 ») sur la même page (même échelle : dinars).
+- **Nombre de colonnes VARIABLE d'une ligne à l'autre** (les lignes sans
+  Acceptations sautent la colonne, le « Total direct » = « Total général »).
+
+Modèle additif comme COMAR : SS = Primes(acquises) + Variation + Prestations
+payées + Charges provisions ; CAG = FA + Autres ch. gestion ; SF = Produits
+placements + Participation ; SR = Σ parts réassureurs ; RT = SS+CAG+SF+SR.
+
+**2022 & 2023 : Annexe 13 est un SCAN sans couche texte** (2022 p.37-40,
+2023 p.35-40, filigrane « Projet ») — OCR nécessaire, comme AMI.
+
+**2015-2021, 2024, 2025** : couche texte native mais 4 tentatives de
+reconstruction automatique (géométrique + texte) ne convergent pas
+(désalignement des 3 colonnes Total, libellés lettre-à-lettre). À reprendre
+par transcription manuelle poste par poste recoupée par les identités
+(méthode AMI/COTUNACE), ou passe géométrique dédiée sur les 3 colonnes de
+droite.
