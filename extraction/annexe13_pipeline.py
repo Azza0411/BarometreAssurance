@@ -262,6 +262,10 @@ CANONICAL_COLUMNS = [
     "Total marines", "Total non marines", "Total non vie", "Wakala",
     "Perte d'exploitation",  # branche COMAR (2020-2025)
     "Loi",  # branche ASTREE (« Individuelle » / « Loi » = 2 colonnes distinctes)
+    # Branches CARTE : « RENTES » et « INCAP.INVAL. » (2015-2022),
+    # « RISQUES FINANCIERS » (2021-2022), « ASSURANCE DE GROUPE » (2024-2025).
+    "Rentes", "Incapacité invalidité", "Risques financiers",
+    "Assurance de groupe",
     # Gabarit "raccordement" (Brut/Cessions/Net) — pas des branches mais un
     # 2e type de tableau Annexe 13 rencontré sur certaines sociétés/années
     # (BH, AMI, CTAMA, COMAR — voir CAS_PARTICULIERS_FULL_TABLE.md, cas STAR
