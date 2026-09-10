@@ -110,6 +110,13 @@ CANONICAL_ROWS = [
     # `_MATCH_THRESHOLD`, il finissait donc en "non reconnu" plutôt que
     # rattaché à un poste canonique inexistant à tort — ajouté tel quel.
     "Wakala",
+    # Ajoutés le 2026-09-10 (vérification LLOYD_TUNISIEN) : ces 2 postes des
+    # "informations complémentaires" matchaient à tort (difflib) "Provisions
+    # pour sinistres à payer (clôture)/(réouverture)" — proches en surface,
+    # sémantiquement distincts — et leurs valeurs étaient perdues par
+    # collision. Explicités pour matcher exactement.
+    "Autres provisions techniques (clôture)",
+    "Autres provisions techniques (réouverture)",
 ]
 
 # Score minimal (difflib.SequenceMatcher.ratio, 0-1) pour accepter une
@@ -272,10 +279,12 @@ _COLUMN_ALIASES = {
     "invalidite": "Invalidité",
     "autres": "Autres", "autre s": "Autres",
     "risque tech.": "Risques techniques", "risque tech": "Risques techniques",
-    # "ARD" (branche réassurance, ex. TUNIS_RE) - abréviation d'usage sur ces
-    # gabarits, distincte de "Risques divers" (branche assureur direct) donc
-    # jamais fusionnée avec elle (voir remarque en tête de dictionnaire).
-    "ard": "ARD",
+    # "ARD" / "Acc R.D" = "Accidents et Risques Divers" — abréviation d'usage
+    # sur ces gabarits (TUNIS_RE écrit "ARD", LLOYD_TUNISIEN "Acc R.D"),
+    # distincte de "Risques divers" (branche assureur direct) donc jamais
+    # fusionnée avec elle (voir remarque en tête de dictionnaire).
+    "ard": "ARD", "acc r.d": "ARD", "acc rd": "ARD", "acc r d": "ARD",
+    "acc. r.d": "ARD", "accidents et risques divers": "ARD",
     "marines": "Marines", "non marines": "Non marines", "non m arines": "Non marines",
     "total marines": "Total marines", "total m arines": "Total marines",
     "total non marines": "Total non marines", "total non m arines": "Total non marines",
@@ -355,6 +364,12 @@ def normalize_column_label(raw_label):
     return raw_label.strip(), False
 
 
+_SECTION_SEPARATOR_LABELS = {
+    "informations complementaires", "informations complementaires :",
+    "a deduire", "a deduire :",
+}
+
+
 def normalize_table(grid):
     """Applique `normalize_row_label`/`normalize_column_label` à toutes les
     lignes ET colonnes d'une grille issue de `full_table_extractor.
@@ -389,6 +404,11 @@ def normalize_table(grid):
     lignes_normalisees = {}
     non_reconnues = []
     for raw_label, values in grid["lignes"].items():
+        # Lignes de SÉPARATION de section, jamais des postes (ex. LLOYD_TUNISIEN :
+        # "Informations complémentaires", "A déduire :") — parfois captées avec
+        # une valeur résiduelle (Total = 0) par la reconstruction de grille.
+        if _normalizer.clean(raw_label) in _SECTION_SEPARATOR_LABELS:
+            continue
         normalized, matched = normalize_row_label(raw_label)
         if not matched:
             non_reconnues.append(raw_label)
