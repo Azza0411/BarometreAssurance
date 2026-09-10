@@ -1720,3 +1720,21 @@ Total), calque texte propre -> reconstruction géométrique
 camelot bancales issues de la page Brut/Cessions/Net purgées — doc 119).
 
 **Bilan BNA : 1/2 figée** (2025). Reste 2024 (pas d'Annexe 13 au dépôt).
+
+## 2026-09-10 (suite) — GAT : +2019 +2021 (10/11)
+
+Les pages Non-Vie de GAT 2019/2021/2022 étaient introuvables par l'ancien
+parser (pointait par erreur sur l'Annexe 12 Vie voisine). Vraies pages :
+2019 p35, 2021 p34, 2022 p32. Reconstruction géométrique adaptée de CARTE
+(millimes, négatifs U+2010, **paires de nombres collés** « ...,747... »
+recoupées après les 3 décimales). 16 colonnes, ordre 2019+ (Maladie AVANT
+Accidents corporels — inverse de 2016-2018). Modèle additif signé + Σ
+branches = Total.
+
+- **2019, 2021** : écart nul -> figées (`_GAT_COLS_NV16`).
+- **2022** : 10 écarts résiduels concentrés sur les colonnes serrées
+  « Accidents du travail » (branche quasi nulle) et « Protection
+  juridique » — désalignement géométrique d'une ligne à l'autre. À
+  reprendre.
+
+**Bilan GAT : 10/11 figées.** Reste 2022.
