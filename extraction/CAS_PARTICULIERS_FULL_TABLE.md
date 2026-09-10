@@ -1821,20 +1821,25 @@ Transport+Aviation ; Total non vie = TnM+TM ; Total = Total non vie+Vie.
 fragment SUIVANT » + recalcul des colonnes agrégées (Total non marines /
 marines / non vie / Total) depuis les colonnes atomiques -> **+2016 +2021**.
 
-**Bilan TUNIS_RE : 4/11 figées** (2015, 2016, 2021, 2022). Restent :
-- **2017** : 4 résidus — la colonne « Transport » de la ligne « Produits
-  nets de placements » est reconstruite à 199 871 au lieu de ~1 558 809
-  (fragments « 1 »/« 558 » captés dans une colonne voisine). PNP n'a pas
-  d'identité locale -> l'erreur n'apparaît que via RT (Transport -> Total
-  marines -> Total non vie -> Total).
-- **2019, 2023, 2024, 2025** : ~10 résidus / an — les lignes « Part des
-  rétrocessionnaires » sont reconstruites avec de petites dérives par
-  colonne (calque texte plus dégradé sur ces millésimes).
-- **2018** : libellés de la section CAG brouillés
-  (« charges autres charges d'acquisition de gestion »).
-- **2020** : éclatement pathologique — nombres à 10+ chiffres reconstruits
-  faux.
-Chacun demande un débogage cellule par cellule de l'assignation des
-fragments ; rendement décroissant. Le parser `scratchpad/tunisre.py` et le
-modèle comptable (SS = PA-CP ; SR = RA(primes)-RA(prest)-RA(ch.prov)-Comm ;
-RT = SS-CAG+PNP-SR) restent en place pour une reprise.
+**Débloqué (2026-09-10, insistance utilisatrice) : la ligne « Wakala »**
+(frais de gestion rétakaful) apparaît dans le bloc réassurance À PARTIR DE
+2019, ENTRE « Commissions reçues » et « Solde de rétrocession », et entre
+en DÉDUCTION du Solde de rétrocession :
+`SR = Part rétro.(primes) − Part rétro.(prest) − Part rétro.(ch.prov) −
+Part rétro.(participation) − Commissions − Wakala`.
+En l'ajoutant au modèle (+ recollage des libellés RA éclatés sur 2-3
+lignes, + recompute des colonnes agrégées avec composante Aviation
+facultative), **2019, 2023, 2024, 2025 passent écart nul**.
+
+**Bilan TUNIS_RE : 9/11 figées** (2015, 2016, 2017, 2019, 2021-2025).
+- **2017** : le PDF SOURCE est lui-même incohérent — RT « Transport »
+  imprimé 1 953 727 alors que Solde financier − Solde de rétrocession =
+  594 788 (et RT Transport + RT Aviation ne redonne pas RT Total marines
+  via SF/SR). Valeurs conservées telles qu'imprimées -> 4 écarts
+  validate_table = erreur de la source (cf. BH 2023).
+- **2018** : pdfplumber FUSIONNE deux lignes du tableau verticalement
+  proches (« Autres charges de gestion nettes » + « Charges d'acquisition
+  et de gestion nettes ») en une seule ligne à 30 valeurs entrelacées ->
+  CAG inexploitable. Non figée.
+- **2020** : éclatement des nombres trop sévère (fragments d'une même
+  valeur répartis sur plusieurs colonnes). Non figée.
