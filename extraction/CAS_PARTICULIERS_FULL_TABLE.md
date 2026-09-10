@@ -1738,3 +1738,22 @@ branches = Total.
   reprendre.
 
 **Bilan GAT : 10/11 figées.** Reste 2022.
+
+## 2026-09-10 (suite) — COTUNACE : +2018 (8/11)
+
+**2018** (p62) : « Résultat technique par catégorie d'assurance NON-VIE »
+en couche texte native (millimes, magnitude positive pour les charges comme
+2019-2025). Transcription directe (24 lignes `_R`). Toutes identités
+réelles écart nul (SS = PA − CP ; RT = SS − CAG + SF + SR) ; `validate_table`
+signale 5 faux positifs de présentation, comme les autres millésimes
+COTUNACE.
+
+**2015, 2016** : aucune « Résultat technique par catégorie » dans le dépôt
+(le mot « souscription » n'apparaît nulle part) — COTUNACE mono-branche,
+rapports anciens sans cette annexe.
+**2022** : les pages de la section résultats/placements sont scannées et
+OCR-illisibles (« 31 d6cembre », « CoMPAGNm Tur\`IsiHNNb ») — pas de table
+exploitable.
+
+**Bilan COTUNACE : 8/11 figées.** Restent 2015, 2016 (annexe absente),
+2022 (scan OCR).
