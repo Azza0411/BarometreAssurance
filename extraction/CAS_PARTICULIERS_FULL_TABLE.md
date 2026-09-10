@@ -1222,3 +1222,26 @@ Reste COMAR : **2025** (15 branches, texte natif mais bloc réassurance à ~9
 sous-lignes, la reconstruction auto décale libellés/valeurs — passe dédiée) ;
 **2020, 2021, 2022, 2024** (15 branches, pages IV.7 SCANNÉES) ; **2015**
 (raccordement) ; **2016, 2018** (page introuvable).
+
+## 2026-09-10 (suite) — COMAR 2025 figée (passe soignée signes)
+
+COMAR 2025 (15 branches, page 39, texte natif) : le PDF note d'un simple
+« - » AUSSI BIEN une cellule vide qu'un signe négatif. Reconstruction
+géométrique (positions de colonne) pour l'assignation + les valeurs ;
+signes recoupés/corrigés par les identités comptables (les colonnes Total
+des lignes-sommes « Solde financier », « Part des réassureurs dans les
+prestations payées », « Commissions reçues » avaient un signe faux dans la
+lecture auto → re-signées d'après la somme des composantes). Toutes les
+identités principales (Solde souscription, Charges d'acq. et gestion,
+Solde financier, Résultat technique) tombent juste ; 4 branches mineures
+(Risques agricoles, Construction, Perte d'exploitation, Crédit-Caution)
+ont un résidu de 250-1700 dinars sur le seul « Solde de réassurance »
+(détail réassurance à 9 sous-lignes) — valeur PRINTÉE du PDF conservée.
+
+`CANONICAL_ROWS` complété : « Autres charges techniques », et 3 lignes
+« Part des réassureurs dans les frais reportés / … frais d'acquisition /
+… autres charges techniques » (bloc réassurance détaillé de COMAR 2025).
+
+**Bilan COMAR : 4/11 années figées** (2017, 2019, 2023, 2025). Restent
+2020/2021/2022/2024 (pages IV.7 SCANNÉES, 15 branches) ; 2015
+(raccordement) ; 2016/2018 (page introuvable).

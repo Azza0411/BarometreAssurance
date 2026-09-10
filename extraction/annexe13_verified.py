@@ -406,12 +406,91 @@ _CM_2023 = _grid(_CM_COLS_15, 35, [
     [None, None, None, 1493061, None, 2222, None, None, None, None, None, None, None, None, 1495283],
 ], rows=_R_COMAR_15)
 
+# COMAR 2025 : présentation encore plus détaillée (bloc réassurance à 9
+# sous-lignes, "Autres charges techniques" en 3e composante des charges
+# d'acquisition). Reconstruction géométrique + signes recoupés par les
+# identités comptables (les "-" du PDF marquent aussi bien une cellule vide
+# qu'un signe négatif ; les colonnes Total des lignes-sommes ont été
+# re-signées d'après la somme des composantes).
+_R_COMAR_25 = [
+    "Primes émises", "Variation des primes non acquises",
+    "Prestations et frais payés", "Charges des provisions pour prestations diverses",
+    "Solde de souscription", "Frais d'acquisition", "Autres charges de gestion nettes",
+    "Autres charges techniques", "Charges d'acquisition et de gestion nettes",
+    "Produits nets de placements", "Autres produits techniques", "Solde financier",
+    "Part des réassureurs dans les primes acquises",
+    "Part des réassureurs dans la variation des primes non acquises",
+    "Part des réassureurs dans les prestations payées",
+    "Part des réassureurs dans les charges de provisions pour prestations",
+    "Commissions reçues des réassureurs / rétrocessionnaires",
+    "Part des réassureurs dans la participation aux résultats",
+    "Part des réassureurs dans les frais reportés",
+    "Part des réassureurs dans les frais d'acquisition",
+    "Part des réassureurs dans les autres charges techniques",
+    "Solde de réassurance / rétrocession", "Résultat technique",
+    "Provisions pour primes non acquises (clôture)",
+    "Provisions pour primes non acquises (réouverture)",
+    "Provisions pour sinistres à payer (clôture)",
+    "Provisions pour sinistres à payer (réouverture)",
+    "Prévisions de recours à encaisser (exercice N)",
+    "Prévisions de recours à encaisser (exercice N-1)",
+    "Provisions pour participations aux bénéfices (exercice N)",
+    "Provisions pour participations aux bénéfices (exercice N-1)",
+    "Provisions pour égalisation et équilibrage (exercice N)",
+    "Provisions pour égalisation et équilibrage (exercice N-1)",
+    "Provisions mathématiques de rente (exercice N)",
+    "Provisions mathématiques de rente (exercice N-1)",
+    "Provisions pour risques en cours (exercice N)",
+    "Provisions pour risques en cours (exercice N-1)",
+]
+
+_CM_2025 = _grid(_CM_COLS_15, 39, [
+    [29499810, None, 8729211, 133219192, 9589298, 61201635, 5857000, 1027011, 3174968, 1879279, 115394, 10217178, 8420060, 415945, 273345982],
+    [459967, None, -477546, -466847, -118337, -807262, None, -229286, -263056, None, None, None, None, 319196, -1583171],
+    [-12810430, -463380, -1636976, -82656863, -1788172, -44369910, -808853, -402297, -416014, -98357, -32409, -4129383, -498128, -193687, -150304859],
+    [386446, 34885, 15778787, -3754844, -3503119, -1342293, 596243, 159145, 719452, 10400, 1000, 22451, -138509, 1123945, 10093989],
+    [17535792, -428495, 22393476, 46340638, 4179671, 14682170, 5644391, 554572, 3215350, 1791322, 83985, 6110246, 7783423, 1665399, 131551940],
+    [-8019660, None, -1432619, -23565618, -2173129, -7094670, -1238382, -219705, -620626, -550173, -53414, -2176786, -2182286, None, -49327069],
+    [-2943466, None, -920021, -13821977, -1642052, -4055865, -830572, -187350, -550153, -238494, -61939, -584922, -827327, None, -26664137],
+    [-838182, None, -134636, -3201092, -491143, -2256530, -120002, -24000, -13951, -42951, -15709, -17041, -22418, None, -7177654],
+    [-11801308, None, -2487275, -40588687, -4306323, -13407065, -2188956, -431054, -1184731, -831618, -131062, -2778749, -3032032, None, -83168861],
+    [9137118, 835782, 5666746, 39921913, 1680875, 2947914, 726214, 1481415, 1099161, 40929, 5354, 174028, 219571, None, 63937022],
+    [None, None, None, 151741, None, None, None, None, None, None, None, None, None, None, 151741],
+    [9137118, 835782, 5666746, 40073653, 1680875, 2947914, 726214, 1481415, 1099161, 40929, 5354, 174028, 219571, None, 64088763],
+    [-25040497, None, -3361915, -1589397, -6277312, -4421262, -4507342, -653746, -3146280, -1588560, -98076, -572771, -136144, None, -51393301],
+    [-951746, None, 73812, None, 15517, None, -34383, -38634, 648501, -53169, 180, None, 6780, None, -333142],
+    [6850998, None, 48945, 6034, 679125, 2455242, 378532, 197799, 141451, None, None, None, None, None, 10758127],
+    [2485230, None, -11814182, -1037265, 323863, -279101, -387284, -97312, -693181, -5338, 850, None, 1863, -38856, -11542414],
+    [5911362, None, 824913, None, 1569794, 1333859, 1221765, 194652, 641762, 503891, 24404, 57024, 44610, None, 12328035],
+    [None, None, None, None, 277867, None, None, None, None, None, None, None, None, None, 277867],
+    [-10905, None, -14331, None, 2058, None, -4126, None, -44543, 243, None, None, -2501, None, -74590],
+    [-189280, None, None, None, None, None, None, None, None, None, None, None, None, None, -189280],
+    [-56325, None, -6616, None, -11253, -12515, -11152, 132, 126, 109, None, None, None, None, -98229],
+    [-11001162, None, -14249375, -2620628, -3420342, -923776, -3343990, -397373, -2452415, -1143528, -74342, -515747, -85392, -38856, -40266927],
+    [3870440, 407287, 11323572, 43204976, -1866119, 3299243, 837659, 1207559, 677365, -142895, -116065, 2989779, 4885570, 1626543, 72204915],
+    [6158223, None, 477546, 47337383, 2018337, 2076831, None, 11947312, 4265857, None, None, None, None, 1361294, 75642783],
+    [6618191, None, None, 46870536, 1900000, 1269569, None, 11718025, 4002801, None, None, None, None, 1680490, 74059612],
+    [55668071, None, 39198748, 294329106, 13813342, 6637641, 5590412, 591661, 4186948, 344000, 45000, 1462671, 1199769, 8414770, 431482140],
+    [55923395, None, 53696563, 296178894, 10574166, 7110183, 6186655, 773806, 4906400, 354400, 46000, 1485122, 1061260, 9538716, 447835561],
+    [-880541, None, None, -24912059, -3908981, None, -484563, -88000, -31000, None, None, None, None, None, -30305144],
+    [-905561, None, None, -30186563, -3654681, None, -484563, -111000, -31000, None, None, None, None, None, -35373368],
+    [1025438, None, 1027036, 10846966, 1378242, 2799047, None, None, None, None, None, None, None, None, 17076729],
+    [1181580, None, 970820, 10785481, 859999, 2128583, None, None, None, None, None, None, None, None, 15926463],
+    [8322701, None, 6922675, None, None, 13263066, None, None, None, None, None, None, None, None, 28508441],
+    [8322701, None, 7659855, None, None, 12049092, None, None, None, None, None, None, None, None, 28031649],
+    [None, 7024569, None, 7933686, None, None, None, None, None, None, None, None, None, None, 14958255],
+    [None, 7059454, None, 7665041, None, None, None, None, None, None, None, None, None, None, 14724495],
+    [11925, None, 1776, None, None, None, None, None, None, None, None, None, None, None, 13701],
+    [None, None, 601805, None, None, 69602, None, None, None, None, None, None, None, None, 671408],
+], rows=_R_COMAR_25)
+
 VERIFIED = {
     ("AMI", 2019): _AMI_2019, ("AMI", 2020): _AMI_2020, ("AMI", 2023): _AMI_2023,
     ("COTUNACE", 2017): _COT_2017, ("COTUNACE", 2019): _COT_2019,
     ("COTUNACE", 2023): _COT_2023,
     ("LLOYD_TUNISIEN", 2021): _LL_2021, ("LLOYD_TUNISIEN", 2022): _LL_2022,
     ("COMAR", 2017): _CM_2017, ("COMAR", 2019): _CM_2019, ("COMAR", 2023): _CM_2023,
+    ("COMAR", 2025): _CM_2025,
 }
 
 

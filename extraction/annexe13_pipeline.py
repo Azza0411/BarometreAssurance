@@ -122,7 +122,7 @@ CANONICAL_ROWS = [
     # (2 lignes) plutôt qu'en "Produits nets de placements" + "Participation
     # aux résultats", et ses "informations complémentaires" incluent 2 postes
     # de plus, chacun par exercice N / N-1.
-    "Autres produits techniques",
+    "Autres produits techniques", "Autres charges techniques",
     "Provisions pour participations aux bénéfices (exercice N)",
     "Provisions pour participations aux bénéfices (exercice N-1)",
     "Provisions pour risques en cours (exercice N)",
@@ -131,6 +131,9 @@ CANONICAL_ROWS = [
     # à ne PAS confondre (difflib) avec "... dans les primes acquises".
     "Part des réassureurs dans la variation des primes non acquises",
     "Part des réassureurs dans les charges des autres provisions techniques",
+    "Part des réassureurs dans les frais reportés",
+    "Part des réassureurs dans les frais d'acquisition",
+    "Part des réassureurs dans les autres charges techniques",
 ]
 
 # Score minimal (difflib.SequenceMatcher.ratio, 0-1) pour accepter une
