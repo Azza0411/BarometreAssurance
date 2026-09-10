@@ -1284,3 +1284,39 @@ Stockées via `process_one_document` (statut `ok_verifie`, docs 25/26/27/29),
 **Bilan COMAR : 8/11 années figées** (2017, 2019, 2020, 2021, 2022, 2023,
 2024, 2025). Restent 2015 (raccordement de format) ; 2016, 2018 (page
 Annexe 13 introuvable dans le dépôt CMF).
+
+## 2026-09-10 (suite) — COTUNACE 2020, 2021, 2024, 2025 figées
+
+Contrairement à 2017/2019/2023 (dépôts SCANNÉS, transcrits), les pages
+« Résultat technique par catégorie d'assurance NON-VIE » de 2020, 2021,
+2024 et 2025 ont une COUCHE TEXTE native (millimes, 3 décimales) —
+transcription directe.
+
+Gabarit COTUNACE `_R_COT` = `_R` (24 lignes) + « Autres provisions
+techniques (clôture) / (réouverture) » (= provision d'équilibrage, note
+13-3) → 26 lignes. Les 4 nouvelles années portent ces 2 lignes ; 2019/2023
+restent à 24 lignes (les scans les portent aussi mais n'avaient pas été
+transcrites — backfill possible plus tard).
+
+Valeurs telles qu'imprimées : charges en MAGNITUDE positive (pas signé) →
+`validate_table` (ADD génériques) signale Solde de souscription / Solde
+financier / Solde de réassurance / Résultat technique en écart : faux
+positif de présentation (déjà le cas 2019/2023). Identités réelles
+vérifiées à la main sur les 4 années (écart nul) :
+`Charges prest. = Prest. payés + Ch. provisions` ; `SS = PA − Charges` ;
+`CAG = FA + Autres ch. gestion` ; `SF = Produits placements − Participation` ;
+`SR = −RA(primes) + RA(prest.) + RA(ch.prov.) + RA(participation) + Commissions` ;
+`RT = SS − CAG + SF + SR`.
+
+Le signe imprimé de « Variation des primes non acquises » est INCOHÉRENT
+d'un millésime à l'autre dans le dépôt COTUNACE : 2024/2025 vérifient
+`PA = PE + Var`, mais 2019/2020/2021 vérifient `PA = PE − Var`. Valeur
+conservée telle qu'imprimée dans chaque PDF. Continuité inter-exercices
+confirmée (PPNA/PSAP/APT ouverture N = clôture N−1).
+
+Stockées via `process_one_document` (statut `ok_verifie`, docs
+209/210/213/214). Pages : 2020 p.64, 2021 p.66, 2024 p.67, 2025 p.67.
+
+**Bilan COTUNACE : 7/11 années figées** (2017, 2019, 2020, 2021, 2023,
+2024, 2025). Restent 2015, 2016, 2018, 2022 (extraction live / sous-ensemble
+dashboards pour l'instant).
