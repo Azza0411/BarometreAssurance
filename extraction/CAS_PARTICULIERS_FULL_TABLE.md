@@ -1899,3 +1899,12 @@ facultative), **2019, 2023, 2024, 2025 passent écart nul**.
 
 **Bilan AMI : 5/9 figées** (2018-2021, 2023). Restent 2015-2017, 2022
 (scans).
+
+## 2026-09-10 (suite) — ASTREE +2017 +2022 via raccordement C16 (10/11)
+
+2017 & 2022 : Annexe 13 par catégorie scannée / « ##### ». L'Annexe 16
+« raccordement » (colonne Total) est propre -> figées en 1 colonne.
+2017 : négatifs U+2010 / soft hyphen. 2022 : négatifs `<...>`. Annotations
+de formule (PRNV11, CHNV12 + CHNV2…) retirées. SS = PE + Var.PNA + Prest +
+Ch.prov ; RT = SS + CAG + SF + SR : écart nul. **ASTREE 10/11** (reste
+2023 : ni per-catégorie ni raccordement dans le dépôt).
