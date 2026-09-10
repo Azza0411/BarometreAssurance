@@ -3653,6 +3653,13 @@ _AMI_2018 = _grid(_AMI_COLS, 49, [
     [-1826055, -939868, -2903350, -466411, -272259032, -3217522, -281612238],
 ], rows=_R_AMI18)
 
+# AMI 2021 : Annexe 13 « par catégorie » SPLIT sur 2 pages (en-tête + Primes
+# acquises/émises en bas de p40 ; corps sur p41). 7 colonnes, valeurs
+# SIGNÉES. PA/PE transcrites (séparateur milliers = espace, indissociable de
+# l'inter-colonnes) ; corps reconstruit géométriquement (scratchpad/
+# ami2021.py). Modèle : SS = PA + CP ; CAG = FA + Autres ; SF = PNP +
+# Participation ; SR = Σ RA(...) + Commissions ; RT = SS + CAG + SF − SR
+# (SR déduit) + contrôle horizontal Σ = Total : écart nul.
 _R_AMI21 = [
     'Primes acquises',
     'Primes émises',
@@ -3661,6 +3668,8 @@ _R_AMI21 = [
     'Prestations et frais payés',
     'Charges des provisions pour prestations diverses',
     'Solde de souscription',
+    "Frais d'acquisition",
+    'Autres charges de gestion nettes',
     "Charges d'acquisition et de gestion nettes",
     'Produits nets de placements',
     'Participation aux résultats',
@@ -3668,6 +3677,7 @@ _R_AMI21 = [
     'Part des réassureurs dans les primes acquises',
     'Part des réassureurs dans les prestations payées',
     'Part des réassureurs dans les charges de provisions pour prestations',
+    'Part des réassureurs dans la participation aux résultats',
     'Commissions reçues des réassureurs / rétrocessionnaires',
     'Solde de réassurance / rétrocession',
     'Résultat technique',
@@ -3676,29 +3686,32 @@ _R_AMI21 = [
     'Provisions pour sinistres à payer (clôture)',
     'Provisions pour sinistres à payer (réouverture)',
 ]
-_AMI_2021 = _grid(["Total"], 43, [[v] for v in [
-    135483631,
-    134687879,
-    795752,
-    -93658162,
-    -115551627,
-    21893465,
-    41825469,
-    -46817038,
-    11300482,
-    -113100,
-    11187382,
-    6168562,
-    -2018845,
-    -2704485,
-    -1149022,
-    296210,
-    5899603,
-    53584145,
-    54379898,
-    325313418,
-    347394031,
-]], rows=_R_AMI21)
+_AMI_2021 = _grid(_AMI_COLS, 41, [
+    [2063164, 1199277, 1465310, 296970, 125866781, 4592129, 135483631],
+    [2186364, 1252036, 1507024, 395669, 124754657, 4592129, 134687879],
+    [-123200, -52759, -41714, -98699, 1112124, None, 795752],
+    [-585354, -514978, -1467331, -672236, -85055824, -5362439, -93658162],
+    [-181986, -1377000, -411309, -130523, -109202671, -4248138, None],
+    [-403368, 862022, -1056022, -541713, 24146847, -1114301, 21893465],
+    [1477810, 684299, -2021, -375266, 40810957, -770310, 41825469],
+    [-457069, -541955, -317207, -56613, -23633728, -792634, -25799206],
+    [-458095, -219227, -208028, -153427, -19298553, -680502, -21017832],
+    [-915164, -761182, -525235, -210040, -42932281, -1473136, -46817038],
+    [153609, 97439, 109454, 41305, 10841103, 57572, 11300482],
+    [None, -6959, None, None, None, -106141, -113100],
+    [153609, 90480, 109454, 41305, 10841103, -48569, 11187382],
+    [1839182, 1772533, 730651, 253125, 1573071, None, 6168562],
+    [-126646, -1161194, -207130, -102581, -421294, None, -2018845],
+    [-654064, 158552, -1163767, -321460, -723746, None, -2704485],
+    [None, None, None, None, None, None, 0],
+    [-592896, -327895, -161856, -66375, None, None, -1149022],
+    [465576, 441996, -802102, -237291, 428031, 0, 296210],
+    [250679, -428399, 384300, -306710, 8291748, -2292015, 5899603],
+    [1853673, 527969, 405333, 887536, 49909634, 0, 53584145],
+    [1730472, 475210, 363619, 788838, 51021758, 0, 54379898],
+    [3716762, 2246757, 3925133, 859759, 312018751, 2546255, 325313418],
+    [3313394, 3295927, 2869111, 318046, 336165598, 1431954, 347394031],
+], rows=_R_AMI21)
 
 # GAT 2022 : idem 2019/2021 (16 colonnes, ordre 2019+). 1 cellule
 # résiduelle mal reconstruite : « Produits nets de placements » colonne
