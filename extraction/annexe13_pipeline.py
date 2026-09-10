@@ -127,6 +127,10 @@ CANONICAL_ROWS = [
     "Provisions pour participations aux bénéfices (exercice N-1)",
     "Provisions pour risques en cours (exercice N)",
     "Provisions pour risques en cours (exercice N-1)",
+    # COMAR 15 branches (2020-2025) : lignes "Part des réassureurs" de plus,
+    # à ne PAS confondre (difflib) avec "... dans les primes acquises".
+    "Part des réassureurs dans la variation des primes non acquises",
+    "Part des réassureurs dans les charges des autres provisions techniques",
 ]
 
 # Score minimal (difflib.SequenceMatcher.ratio, 0-1) pour accepter une
@@ -222,6 +226,7 @@ CANONICAL_COLUMNS = [
     "Autres dommages aux biens", "Individuelle accident", "Invalidité",
     "Autres", "Risques techniques", "Marines", "Non marines", "ARD",
     "Total marines", "Total non marines", "Total non vie", "Wakala",
+    "Perte d'exploitation",  # branche COMAR (2020-2025)
     # Gabarit "raccordement" (Brut/Cessions/Net) — pas des branches mais un
     # 2e type de tableau Annexe 13 rencontré sur certaines sociétés/années
     # (BH, AMI, CTAMA, COMAR — voir CAS_PARTICULIERS_FULL_TABLE.md, cas STAR
@@ -284,6 +289,8 @@ _COLUMN_ALIASES = {
     "responsabilite decennale": "Responsabilité décennale", "decennale": "Responsabilité décennale",
     "vol": "Vol",
     "grele": "Grêle",
+    "perte d exploitation": "Perte d'exploitation", "perte d eploitation": "Perte d'exploitation",
+    "pertes d exploitation": "Perte d'exploitation", "perte d'exploitation": "Perte d'exploitation",
     "autres dommages aux biens": "Autres dommages aux biens",
     "dommages aux biens": "Autres dommages aux biens", "aux biens": "Autres dommages aux biens",
     "invalidite": "Invalidité",

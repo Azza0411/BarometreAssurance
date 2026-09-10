@@ -1197,3 +1197,28 @@ Répartition des 11 années :
 
 COMAR reste à finir sur plusieurs passes (année par année) — c'est de loin la
 société la plus lourde du portefeuille.
+
+## 2026-09-10 (suite) — COMAR 2017 + 2023 figées ; branches 15-colonnes gérées
+
+- **2017** (8 branches, page 13, texte natif) — transcrite via reconstruction
+  géométrique (`page.extract_words` + bornes de colonne issues de l'en-tête)
+  puis recoupée par les identités (toutes justes). Figée.
+- **2023** (15 branches, page 35, texte natif) — idem. Gabarit COMAR élargi :
+  colonnes Incendie/Accidents du travail/Responsabilité civile/Automobile/
+  Transport/Groupe/Autres dommages aux biens/Risques agricoles/Construction/
+  **Perte d'exploitation**/Crédit-Caution/Assistance/Accidents corporels/
+  Acceptation/Total. Bloc réassurance à 7 sous-lignes (dont « … dans la
+  variation des primes non acquises » et « … dans les charges des autres
+  provisions techniques »). Informations complémentaires par branche (et
+  plus seulement Total). Figée.
+
+Pipeline complété (généralisable) :
+- `CANONICAL_COLUMNS` + alias : « Perte d'exploitation » (branche COMAR).
+- `CANONICAL_ROWS` : « Part des réassureurs dans la variation des primes non
+  acquises » et « … dans les charges des autres provisions techniques » —
+  matchaient à tort « … dans les primes acquises » (difflib).
+
+Reste COMAR : **2025** (15 branches, texte natif mais bloc réassurance à ~9
+sous-lignes, la reconstruction auto décale libellés/valeurs — passe dédiée) ;
+**2020, 2021, 2022, 2024** (15 branches, pages IV.7 SCANNÉES) ; **2015**
+(raccordement) ; **2016, 2018** (page introuvable).
