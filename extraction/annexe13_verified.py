@@ -248,11 +248,74 @@ _LL_2022 = _grid(_LL_COLS, 34, [
     [None, 0, 0, -999874, 0, 0, -29066, 0, -1028940],
 ], rows=_R_LLOYD)
 
+# ── COMAR — gabarit propre : pas de ligne "Primes acquises"/"Charges de
+# prestations" à part (ce sont des en-têtes de section), "Solde financier"
+# détaillé en "Produits de placements" + "Autres produits techniques",
+# 3 lignes "Part des réassureurs" (pas de "participation aux résultats"),
+# et un bloc "informations complémentaires" par exercice N / N-1. La ligne
+# de séparation "Résultat technique" du gabarit standard est ici
+# "RESULTAT TECHNIQUE NON VIE". Valeurs SIGNÉES (Prestations payées, Frais
+# d'acquisition... en négatif).
+_R_COMAR = [
+    "Primes émises", "Variation des primes non acquises",
+    "Prestations et frais payés", "Charges des provisions pour prestations diverses",
+    "Solde de souscription", "Frais d'acquisition", "Autres charges de gestion nettes",
+    "Charges d'acquisition et de gestion nettes", "Produits nets de placements",
+    "Autres produits techniques", "Solde financier",
+    "Part des réassureurs dans les primes acquises",
+    "Part des réassureurs dans les prestations payées",
+    "Part des réassureurs dans les charges de provisions pour prestations",
+    "Commissions reçues des réassureurs / rétrocessionnaires",
+    "Solde de réassurance / rétrocession", "Résultat technique",
+    "Provisions pour primes non acquises (clôture)",
+    "Provisions pour primes non acquises (réouverture)",
+    "Provisions pour sinistres à payer (clôture)",
+    "Provisions pour sinistres à payer (réouverture)",
+    "Prévisions de recours à encaisser (exercice N)",
+    "Prévisions de recours à encaisser (exercice N-1)",
+    "Provisions pour participations aux bénéfices (exercice N)",
+    "Provisions pour participations aux bénéfices (exercice N-1)",
+    "Provisions pour égalisation et équilibrage (exercice N)",
+    "Provisions pour égalisation et équilibrage (exercice N-1)",
+    "Provisions mathématiques de rente (exercice N)",
+    "Provisions mathématiques de rente (exercice N-1)",
+    "Provisions pour risques en cours (exercice N)",
+    "Provisions pour risques en cours (exercice N-1)",
+]
+_CM_COLS_8 = ["Incendie", "Accidents du travail", "Risques divers", "Automobile",
+              "Transport", "Groupe", "Aviation", "Acceptation", "Total"]
+_CM_TOT = lambda v: [None] * 8 + [v]
+
+_CM_2019 = _grid(_CM_COLS_8, 33, [
+    [22591601, 0, 31015415, 108539448, 7915330, 27004771, 468991, 9809753, 207345309],
+    [-395010, 0, 752372, -2769382, 150208, -172061, -243020, 2191730, -485163],
+    [-10585705, -414482, -8166116, -67995641, -1508519, -19638448, -1936046, -8293918, -118538875],
+    [2302140, -130072, -14326850, -6928235, 4060632, -1011908, 74453, 0, -15959840],
+    [13913026, -544554, 9274821, 30846190, 10617651, 6182354, -1635622, 3707565, 72361431],
+    [-3229543, 125197, -5686251, -17507587, -2587659, -3346712, -998431, -3212922, -36443908],
+    [-2138258, 0, -4031101, -12686090, -1751117, -2464115, -717769, 0, -23788450],
+    [-5367801, 125197, -9717352, -30193677, -4338776, -5810827, -1716200, -3212922, -60232358],
+    [2271185, 0, 3118051, 10911720, 795746, 2714852, 47149, 0, 19858703],
+    [-23271, 0, -7576, 0, -284392, -370611, 0, 0, -685850],
+    [2247914, 0, 3110475, 10911720, 511354, 2344241, 47149, 0, 19172853],
+    [-16750862, 0, -9995618, -952909, -4207453, -501547, -436998, 0, -32845387],
+    [9828274, 0, 2961428, 24879, 1171213, 74804, 0, 0, 14060598],
+    [-7930975, 0, 3395501, -113064, 61829, 0, 14161, 0, -4572548],
+    [5499701, 0, 2489269, 0, 1142809, 0, 175541, 0, 9307320],
+    [-9353862, 0, -1149420, -1041094, -1831602, -426743, -247296, 0, -14050017],
+    [1439277, -419357, 1518524, 10523139, 4958627, 2289025, -3551969, 494643, 17251909],
+    _CM_TOT(61911077), _CM_TOT(61425914), _CM_TOT(365828889), _CM_TOT(358002011),
+    _CM_TOT(-31147913), _CM_TOT(-29211253), _CM_TOT(6001870), _CM_TOT(6301156),
+    _CM_TOT(17910262), _CM_TOT(8309966), _CM_TOT(13335550), _CM_TOT(11392965),
+    _CM_TOT(3156383), _CM_TOT(4330354),
+], rows=_R_COMAR)
+
 VERIFIED = {
     ("AMI", 2019): _AMI_2019, ("AMI", 2020): _AMI_2020, ("AMI", 2023): _AMI_2023,
     ("COTUNACE", 2017): _COT_2017, ("COTUNACE", 2019): _COT_2019,
     ("COTUNACE", 2023): _COT_2023,
     ("LLOYD_TUNISIEN", 2021): _LL_2021, ("LLOYD_TUNISIEN", 2022): _LL_2022,
+    ("COMAR", 2019): _CM_2019,
 }
 
 

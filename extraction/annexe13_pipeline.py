@@ -117,6 +117,16 @@ CANONICAL_ROWS = [
     # collision. Explicités pour matcher exactement.
     "Autres provisions techniques (clôture)",
     "Autres provisions techniques (réouverture)",
+    # Ajoutés le 2026-09-10 (vérification COMAR) : COMAR détaille son "Solde
+    # financier" en "Produits de placements" + "Autres produits techniques"
+    # (2 lignes) plutôt qu'en "Produits nets de placements" + "Participation
+    # aux résultats", et ses "informations complémentaires" incluent 2 postes
+    # de plus, chacun par exercice N / N-1.
+    "Autres produits techniques",
+    "Provisions pour participations aux bénéfices (exercice N)",
+    "Provisions pour participations aux bénéfices (exercice N-1)",
+    "Provisions pour risques en cours (exercice N)",
+    "Provisions pour risques en cours (exercice N-1)",
 ]
 
 # Score minimal (difflib.SequenceMatcher.ratio, 0-1) pour accepter une
