@@ -1707,3 +1707,16 @@ Nouvelles colonnes canoniques ajoutées à `annexe13_pipeline.py` :
 
 **Bilan CARTE : 10/11 figées** (9 par catégorie + 1 raccordement). Reste
 **2020** (états consolidés uniquement).
+
+## 2026-09-10 (suite) — BNA (BNA Assurances) : 1/2 figée
+
+Seuls 2 dépôts CMF (2024, 2025). **2025** (p45) : Annexe 13 « Résultat
+Technique par Catégorie d'Assurance Non Vie », 7 colonnes (Incendie /
+Transport / Risques divers / Risques spéciaux / Automobile / Groupe /
+Total), calque texte propre -> reconstruction géométrique
+(`scratchpad/bna.py`). Modèle additif signé + contrôle horizontal
+Σ branches = Total : **écart nul**.
+**2024** : le dépôt ne contient pas d'Annexe 13 par catégorie (cellules
+camelot bancales issues de la page Brut/Cessions/Net purgées — doc 119).
+
+**Bilan BNA : 1/2 figée** (2025). Reste 2024 (pas d'Annexe 13 au dépôt).

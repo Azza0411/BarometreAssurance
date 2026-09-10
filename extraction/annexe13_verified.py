@@ -2629,6 +2629,66 @@ _CARTE_2023 = _grid(["Total"], 39, [[v] for v in [
     177466043,
 ]], rows=_R_CARTE)
 
+# ── BNA (BNA Assurances) — Annexe 13 « Résultat Technique par Catégorie
+# d'Assurance Non Vie ». Seul le dépôt 2025 porte un calque texte propre
+# (7 colonnes : Incendie / Transport / Risques divers / Risques spéciaux /
+# Automobile / Groupe / Total). Reconstruction géométrique. Modèle additif
+# signé + contrôle horizontal Σ branches = Total : écart nul. 2024 : pas
+# d'Annexe 13 dans le dépôt.
+_R_BNA = [
+    'Primes acquises',
+    'Primes émises',
+    'Variation des primes non acquises',
+    'Charges de prestations',
+    'Prestations et frais payés',
+    'Charges des provisions pour prestations diverses',
+    'Solde de souscription',
+    "Frais d'acquisition",
+    'Autres charges de gestion nettes',
+    "Charges d'acquisition et de gestion nettes",
+    'Produits nets de placements',
+    'Participation aux résultats',
+    'Solde financier',
+    'Part des réassureurs dans les primes acquises',
+    'Part des réassureurs dans les prestations payées',
+    'Part des réassureurs dans les charges de provisions pour prestations',
+    'Part des réassureurs dans la participation aux résultats',
+    'Commissions reçues des réassureurs / rétrocessionnaires',
+    'Solde de réassurance / rétrocession',
+    'Résultat technique',
+    'Provisions pour primes non acquises (clôture)',
+    'Provisions pour primes non acquises (réouverture)',
+    'Provisions pour sinistres à payer (clôture)',
+    'Provisions pour sinistres à payer (réouverture)',
+]
+_BNA_COLS = ["Incendie", "Transport", "Risques divers", "Risques spéciaux", "Automobile", "Groupe", "Total"]
+_BNA_2025 = _grid(_BNA_COLS, 45, [
+    [3082284, 2403332, 1810030, 941060, 128778524, 6767835, 143783065],
+    [3074420, 2439246, 1786928, 1184417, 131084195, 6694891, 146264097],
+    [7864, -35914, 23102, -243357, -2305671, 72944, -2481032],
+    [-2029799, -838929, 125276, -123954, -86037838, -6094762, -95000006],
+    [-1012242, 175844, -177884, -40680, -94438821, -6015115, -101508898],
+    [-1017557, -1014773, 303160, -83274, 8400983, -79647, 6508892],
+    [1052485, 1564403, 1935306, 817106, 42740686, 673073, 48783059],
+    [-453788, -413884, -1286760, -303656, -37096757, -1479761, -41034606],
+    [-2133, -257621, -203020, -309926, -10130586, -586916, -11490202],
+    [-455921, -671505, -1489780, -613582, -47227343, -2066677, -52524808],
+    [388091, 146269, 144095, 133319, 18680223, 48364, 19540361],
+    [3417, 13569, None, None, None, -260060, -243074],
+    [391508, 159838, 144095, 133319, 18680223, -211696, 19297287],
+    [-2220316, -2178441, -699516, -1024640, -3349982, None, -9472895],
+    [205155, 322456, 90160, 44894, 3764592, None, 4427257],
+    [660212, 298669, -206287, 1466885, -1215151, None, 1004328],
+    [-1593, None, None, -510, None, None, -2103],
+    [757718, 443674, 19771, 304565, None, None, 1525728],
+    [-598824, -1113642, -795872, 791194, -800541, None, -2517685],
+    [389248, -60906, -206251, 1128037, 13393025, -1605300, 13037853],
+    [2036864, 822724, 294895, 1857784, 55120803, 16720, 60149790],
+    [2044728, 786809, 317997, 1614427, 52815132, 89664, 57668757],
+    [5836737, 2649402, 2277920, 836889, 296516344, 904932, 309022224],
+    [4819180, 1295526, 2581080, 753615, 304917327, 825285, 315192013],
+], rows=_R_BNA)
+
 VERIFIED = {
     ("AMI", 2019): _AMI_2019, ("AMI", 2020): _AMI_2020, ("AMI", 2023): _AMI_2023,
     ("COTUNACE", 2017): _COT_2017, ("COTUNACE", 2019): _COT_2019,
@@ -2665,6 +2725,7 @@ VERIFIED = {
     ("STAR", 2015): _STAR_2015, ("STAR", 2016): _STAR_2016, ("STAR", 2017): _STAR_2017, ("STAR", 2018): _STAR_2018, ("STAR", 2019): _STAR_2019, ("STAR", 2022): _STAR_2022, ("STAR", 2024): _STAR_2024,
     ("STAR", 2020): _STAR_2020, ("STAR", 2021): _STAR_2021, ("STAR", 2023): _STAR_2023, ("STAR", 2025): _STAR_2025,
     ("CARTE", 2015): _CARTE_2015, ("CARTE", 2016): _CARTE_2016, ("CARTE", 2017): _CARTE_2017, ("CARTE", 2018): _CARTE_2018, ("CARTE", 2019): _CARTE_2019, ("CARTE", 2021): _CARTE_2021, ("CARTE", 2022): _CARTE_2022, ("CARTE", 2024): _CARTE_2024, ("CARTE", 2025): _CARTE_2025, ("CARTE", 2023): _CARTE_2023,
+    ("BNA", 2025): _BNA_2025,
 }
 
 
