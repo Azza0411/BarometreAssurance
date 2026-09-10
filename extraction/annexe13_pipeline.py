@@ -47,7 +47,22 @@ VIE_ONLY_CODES = {
     "GAT_VIE", "LLOYD_VIE", "MAGHREBIA_VIE", "CARTE_VIE", "HAYETT",
     "ATTIJARI", "UIB",
 }
-ANNEXE13_NON_VIE_EXCLUSIONS = VIE_ONLY_CODES | TAKAFUL_CODES
+# Assureurs Non-Vie qui NE publient PAS le tableau « Résultat technique par
+# catégorie d'assurance Non-Vie » dans leurs états financiers CMF — de par
+# leur format de reporting, pas un échec d'extraction. CTAMA (mutuelle
+# agricole) vérifiée le 2026-09-10 sur ses 2 seuls dépôts CMF (2018, 2020) :
+# aucune ventilation du résultat technique par branche ; seules les
+# PROVISIONS (primes non acquises, sinistres à payer) sont ventilées par
+# branche dans les notes. Le résultat Non-Vie n'est donné qu'agrégé (État de
+# résultat technique, Brut/Cessions/Net). Sans cette exclusion, le repli
+# camelot de l'export accrochait cette page Brut/Cessions/Net et affichait
+# un faux « tableau complet » à 4 colonnes.
+NO_ANNEXE13_NON_VIE_CODES = {
+    "CTAMA",
+}
+ANNEXE13_NON_VIE_EXCLUSIONS = (
+    VIE_ONLY_CODES | TAKAFUL_CODES | NO_ANNEXE13_NON_VIE_CODES
+)
 
 # ── Normalisation des libellés de ligne ─────────────────────────────────────
 # Vocabulaire réglementaire commun à toutes les sociétés (poste comptable du
