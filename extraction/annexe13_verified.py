@@ -183,6 +183,66 @@ _COT_2017 = _grid(_COT_COLS, 4, [[v] for v in [
     2269639, None, 2259234, None, None, None, None,
 ]])
 
+# COTUNACE 2020/2021/2024/2025 : « Résultat technique par catégorie
+# d'assurance NON-VIE » en COUCHE TEXTE native (millimes, 3 décimales) —
+# transcription directe. Le gabarit COTUNACE = `_R` + 2 lignes « Autres
+# provisions techniques » (= provision d'équilibrage, note 13-3). Valeurs
+# telles qu'imprimées : les charges (« Charges de prestations », « Frais
+# d'acquisition »…) sont en MAGNITUDE positive, pas en signé — donc les
+# règles ADD génériques de `validate_table` (Solde de souscription, Solde
+# financier, Solde de réassurance, Résultat technique) sont signalées en
+# écart : c'est un faux positif de présentation (déjà le cas sur
+# 2019/2023), les identités réelles tombent juste :
+#   Charges prest. = Prest. payés + Ch. provisions ;
+#   SS = PA − Charges prest. ; CAG = FA + Autres ch. gestion ;
+#   SF = Produits placements − Participation ;
+#   SR = −RA(primes) + RA(prest.) + RA(ch.prov.) + RA(participation) + Commissions ;
+#   RT = SS − CAG + SF + SR.
+# Le signe imprimé de « Variation des primes non acquises » est incohérent
+# d'un millésime à l'autre dans le dépôt COTUNACE lui-même : 2024/2025
+# vérifient PA = PE + Var, mais 2019/2020/2021 vérifient PA = PE − Var
+# (valeur conservée telle qu'imprimée dans chaque PDF).
+_R_COT = _R + [
+    "Autres provisions techniques (clôture)",
+    "Autres provisions techniques (réouverture)",
+]
+
+_COT_2020 = _grid(_COT_COLS, 64, [[v] for v in [
+    12699734.091, 12165254.925, -534479.166, 8226072.590, 6481263.158,
+    1744809.432, 4473661.501, 1617623.376, 3490611.060, 5108234.436,
+    3852765.739, 302930.340, 3549835.399, 8520027.746, 4572578.762,
+    2451528.253, 184787.507, 2227347.760, 916214.536, 3831477.000,
+    -2239672.622, 2774151.788, 20202101.839, 16074216.918,
+    7396055.081, 9476200.230,
+]], rows=_R_COT)
+
+_COT_2021 = _grid(_COT_COLS, 66, [[v] for v in [
+    13531056.575, 13966819.225, 435762.650, 8687984.664, 8928471.088,
+    -240486.424, 4843071.911, 1911736.556, 3826215.052, 5737951.608,
+    2053569.431, 495191.832, 1558377.599, 8379250.498, 6126377.014,
+    1052602.896, 302067.018, 2377723.445, 1479519.875, 2143017.777,
+    2675435.272, 2239672.622, 20755503.213, 20202101.839,
+    7097359.115, 7396056.081,
+]], rows=_R_COT)
+
+_COT_2024 = _grid(_COT_COLS, 67, [[v] for v in [
+    13301587.065, 13428244.235, -126657.170, 4596532.765, 7564841.283,
+    -2968308.518, 8705054.300, 2320032.994, 3505343.909, 5825376.903,
+    2630996.072, -377778.490, 3008774.562, 8149899.406, 5399699.215,
+    -2278354.500, -241400.352, 2277713.393, -2992241.650, 2896210.309,
+    2563992.090, 2437334.920, 19242100.796, 22717959.415,
+    7075039.456, 6945267.845,
+]], rows=_R_COT)
+
+_COT_2025 = _grid(_COT_COLS, 67, [[v] for v in [
+    14028531.430, 14579683.449, -551152.019, 3198402.734, 3956602.248,
+    -758199.514, 10830128.696, 2365326.946, 4479712.749, 6845039.695,
+    2581743.242, 240256.382, 2341486.860, 8278679.443, 2290183.565,
+    -196876.145, 142615.417, 2323913.058, -3718843.548, 2607732.313,
+    3115144.109, 2563992.090, 19768739.284, 19242100.796,
+    6030457.836, 7075039.456,
+]], rows=_R_COT)
+
 # ── LLOYD_TUNISIEN — 9 branches ; pages Annexe 13 (IV.7) 2021/2022 SCANNÉES ─
 # (2020/2023/2024 ont une couche texte, extraction camelot correcte).
 _LL_COLS = ["Acceptation", "ARD", "Automobile", "Accidents du travail",
@@ -650,7 +710,9 @@ _CM_2024 = _grid(_CM_COLS_15, 37, [
 VERIFIED = {
     ("AMI", 2019): _AMI_2019, ("AMI", 2020): _AMI_2020, ("AMI", 2023): _AMI_2023,
     ("COTUNACE", 2017): _COT_2017, ("COTUNACE", 2019): _COT_2019,
-    ("COTUNACE", 2023): _COT_2023,
+    ("COTUNACE", 2020): _COT_2020, ("COTUNACE", 2021): _COT_2021,
+    ("COTUNACE", 2023): _COT_2023, ("COTUNACE", 2024): _COT_2024,
+    ("COTUNACE", 2025): _COT_2025,
     ("LLOYD_TUNISIEN", 2021): _LL_2021, ("LLOYD_TUNISIEN", 2022): _LL_2022,
     ("COMAR", 2017): _CM_2017, ("COMAR", 2019): _CM_2019,
     ("COMAR", 2020): _CM_2020, ("COMAR", 2021): _CM_2021, ("COMAR", 2022): _CM_2022,
