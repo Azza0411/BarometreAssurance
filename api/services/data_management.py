@@ -26,7 +26,7 @@ from extraction.annexe13_kpi_extractor import (
     KPI_PATTERNS as _ANNEXE13_KPI_PATTERNS,
 )
 from extraction.full_table_extractor import locate_and_extract_full_table, relaxed_is_annexe13_page
-from extraction.annexe13_pipeline import normalize_table, CANONICAL_ROWS
+from extraction.annexe13_pipeline import normalize_table, CANONICAL_ROWS, derive_column_groups
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
@@ -576,13 +576,67 @@ def _write_full_grid_block(ws, row, annee, grid):
     # l'affichage ; convention réelle des tableaux source (et du dossier de
     # référence) pour les deux.
     headers = ["LIBELLÉ"] + [c.upper() for c in cols]
-    for col_idx, header in enumerate(headers, start=1):
-        cell = ws.cell(row=row, column=col_idx, value=header)
-        cell.fill = PatternFill(start_color=_REF_HEADER, end_color=_REF_HEADER, fill_type="solid")
-        cell.font = Font(color=_REF_HEADER_TEXT, bold=True, name="Arial", size=10)
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # En-tête de GROUPE fusionné (ex. TUNIS_RE : "NON MARINES" au-dessus
+    # d'Incendie/ARD/Risques techniques) — retour utilisateur du 2026-09-10 :
+    # veut retrouver dans l'export la même structure de fusion de cellules
+    # que le PDF source, pas seulement des noms de colonne individuellement
+    # corrects. `derive_column_groups` (annexe13_pipeline.py) la retrouve à
+    # partir des seuls noms de colonnes (généralisable à toute société ayant
+    # ce gabarit, pas propre à TUNIS_RE) ; {} pour tout tableau sans ce
+    # gabarit — comportement à une seule ligne d'en-tête inchangé pour eux.
+    groups = derive_column_groups(cols)
+    header_style = dict(
+        fill=PatternFill(start_color=_REF_HEADER, end_color=_REF_HEADER, fill_type="solid"),
+        font=Font(color=_REF_HEADER_TEXT, bold=True, name="Arial", size=10),
+        alignment=Alignment(horizontal="center", vertical="center"),
+    )
+    if groups:
+        grouped_col_idxs = {i for g in groups for i in range(g["debut"], g["fin"] + 1)}
+        # Ligne 1 : "LIBELLÉ" + colonnes hors groupe fusionnées VERTICALEMENT
+        # sur les 2 lignes d'en-tête (comme "RUBRIQUES" dans le PDF), noms de
+        # groupe fusionnés HORIZONTALEMENT sur la portée de leurs colonnes
+        # membres.
+        ws.merge_cells(start_row=row, start_column=1, end_row=row + 1, end_column=1)
+        cell = ws.cell(row=row, column=1, value=headers[0])
+        cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
         cell.border = _thin_border()
-    row += 1
+        ws.cell(row=row + 1, column=1).border = _thin_border()
+        group_by_start = {g["debut"]: g for g in groups}
+        col_idx = 0
+        while col_idx < len(cols):
+            excel_col = col_idx + 2
+            g = group_by_start.get(col_idx)
+            if g:
+                end_excel_col = g["fin"] + 2
+                ws.merge_cells(start_row=row, start_column=excel_col, end_row=row, end_column=end_excel_col)
+                for c in range(excel_col, end_excel_col + 1):
+                    cell = ws.cell(row=row, column=c, value=g["libelle"].upper() if c == excel_col else None)
+                    cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
+                    cell.border = _thin_border()
+                col_idx = g["fin"] + 1
+            else:
+                ws.merge_cells(start_row=row, start_column=excel_col, end_row=row + 1, end_column=excel_col)
+                cell = ws.cell(row=row, column=excel_col, value=headers[col_idx + 1])
+                cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
+                cell.border = _thin_border()
+                ws.cell(row=row + 1, column=excel_col).border = _thin_border()
+                col_idx += 1
+        # Ligne 2 : libellé propre de chaque colonne MEMBRE d'un groupe
+        # uniquement (les colonnes hors groupe ont déjà leur nom fusionné
+        # verticalement ci-dessus, rien à ré-écrire sur cette ligne pour elles).
+        for i in grouped_col_idxs:
+            excel_col = i + 2
+            cell = ws.cell(row=row + 1, column=excel_col, value=headers[i + 1])
+            cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
+            cell.border = _thin_border()
+        row += 2
+    else:
+        for col_idx, header in enumerate(headers, start=1):
+            cell = ws.cell(row=row, column=col_idx, value=header)
+            cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
+            cell.border = _thin_border()
+        row += 1
     for i, (label, values) in enumerate(_sorted_grid_rows(grid["lignes"])):
         fill = PatternFill(start_color=_REF_ZEBRA, end_color=_REF_ZEBRA, fill_type="solid") if i % 2 == 1 else None
         cell = ws.cell(row=row, column=1, value=(label or "").upper())
