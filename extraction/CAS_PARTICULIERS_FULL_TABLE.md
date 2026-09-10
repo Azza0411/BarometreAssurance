@@ -1668,3 +1668,42 @@ le Solde de réassurance en magnitude). `validate_table` signale donc
 catégorie de convention que AMI / LLOYD / COTUNACE / BH C7.
 
 **Bilan STAR : 11/11 figées** (7 en 9 colonnes, 4 en Total seul).
+
+## 2026-09-10 (suite) — CARTE : 10/11 figées
+
+Annexe 13 « Résultat technique par catégorie d'assurance non vie » présente
+au calque texte pour **2015-2019, 2021, 2022, 2024, 2025** (9 années).
+En-têtes de colonnes inexploitables (numérotées « 1-AUTO », tronquées
+« 7-DOMMAGES AUX BI », voire caractères entrelacés en 2025
+« 7-DOMMAGES AUX B8I-ECNRSEDIT... ») -> reconstruction géométrique
+(`scratchpad/carte.py`) : bords de colonnes = centres des nombres d'une
+ligne pleine ; noms de colonnes = liste fixe par époque :
+- **2015-2019** (K=15) : Automobile / R.C / Rentes / Incendie / Individuelle
+  accident / Risques spéciaux / Aviation / Transport / Maladie / Incapacité
+  invalidité / Assistance / Construction / Crédit export / Acceptation / Total
+- **2021-2022** (K=16) : idem + « Risques financiers » avant Acceptation
+- **2024-2025** (K=15) : jeu renuméroté (Auto / Transport / Incendie /
+  Construction / R.C générale / Autres dommages aux biens / Crédit-Caution /
+  Assistance / Protection juridique / Pertes pécuniaires / Assurance de
+  groupe / Accidents du travail / Accidents corporels / Acceptation / Total)
+
+Valeurs en **millimes** (« 25 152 962,932 ») arrondies au dinar. Pièges
+gérés : écart inter-groupes de 1px vs inter-colonnes ~10px (seuil 7px) ;
+**deux nombres collés sans espace** (« 23205,032102353628,283 ») recoupés
+juste après les 3 décimales de millièmes ; lignes-titres ignorées. Modèle
+additif entièrement signé + contrôle horizontal Σ branches = Total :
+**toutes années écart nul.**
+
+Nouvelles colonnes canoniques ajoutées à `annexe13_pipeline.py` :
+« Rentes », « Incapacité invalidité », « Risques financiers »,
+« Assurance de groupe ».
+
+- **2023** : Annexe 13 par catégorie scannée (p38) MAIS Annexe 16
+  « raccordement » (p39) au calque texte propre -> figée en colonne
+  « Total » seule (SS et RT vérifiés écart nul).
+- **2020** : le dépôt CMF ne contient que les états financiers **consolidés
+  du GROUPE CARTE** — pas d'Annexe 13 de l'entité solo. Cellules camelot
+  bancales (doc 73, page Brut/Cessions/Net consolidée) purgées.
+
+**Bilan CARTE : 10/11 figées** (9 par catégorie + 1 raccordement). Reste
+**2020** (états consolidés uniquement).
