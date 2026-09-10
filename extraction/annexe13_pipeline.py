@@ -134,6 +134,15 @@ CANONICAL_ROWS = [
     "Part des réassureurs dans les frais reportés",
     "Part des réassureurs dans les frais d'acquisition",
     "Part des réassureurs dans les autres charges techniques",
+    # Ajoutés le 2026-09-10 (vérification MAGHREBIA) : MAGHREBIA porte dans son
+    # bloc réassurance une ligne "... dans les provisions pour égalisation et
+    # équilibrage" (à NE PAS rabattre par difflib sur "... dans les charges de
+    # provisions pour prestations"), et ses "informations complémentaires"
+    # détaillent une "Provision mathématique" (vie logée en non-vie) à la
+    # clôture / à l'ouverture.
+    "Part des réassureurs dans les provisions pour égalisation et équilibrage",
+    "Provisions mathématiques (clôture)",
+    "Provisions mathématiques (réouverture)",
 ]
 
 # Score minimal (difflib.SequenceMatcher.ratio, 0-1) pour accepter une
@@ -272,15 +281,23 @@ _COLUMN_ALIASES = {
     "rc gle": "Responsabilité civile", "r.c": "Responsabilité civile",
     "rc": "Responsabilité civile", "responsabilite civile": "Responsabilité civile",
     "civile": "Responsabilité civile", "e civile": "Responsabilité civile",
-    "r.s": "Responsabilité civile", "r.c generale": "Responsabilité civile",
+    "r.c generale": "Responsabilité civile",
+    # MAGHREBIA porte "R.S" ET "R.C" comme deux colonnes distinctes : "R.S" y
+    # est "Risques spéciaux" (branche incendie élargie), pas la RC.
+    "r.s": "Risques spéciaux",
     "acctrav": "Accidents du travail", "a.travail": "Accidents du travail",
     "a. travail": "Accidents du travail", "a t": "Accidents du travail",
+    "a.t. accident": "Accidents du travail", "a.t accident": "Accidents du travail",
+    "a t accident": "Accidents du travail", "a.t.": "Accidents du travail",
     "accident travail": "Accidents du travail",
     "accidents de travail": "Accidents du travail",
     "accident de travail": "Accidents du travail", "travail": "Accidents du travail",
     "acc corp": "Accidents corporels", "accidents corporels": "Accidents corporels",
     "accident corporel": "Accidents corporels", "corporels": "Accidents corporels",
     "individuel accident": "Individuelle accident", "individuelle": "Individuelle accident",
+    "individuel": "Individuelle accident",
+    # MAGHREBIA écrit "MARITIME" pour sa branche Transport (assurance maritime).
+    "maritime": "Transport",
     "risq.spx": "Risques spéciaux", "risq. spx": "Risques spéciaux",
     "risques agricoles": "Risques agricoles", "risque agricole": "Risques agricoles",
     "agricole": "Risques agricoles",
@@ -484,7 +501,13 @@ VALIDATION_RULES = [
      ["Part des réassureurs dans les primes acquises", "Part des réassureurs dans les prestations payées",
       "Part des réassureurs dans les charges de provisions pour prestations",
       "Part des réassureurs dans la participation aux résultats",
-      "Commissions reçues des réassureurs / rétrocessionnaires"]),
+      "Commissions reçues des réassureurs / rétrocessionnaires",
+      # Poste de réassurance qui n'apparaît que sur certains gabarits
+      # (MAGHREBIA : « … dans les provisions pour égalisation et équilibrage »).
+      # Préfixe "?" = FACULTATIF : absent -> compté 0, ne rend pas la règle
+      # « données manquantes » (sinon on régresserait les gabarits qui n'ont
+      # pas cette ligne).
+      "?Part des réassureurs dans les provisions pour égalisation et équilibrage"]),
     ("resultat_technique",
      "Résultat technique = Solde de souscription + Charges d'acquisition et de gestion nettes "
      "+ Solde financier + Solde de réassurance / rétrocession",
@@ -545,16 +568,31 @@ def validate_table(normalized_lignes, columns):
     results = []
     for rule_code, rule_desc, target, sources in VALIDATION_RULES:
         target_row = normalized_lignes.get(target)
-        source_rows = [normalized_lignes.get(s) for s in sources]
+        # Un poste source préfixé "?" est FACULTATIF : s'il est absent de la
+        # grille (ou sa cellule vide) il compte 0 et ne déclenche pas
+        # « données manquantes » — pour les lignes de réassurance qui
+        # n'existent que sur certains gabarits.
+        parsed = [(s[1:], True) if s.startswith("?") else (s, False) for s in sources]
+        req_rows = [normalized_lignes.get(name) for name, opt in parsed if not opt]
         for col in columns:
             base = {"regle_code": rule_code, "regle": rule_desc, "colonne": col}
-            if target_row is None or any(r is None for r in source_rows):
+            if target_row is None or any(r is None for r in req_rows):
                 results.append({**base, "attendu": None, "trouve": None,
                                  "ecart": None, "statut": "donnees_manquantes"})
                 continue
             found = target_row.get(col)
-            source_vals = [r.get(col) for r in source_rows]
-            if found is None or any(v is None for v in source_vals):
+            source_vals = []
+            missing_required = False
+            for name, opt in parsed:
+                row = normalized_lignes.get(name)
+                v = row.get(col) if row is not None else None
+                if v is None:
+                    if opt:
+                        continue
+                    missing_required = True
+                    break
+                source_vals.append(v)
+            if found is None or missing_required:
                 results.append({**base, "attendu": None, "trouve": found,
                                  "ecart": None, "statut": "donnees_manquantes"})
                 continue
