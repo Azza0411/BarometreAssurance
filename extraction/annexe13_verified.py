@@ -2785,6 +2785,76 @@ _COT_2018 = _grid(_COT_COLS, 62, [[v] for v in [
     14884326.83, 15128876.621, 244549.791, 11168376.712, 10938276.288, 230100.424, 3715950.118, 1478665.183, 1473045.333, 2951710.516, 2747631.691, -403330.951, 3150962.642, 8643226.431, 8943899.136, -3093987.433, -272938.477, 2476304.417, -589948.788, 3325253.456, 2609124.748, 2364574.957, 14080905.116, 16063818.47,
 ]])
 
+# ── LLOYD ASSURANCES — Annexe 13 Non-Vie. 2021/2022 figes plus haut.
+# 2015 : per-categorie 9 colonnes (Acceptation / ARD / Automobile /
+# Accidents du travail / Incendie / Transport / Grele / Groupe / Total),
+# calque texte propre, entiers, « - » isole = cellule vide. Charges en
+# MAGNITUDE positive (comme 2021/2022) -> faux positifs validate_table
+# documentes. Modele : SS = PA - CP ; RT = SS - CAG + SF + SR.
+# 2018 : pas d'Annexe 13 par categorie dans le depot -> Annexe 16
+# raccordement (colonne Total seule).
+_R_LLOYD_NV = [
+    'Primes acquises',
+    'Primes émises',
+    'Variation des primes non acquises',
+    'Charges de prestations',
+    'Prestations et frais payés',
+    'Charges des provisions pour prestations diverses',
+    'Solde de souscription',
+    "Frais d'acquisition",
+    'Autres charges de gestion nettes',
+    "Charges d'acquisition et de gestion nettes",
+    'Produits nets de placements',
+    'Participation aux résultats',
+    'Solde financier',
+    'Primes cédées aux réassureurs',
+    'Part des réassureurs dans les primes acquises',
+    'Part des réassureurs dans les prestations payées',
+    'Part des réassureurs dans les charges de provisions pour prestations',
+    'Part des réassureurs dans la participation aux résultats',
+    'Commissions reçues des réassureurs / rétrocessionnaires',
+    'Solde de réassurance / rétrocession',
+    'Résultat technique',
+    'Provisions pour primes non acquises (clôture)',
+    'Provisions pour primes non acquises (réouverture)',
+    'Provisions pour sinistres à payer (clôture)',
+    'Provisions pour sinistres à payer (réouverture)',
+    'Autres provisions techniques (clôture)',
+    'Autres provisions techniques (réouverture)',
+]
+_LL_COLS_NV = ["Acceptation", "ARD", "Automobile", "Accidents du travail",
+               "Incendie", "Transport", "Grêle", "Groupe", "Total"]
+_LL_2015 = _grid(_LL_COLS_NV, 32, [
+    [583005, 10188462, 39415845, None, 6168180, 3310121, 210368, 6842362, 66718344],
+    [601364, 10401453, 41043257, None, 6418472, 3250295, 186632, 6842362, 68743835],
+    [-18359, -212991, -1627412, None, -250292, 59826, 23736, None, -2025491],
+    [215024, 8496122, 25693714, 79189, 1174402, 1055405, 70465, 6288317, 43072637],
+    [23531, 2487349, 27055472, 137050, 1653119, 175537, 166578, 6013114, 37711751],
+    [191493, 6008772, -1361759, -57861, -478717, 879868, -96113, 275203, 5360886],
+    [367982, 1692341, 13722131, -79189, 4993778, 2254716, 139903, 554045, 23645707],
+    [171098, 1295974, 5997438, None, 1023938, 475297, 17996, 485228, 9466970],
+    [34826, 780860, 3021242, None, 469546, 253722, 16125, 696643, 5272964],
+    [205924, 2076834, 9018680, None, 1493484, 729020, 34121, 1181871, 14739934],
+    [10523, 183895, 711431, None, 111332, 59746, 3797, 123500, 1204223],
+    [None, -71908, -68829, None, -138999, -97595, None, -104353, -481683],
+    [10523, 111988, 642602, None, -27667, -37849, 3797, 19147, 722540],
+    [None, -7167959, -26358547, None, -5797173, -2749964, -156979, None, -42230621],
+    [None, 128056, 286900, None, 205720, -218671, -27092, None, 374913],
+    [None, 871988, 12144066, None, 801416, 11551, 176181, None, 14005202],
+    [None, 3135651, 6062089, None, -34022, 779995, -114583, None, 9829130],
+    [None, 226, 1125242, None, 281, None, None, None, 1125748],
+    [None, 1092375, 5102215, None, 1772206, 575708, 35968, None, 8578471],
+    [None, -1939662, -1638035, None, -3051573, -1601382, -86504, None, -8317156],
+    [172580, -2212169, 3708019, -79189, 421055, -113535, 23075, -608679, 1311157],
+    [-253607, -4993576, -15642353, None, -1896678, -404749, -60822, None, -23251785],
+    [235248, 4780585, 14014942, None, 1646386, 464575, 84559, None, 21226294],
+    [239473, 21545577, 76803088, 5533, 7043336, 1376954, 61619, 1879340, 108954921],
+    [-47980, -15536805, -78164847, -5533, -7522054, -497086, -213660, -1604137, -103592101],
+    [None, None, None, 1511924, None, None, 330567, None, 1842491],
+    [None, None, None, -1569786, None, None, -274639, None, -1844425],
+], rows=_R_LLOYD_NV)
+
+
 VERIFIED = {
     ("AMI", 2019): _AMI_2019, ("AMI", 2020): _AMI_2020, ("AMI", 2023): _AMI_2023,
     ("COTUNACE", 2017): _COT_2017, ("COTUNACE", 2018): _COT_2018, ("COTUNACE", 2019): _COT_2019,
@@ -2792,6 +2862,7 @@ VERIFIED = {
     ("COTUNACE", 2023): _COT_2023, ("COTUNACE", 2024): _COT_2024,
     ("COTUNACE", 2025): _COT_2025,
     ("LLOYD_TUNISIEN", 2021): _LL_2021, ("LLOYD_TUNISIEN", 2022): _LL_2022,
+    ("LLOYD_TUNISIEN", 2015): _LL_2015,
     ("COMAR", 2017): _CM_2017, ("COMAR", 2019): _CM_2019,
     ("COMAR", 2020): _CM_2020, ("COMAR", 2021): _CM_2021, ("COMAR", 2022): _CM_2022,
     ("COMAR", 2023): _CM_2023, ("COMAR", 2024): _CM_2024, ("COMAR", 2025): _CM_2025,
