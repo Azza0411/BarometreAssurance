@@ -1491,3 +1491,32 @@ régression.
 
 Stockées via `process_one_document` (statut `ok_verifie`, docs
 225 + 121→130).
+
+## 2026-09-10 (suite) — ASTREE : 8/11 années figées + défaut « accolades » corrigé
+
+Retour utilisateur : « il y a fusion dans le tableau Excel qui ne figure pas
+dans le PDF » + « quand la valeur est entre accolades <…> elle est
+négative ».
+
+1. **Fusion fabriquée** → corrigée dans `derive_column_groups` (voir plus
+   haut : « Total non vie » n'est plus traité comme en-tête de groupe).
+2. **Valeurs `<…>` visibles dans l'export** : elles venaient de l'extraction
+   camelot d'ASTREE **2022/2023** qui pointait sur la MAUVAISE page
+   (Annexe n°3 « État de résultat technique » Brut/Cessions/Net, qui utilise
+   `<…>` pour les négatifs), l'Annexe 13 de ces 2 années étant un SCAN
+   (filigrane « Projet », p.39 / p.37). Cellules bancales supprimées de la
+   base → l'export affiche désormais honnêtement « tableau complet non
+   disponible ». OCR de ces pages tenté (tesseract, 400 dpi) : trop dégradé
+   pour une reconstruction fiable.
+
+**Nouvellement figées : 2015 et 2018** (passe géométrique v3 complétée :
+`,000` / `,031` reconnus comme fragments — format milliers 2015 ; « - »
+détaché appliqué comme signe SEULEMENT s'il jouxte le nombre à < 19 px,
+sinon séparateur de colonne — corrige le faux négatif de « Total non vie »
+dans « Primes émises » 2018). Toutes les identités écart nul.
+
+**Bilan ASTREE : 8/11 figées** (2015, 2016, 2018, 2019, 2020, 2021, 2024,
+2025). Restent **2017** (« ##### » dans le PDF sur 3 lignes : Solde de
+souscription, Charges d'acq. et de gestion, Solde de réassurance — colonnes
+décalées, non reconstructible de façon fiable) et **2022/2023** (Annexe 13
+scannée, OCR trop dégradé).
