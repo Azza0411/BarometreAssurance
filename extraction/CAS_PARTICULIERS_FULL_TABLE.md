@@ -1612,3 +1612,26 @@ base, l'export affiche « tableau complet non disponible ».
 
 **Bilan BH : 6/7 figées** — 2019, 2021 (C4, 7 colonnes) ; 2022, 2023, 2024,
 2025 (C7, colonne « Total » seule). Reste **2020** (scan).
+
+## 2026-09-10 (suite) — CTAMA : aucune Annexe 13 (hors périmètre par format de reporting)
+
+Seuls 2 dépôts CMF disponibles (2018, 2020). Parcours page à page des deux
+PDF : **aucune ventilation du résultat technique Non-Vie par branche**.
+CTAMA (mutuelle agricole) ne publie que :
+- l'**État de résultat technique Non-Vie agrégé** (Brut / Cessions / Net —
+  Annexe 3, p4-5) ;
+- des ventilations **par branche des seules PROVISIONS** (primes non
+  acquises, sinistres à payer) dans les notes (Note 8).
+
+Le cache `tableau_cellules` contenait pour docs 164 (2018) et 165 (2020) des
+cellules camelot extraites par erreur de la page Brut/Cessions/Net (colonnes
+« Opérations brutes / Cessions et/ou rétrocessions / Opérations nettes /
+Opérations nettes (2) », libellés mutilés « Rtnv sous total… », « Montant
+payes »). Supprimées.
+
+Comme le repli camelot de l'export ré-accrochait cette même page, CTAMA
+ajoutée à **`NO_ANNEXE13_NON_VIE_CODES`** (nouveau sous-ensemble de
+`ANNEXE13_NON_VIE_EXCLUSIONS`, à côté de `VIE_ONLY_CODES` / `TAKAFUL_CODES`)
+— assureurs Non-Vie sans tableau « par catégorie » dans leurs états
+financiers. L'export n'affiche plus de faux « tableau complet » : CTAMA se
+comporte désormais comme ATTIJARI/UIB (feuille sans bloc Annexe 13).
