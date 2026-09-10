@@ -1461,3 +1461,33 @@ décimales) ; 2017 (« ##### » dans le PDF sur la ligne « Solde de
 souscription » — valeur illisible dans la source) ; 2018 (3 écarts
 résiduels — ligne « Solde de réassurance (2018) » sous-découpée) ;
 2022 & 2023 (Annexe 13 = SCAN sans couche texte, OCR requis).
+
+## 2026-09-10 (suite) — Fusion d'en-tête Excel fabriquée corrigée + BIAT 11/11
+
+### Fusion « Non vie » fabriquée dans l'export Excel (ASTREE)
+`derive_column_groups` traitait « Total non vie » comme un en-tête de groupe
+fusionné (au même titre que « Total non marines » chez TUNIS_RE) et créait
+dans l'export Excel une fusion « Non vie » au-dessus des branches — absente
+du PDF ASTREE (en-tête PLAT, capture utilisateur). Idem pour un suffixe de
+désambiguïsation « Total (2) » issu d'une extraction camelot bancale (2015).
+Correctif : `_GROUP_TERMINAL_EXCLUDE = {non vie, non-vie, nonvie}` + garde
+sur « (N) ». Les vrais groupes fusionnés de TUNIS_RE (Non marines / Marines)
+restent produits.
+
+### BIAT ASSURANCE — 11/11 années figées
+Couche texte native, propre (entiers, séparateur espace, moins préfixe,
+« 0 » = néant). 9 branches + Total (AUTO/TRANSPORT/INCENDIE/CONSTRUCTION/
+RC GLE/R DIVERS/ASSISTANCES/MALADIE/ACC CORP) ; 2015 en compte 11
+(+ AGRICOLE + « Ass Caution » → Crédit-Caution). Modèle additif :
+SS = Primes acquises + Charges de prestations ; CAG = FA + Autres ch.
+gestion ; **SF = Produits nets de placements** (pas de ligne
+« participation ») ; **SR = RA(primes) + RA(prestations) + RA(charges prov.)
++ RA(PB) + Commissions + Intérêts servis** ; RT = SS+CAG+SF+SR. Toutes les
+identités écart nul sur les 11 millésimes (reconstruction géométrique).
+
+`validate_table` : « Intérêts servis » ajouté en poste FACULTATIF de la
+règle `solde_reassurance` (BIAT le loge dans son bloc réassurance) — 0
+régression.
+
+Stockées via `process_one_document` (statut `ok_verifie`, docs
+225 + 121→130).
