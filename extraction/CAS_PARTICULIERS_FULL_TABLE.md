@@ -1520,3 +1520,35 @@ dans « Primes émises » 2018). Toutes les identités écart nul.
 souscription, Charges d'acq. et de gestion, Solde de réassurance — colonnes
 décalées, non reconstructible de façon fiable) et **2022/2023** (Annexe 13
 scannée, OCR trop dégradé).
+
+## 2026-09-10 (suite) — BH ASSURANCE : 2/7 années figées
+
+Annexe 13 « C4 » de BH : 7 colonnes (AUTO / ARD / INCENDIE / ENG / TRANSPORT
+/ MALADIE / Total). PDF au **libellé ENROULÉ de façon pathologique** :
+- une partie de libellé sur la ligne AVANT les données, l'autre APRÈS
+  (« Charges des provisions pour » / [données] / « prestations diverses ») ;
+- des coupures de libellé au milieu d'un mot (« dansl es », « dansles ») ;
+- des valeurs de Total (et parfois de branche) scindées sur 2-3 lignes
+  autour de leur propre ligne (« 108 320 » ligne N-1, [données] ligne N,
+  « 535 » ligne N+1 → 108 320 535).
+
+Parser dédié (accumulation de libellé sur plusieurs lignes visuelles ;
+distinction suite-de-libellé / nouveau-libellé par un lexique de débuts de
+libellé ; ré-assemblage des Total enroulés pré+post).
+
+Modèle additif : CP = Prest. payés + Ch. provisions ; **SS = Primes acquises
++ CP + Variation des autres provisions techniques** ; CAG = FA + Var. frais
+d'acq. reportés + Frais d'administration + Autres charges techniques ;
+SF = Produits nets de placements + Participation ; SR = Primes cédées +
+RA(prest.) + RA(prov. primes non émises) + RA(charges prov.) + Commissions ;
+RT = SS + CAG + SF + SR.
+
+**Figées (écart nul) : 2019, 2021** (2021 : 1 correction manuelle —
+« Primes cédées » ARD = -1 425 551, valeur « -1 425 » + « 551 » scindée de
+part et d'autre du libellé, non reconstructible par la position). Stockées
+via `process_one_document` (docs 131, 133).
+
+**Restent :** 2022-2025 (3 à 6 cellules résiduelles enroulées, non
+reconstructibles par position — transcription manuelle ou passe dédiée
+supplémentaire nécessaire) ; **2020** (page C4 = SCAN, couche texte
+illisible « 3l DECEMBRE 2O2O »).
