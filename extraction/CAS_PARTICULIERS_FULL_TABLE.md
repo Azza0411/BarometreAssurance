@@ -1245,3 +1245,42 @@ ont un résidu de 250-1700 dinars sur le seul « Solde de réassurance »
 **Bilan COMAR : 4/11 années figées** (2017, 2019, 2023, 2025). Restent
 2020/2021/2022/2024 (pages IV.7 SCANNÉES, 15 branches) ; 2015
 (raccordement) ; 2016/2018 (page introuvable).
+
+## 2026-09-10 (suite) — COMAR 2020, 2021, 2022, 2024 figées
+
+Découverte : ces 4 pages ne sont PAS scannées, elles ont une couche texte
+(pdfplumber : 4500-5300 caractères). Extraites par reconstruction géométrique
+(bords droits des 15 colonnes, dérivés d'une ligne pleine) + recoupement
+systématique par les identités comptables COMAR (SS = PE+VAR+PFP+CPP,
+CAG = FA+ACG, SF = PdtsPlacements+AutresPdtsTech, SR = Σ parts réassureurs,
+RT = SS+CAG+SF+SR, et Σ 14 branches = colonne Total). Toutes les identités
+tombent juste (écart ≤ 1 millime, arrondi source).
+
+- **2020** : signe « moins » = ‐ U+2010 préfixe collé au nombre (NON ambigu),
+  cellule vide = « 0 ». Bloc réassurance à 4 lignes (pas de « participation
+  aux résultats ») → gabarit `_R_COMAR` (31 lignes) + `_CM_COLS_15`.
+- **2021, 2022** : idem 2020 mais bloc réassurance à 5 lignes (ajout
+  « Part des réassureurs dans la participation aux résultats ») → nouveau
+  gabarit `_R_COMAR_21` = `_R_COMAR` + cette ligne (32 lignes).
+- **2024** : le ‐ U+2010 marque AUSSI BIEN une cellule vide qu'un signe
+  « moins », avec une espace insérée (« ‐ 18 668 065 ») → ambigu comme 2025.
+  Reconstruction géométrique des magnitudes + CHAQUE signe et CHAQUE valeur
+  manquante déduits/recoupés par les identités (dont plusieurs artefacts de
+  rendu résolus par le calcul : « 20 306 475 » = en réalité RC 20 306 +
+  Auto 475 ; « ‐ 81 704 129 745 183 » = Auto ‐81 704 129 + Transport
+  745 183 ; « ‐ 3 7 663 671 » = ‐37 663 671). Bloc réassurance à 7 lignes
+  avec « … frais reportés » (mais SANS « … charges des autres provisions
+  techniques » ni « Autres charges techniques ») → nouveau gabarit
+  `_R_COMAR_24` = `_R_COMAR_15` avec « frais reportés » à la place de
+  « charges des autres provisions techniques » (34 lignes).
+
+Nouvelle ligne canonique : « Part des réassureurs dans la participation aux
+résultats » était déjà dans `_R` / `_R_COMAR_15` — rien à ajouter au pipeline.
+
+Stockées via `process_one_document` (statut `ok_verifie`, docs 25/26/27/29),
+`build_result` → normalize_table + validate_table : 0 règle en échec sur les
+4 (105 règles chacune pour 2021/2022/2024, 105 pour 2020).
+
+**Bilan COMAR : 8/11 années figées** (2017, 2019, 2020, 2021, 2022, 2023,
+2024, 2025). Restent 2015 (raccordement de format) ; 2016, 2018 (page
+Annexe 13 introuvable dans le dépôt CMF).
