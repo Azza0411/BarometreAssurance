@@ -1433,3 +1433,31 @@ reconstruction automatique (géométrique + texte) ne convergent pas
 par transcription manuelle poste par poste recoupée par les identités
 (méthode AMI/COTUNACE), ou passe géométrique dédiée sur les 3 colonnes de
 droite.
+
+## 2026-09-10 (suite) — ASTREE : 6/11 années figées (passe géométrique dédiée)
+
+Passe géométrique dédiée réussie sur les 3 colonnes de droite : bords de
+colonnes = x1 des 17/18 nombres de la ligne « Résultat technique (AAAA) » ;
+signe « moins » DÉTACHÉ (« - 2 062 865 ») pris en compte ; nombres collés
+sans espace avec signe interne (« -388,036-25 002,092 ») re-découpés ;
+libellés lettre-à-lettre re-collés (préfixe non numérique, toutes espaces
+retirées, coupe au 1er triplet de jetons numériques).
+
+17 colonnes 2015-2021 : 14 branches (…, Invalidité, **Individuelle accident**,
+**Loi**) + **Total non vie** + **Acceptation** + **Total**. 18 colonnes
+2024-2025 (ajout **Pertes pécuniaires** avant « Total non vie »).
+
+`CANONICAL_COLUMNS` : ajout de **« Loi »** (branche ASTREE distincte de
+« Individuelle accident »). `validate_table` : « Part des réassureurs dans
+la variation des primes non acquises » ajouté en poste FACULTATIF de la
+règle `solde_reassurance` (présent chez ASTREE 2024/2025 et COMAR détaillé —
+0 régression, fait même passer COMAR 2023 de 9 à 8 KO).
+
+**Figées (identités écart nul, 0 KO) : 2016, 2019, 2020, 2021, 2024, 2025.**
+Stockées via `process_one_document` (docs 59/62/63/64/67/68).
+
+**Restent :** 2015 (2 résidus d'arrondi source — table en milliers à 3
+décimales) ; 2017 (« ##### » dans le PDF sur la ligne « Solde de
+souscription » — valeur illisible dans la source) ; 2018 (3 écarts
+résiduels — ligne « Solde de réassurance (2018) » sous-découpée) ;
+2022 & 2023 (Annexe 13 = SCAN sans couche texte, OCR requis).
