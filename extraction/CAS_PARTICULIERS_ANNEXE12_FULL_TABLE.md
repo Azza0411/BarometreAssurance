@@ -124,12 +124,56 @@ société) :
   transférés de l'état de résultat [non technique] ») — trop longue/diluée
   pour la correspondance floue, ajoutée en variante connue explicite.
 
-### Prochaine étape (pas encore faite)
+## 2026-09-11 (suite) — voie OCR activée pour l'Annexe 12 (demande
+utilisateur : « trouvez une solution mais pas manuelle »)
 
-Comme pour l'Annexe 13 : saisie manuelle vérifiée (`annexe12_verified.py`)
-des documents où l'automatique échoue (page scannée, texte corrompu) —
-AMI (7/9 manquants, cohérent avec les années scannées déjà identifiées côté
-Annexe 13), COTUNACE/TUNIS_RE/CARTE/MAGHREBIA restants à vérifier au cas
-par cas (certains sont de vrais zéros structurels, pas tous). Non entamée
-dans cette session — l'audit automatique seul a déjà consommé le temps
-disponible ; à reprendre sur demande.
+`extraction/scanned_table_extractor.py` (voie OCR de dernier recours,
+`ocr_locate_and_extract`/`_title_score`) était câblée EN DUR pour
+l'Annexe 13 Non-Vie : rejet explicite de toute page titrée "Annexe N°X"
+avec X ≠ 13, et bonus/malus de score construits sur NON_VIE_RE en premier.
+Paramétrée (`vie_mode=False` par défaut, rétrocompatible) — `_title_score`
+et `ocr_locate_and_extract` acceptent désormais `vie_mode=True` (accepte
+"Annexe N°12", bascule les bonus/malus VIE/NON-VIE). Même piège
+`\bvie\b`-matche-dans-"non vie" que `relaxed_is_annexe12_page` : corrigé
+en testant la catégorie qu'on veut REJETER en premier, dans les deux sens.
+`locate_and_extract_full_table` reçoit un nouveau paramètre
+`ocr_vie_mode`, propagé par `annexe12_pipeline.process_annexe12`.
+
+**Vérifié structurellement automatiques (pas des échecs)**, par recherche
+textuelle directe dans le PDF (pas de lecture manuelle) : CARTE, MAGHREBIA,
+TUNIS_RE, COTUNACE — aucune mention "Annexe N°12"/"résultat technique...
+catégorie... vie" dans leurs dépôts respectifs (CARTE 2018 : n'a que son
+Annexe N°13 Non-Vie ; TUNIS_RE : catégorisation Marine/Non-Marine,
+cohérent avec `CAS_PARTICULIERS_ANNEXE12.txt` ; COTUNACE : Crédit-Caution
+Non-Vie uniquement). Exclus du nouveau passage OCR (aurait été du temps de
+calcul perdu sur des documents qui n'ont rien à trouver).
+
+### Résultat du passage OCR ciblé (11 sociétés à gap non-structurel)
+
+```
+Avant OCR -> après OCR (documents trouvés, écarts non comptés)
+AMI            2/9  -> 7/9    ASTREE   7/11 -> 8/11   BH      6/7 -> 6/7
+BNA            1/2  -> 2/2    CARTE_VIE 10/11(inchangé) COMAR   9/11 -> 11/11
+HAYETT         9/11 -> 10/11  LLOYD_VIE 5/6 -> 6/6      MAGHREBIA_VIE 8/11 -> 9/11
+STAR          10/11 -> 11/11  UIB      3/6 -> 3/6
+```
+
+**Total global (191 documents, hors Takaful) : 127 → ~140/191 (73%)**,
+entièrement automatique (aucune valeur saisie/corrigée à la main). Les
+grilles extraites par OCR gardent leurs écarts de validation VISIBLES
+(`tableau_validations`, statut "ecart") plutôt que d'être silencieusement
+présentées comme parfaites — même principe que la voie OCR déjà en
+production pour l'Annexe 13 (AMI 2019/2020/2023, COTUNACE 2017/2019/2023).
+Certaines cellules restent mal lues (chiffre tronqué, confusion 6/7 ou 2/7)
+sur les scans les plus dégradés — visible dans les écarts, pas caché.
+
+### Gaps restants (13 documents), non structurels mais non résolus
+
+AMI 2019/2020, ASTREE 2015/2018/2020, BH 2020, CARTE_VIE 2018,
+HAYETT 2019, MAGHREBIA_VIE 2016/2020, UIB 2020/2021/2022. UIB 2020-2022
+vérifié : leur page "ETAT DE RESULTAT" mentionne "RTV Résultat Technique
+Vie" mais uniquement comme LIGNE de renvoi dans l'état de résultat
+narratif (toutes valeurs "-"), pas la vraie grille par catégorie — format
+de dépôt différent ces 3 années-là (comme la bascule de gabarit déjà
+documentée AMI/BNA côté Annexe 13). Les autres nécessiteraient un
+diagnostic titre-par-titre supplémentaire, hors budget de cette session.

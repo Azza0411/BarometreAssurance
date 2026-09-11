@@ -460,38 +460,58 @@ def _header_names(rows, bands, page_width, first_data_yc=None, reocr_fn=None):
 
 
 _ANNEXE13_HEAD_RE = re.compile(r"annexe\s*n?.?\s*13\b")
+_ANNEXE12_HEAD_RE = re.compile(r"annexe\s*n?.?\s*12\b")
 _ANNEXE_NUM_HEAD_RE = re.compile(r"annexe\s*n?\s*[°ºo]?\s*(\d{1,2})\b")
 
 
-def _title_score(ocr_text):
+def _title_score(ocr_text, vie_mode=False):
     """Score de vraisemblance qu'une page OCR soit la page "Annexe 13 —
-    Résultat technique Non-Vie" : titre (motif partagé
-    `_FULL_TABLE_PAGE_TITLE_RE`), mention "Annexe N°13", "Non-Vie", présence
-    conjointe de "primes acquises"/"résultat technique". Rejette franchement
-    (score très négatif) une page qui se dit explicitement "Annexe N°X" avec
-    X ≠ 13 : sur les documents AMI, l'"Annexe 3" ("État de résultat technique
-    de l'assurance et/ou de la réassurance Non Vie", réconciliation agrégée)
-    satisfait sinon le motif de titre et supplantait la vraie page Annexe 13
-    par branche (même piège que la voie camelot, page 4)."""
+    Résultat technique Non-Vie" (`vie_mode=False`, comportement historique)
+    ou "Annexe 12 — Résultat technique Vie" (`vie_mode=True`, voir
+    `extraction/annexe12_pipeline.py`) : titre (motif partagé
+    `_FULL_TABLE_PAGE_TITLE_RE`), mention "Annexe N°13"/"Annexe N°12",
+    "Non-Vie"/"Vie" selon le mode, présence conjointe de "primes
+    acquises"/"résultat technique". Rejette franchement (score très
+    négatif) une page qui se dit explicitement "Annexe N°X" avec X ≠
+    12/13 : sur les documents AMI, l'"Annexe 3" ("État de résultat
+    technique de l'assurance et/ou de la réassurance Non Vie",
+    réconciliation agrégée) satisfait sinon le motif de titre et
+    supplantait la vraie page Annexe 13 par branche (même piège que la voie
+    camelot, page 4)."""
     lines = ocr_text.splitlines()
     head = _normalizer.clean(" ".join(lines[:8]))
     full = _normalizer.clean(ocr_text)
+    target_num = "12" if vie_mode else "13"
+    annexe_head_re = _ANNEXE12_HEAD_RE if vie_mode else _ANNEXE13_HEAD_RE
     nums = _ANNEXE_NUM_HEAD_RE.findall(head)
-    if nums and "13" not in nums:
+    if nums and target_num not in nums:
         return -5
     score = 0
     if _FULL_TABLE_PAGE_TITLE_RE.search(head):
         score += 3
     elif _FULL_TABLE_PAGE_TITLE_RE.search(full):
         score += 1
-    if _ANNEXE13_HEAD_RE.search(head):
+    if annexe_head_re.search(head):
         score += 3
-    if _NON_VIE_RE.search(head):
-        score += 1
     if "primes acquises" in full and "resultat technique" in full:
         score += 1
-    if _VIE_RE.search(head) and not _NON_VIE_RE.search(head):
-        score -= 2
+    # "vie" (`\bvie\b`) matche aussi comme sous-mot de "non vie" — NON_VIE_RE
+    # (r"non.?vie") est le motif SPÉCIFIQUE dans les deux modes ; le +1/-2
+    # bonus/malus ne peut donc jamais s'inverser en un simple échange des
+    # deux motifs (même piège que `relaxed_is_annexe12_page`, voir son
+    # commentaire). Mode Non-Vie (comportement historique) : "non vie" est
+    # le signal positif, "vie" pur (sans "non") le signal négatif. Mode Vie :
+    # inverse — "vie" pur le signal positif, "non vie" le signal négatif.
+    if vie_mode:
+        if _VIE_RE.search(head) and not _NON_VIE_RE.search(head):
+            score += 1
+        if _NON_VIE_RE.search(head):
+            score -= 2
+    else:
+        if _NON_VIE_RE.search(head):
+            score += 1
+        if _VIE_RE.search(head) and not _NON_VIE_RE.search(head):
+            score -= 2
     return score
 
 
@@ -643,11 +663,12 @@ def _reconcile_doubled_columns(col_names, lignes):
 
 
 def ocr_locate_and_extract(pdf_path, kpi_patterns, sanity_check, max_pages=120,
-                            min_sanity_matches=2, **_unused):
-    """Localise la page "Annexe 13 — Résultat technique Non-Vie" par OCR
-    (titre flou), reconstruit la grille ligne par ligne, et renvoie
-    `(numero_page_1_indexe, grille)` au même contrat que
-    `extract_full_table_camelot` — ou `(None, None)`.
+                            min_sanity_matches=2, vie_mode=False, **_unused):
+    """Localise la page "Annexe 13 — Résultat technique Non-Vie"
+    (`vie_mode=False`, comportement historique) ou "Annexe 12 — Résultat
+    technique Vie" (`vie_mode=True`) par OCR (titre flou), reconstruit la
+    grille ligne par ligne, et renvoie `(numero_page_1_indexe, grille)` au
+    même contrat que `extract_full_table_camelot` — ou `(None, None)`.
 
     `sanity_check(lignes) -> bool` : le MÊME `_sanity_ok` que la voie normale
     (≥ `min_sanity_matches` postes comptables reconnus), passé par l'appelant
@@ -659,6 +680,8 @@ def ocr_locate_and_extract(pdf_path, kpi_patterns, sanity_check, max_pages=120,
     n_pages = min(len(doc), max_pages)
     doc.close()
 
+    annexe_head_re = _ANNEXE12_HEAD_RE if vie_mode else _ANNEXE13_HEAD_RE
+
     # Passe de localisation RAPIDE : rendu basse résolution, sans retrait de
     # quadrillage (le titre est du gros texte, lisible même dégradé) —
     # l'OCR pleine résolution est réservé aux quelques pages candidates.
@@ -669,14 +692,14 @@ def ocr_locate_and_extract(pdf_path, kpi_patterns, sanity_check, max_pages=120,
             text = _ocr_text(img)
         except Exception:
             continue
-        s = _title_score(text)
+        s = _title_score(text, vie_mode=vie_mode)
         if s >= 3:
             head = _normalizer.clean(" ".join(text.splitlines()[:8]))
-            scored.append((s, idx, bool(_ANNEXE13_HEAD_RE.search(head))))
+            scored.append((s, idx, bool(annexe_head_re.search(head))))
     scored.sort(reverse=True)
 
     best = None
-    for _score, idx, head_annexe13 in scored[:6]:  # ≤ 6 pages en extraction complète
+    for _score, idx, head_annexe in scored[:6]:  # ≤ 6 pages en extraction complète
         try:
             grid = _page_grid(pdf_path, idx)
         except Exception:
@@ -687,15 +710,16 @@ def ocr_locate_and_extract(pdf_path, kpi_patterns, sanity_check, max_pages=120,
             continue
         # Une grille aux colonnes "Opérations brutes / Cessions / Opérations
         # nettes" est un tableau de RÉCONCILIATION. C'est une forme légitime
-        # de l'Annexe 13 pour quelques sociétés — mais seulement si la page
-        # est bien titrée "Annexe N°13". Sinon (AMI : "Annexe 3 — État de
-        # résultat technique … Non Vie", agrégée) c'est la mauvaise page.
+        # de l'Annexe 13/12 pour quelques sociétés — mais seulement si la
+        # page est bien titrée "Annexe N°13"/"Annexe N°12". Sinon (AMI :
+        # "Annexe 3 — État de résultat technique … Non Vie", agrégée) c'est
+        # la mauvaise page.
         cols_norm = " ".join(grid["colonnes"])
         is_raccordement = "operations" in cols_norm or "cessions" in cols_norm
-        if is_raccordement and not head_annexe13:
+        if is_raccordement and not head_annexe:
             continue
         n_named = sum(1 for c in grid["colonnes"] if not c.startswith("(colonne"))
-        rank = (head_annexe13, n_named, len(grid["lignes"]))
+        rank = (head_annexe, n_named, len(grid["lignes"]))
         if best is None or rank > best[2]:
             best = (idx, grid, rank)
     if best is None:
