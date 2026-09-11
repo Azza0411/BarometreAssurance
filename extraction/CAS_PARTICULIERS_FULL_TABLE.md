@@ -1937,3 +1937,16 @@ horizontal collent exactement.
 | ASTREE | tous sauf 2017/2022 | 2017, 2022 (raccordement C16, texte propre — pas un scan, mais 1 seule colonne faute de page par-catégorie exploitable) |
 | BH, BNA, CARTE, COMAR, COTUNACE, GAT, LLOYD, MAGHREBIA, STAR, TUNIS_RE, BIAT | tous | aucune (à ce stade) |
 
+
+**BH 2020** (p38, saisie manuelle) : couche texte présente mais
+entrelacée/inexploitable (garbage OCR), lecture visuelle 400dpi. Gabarit
+propre (6 branches Auto/ARD/Incendie/Engineering/Transport/Maladie) :
+« Participation aux résultats » et « Variation provision Participation »
+alimentent en réalité Charges de prestations / Solde financier (12 faux
+positifs `validate_table` documentés, généique n'anticipe pas ces 2
+lignes) ; SR = 5 termes signés additionnés (la ligne « provisions primes
+non émises » est décalée d'une colonne dans le PDF source, résolue par
+recoupement RT). Écart nul sur toutes les identités du modèle + Σ
+horizontale. **BH passe de 6/7 à 7/7 — société complète.**
+Alias colonne ajouté à `annexe13_pipeline.py` : "Engineering"/"ENG" ->
+"Risques techniques" (générique, réutilisable pour d'autres sociétés).

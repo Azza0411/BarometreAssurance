@@ -343,6 +343,7 @@ _COLUMN_ALIASES = {
     "invalidite": "Invalidité",
     "autres": "Autres", "autre s": "Autres",
     "risque tech.": "Risques techniques", "risque tech": "Risques techniques",
+    "engineering": "Risques techniques", "eng": "Risques techniques",
     # "ARD" / "Acc R.D" = "Accidents et Risques Divers" — abréviation d'usage
     # sur ces gabarits (TUNIS_RE écrit "ARD", LLOYD_TUNISIEN "Acc R.D"),
     # distincte de "Risques divers" (branche assureur direct) donc jamais
