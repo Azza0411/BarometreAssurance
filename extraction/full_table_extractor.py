@@ -146,6 +146,33 @@ def relaxed_is_annexe13_page(page, lines_checked=4):
     return not _A13_VIE_RE.search(normalized)
 
 
+def relaxed_is_annexe12_page(page, lines_checked=4):
+    """Symétrique de `relaxed_is_annexe13_page` pour l'Annexe 12 (Résultat
+    technique Vie) : même titre élargi et même repli de reconstruction
+    "lettres espacées", mais accepte les pages VIE et rejette les pages
+    NON-VIE. Réutilisée comme `extra_page_predicate` par
+    `annexe12_pipeline.process_annexe12`.
+
+    ATTENTION à l'ordre : `_A13_NON_VIE_RE` (r"non.?vie") DOIT être testé
+    AVANT `_A13_VIE_RE` (r"\\bvie\\b") — "non vie" contient "vie" comme mot à
+    part entière, donc `_A13_VIE_RE` matche aussi À TORT dans "non vie" (les
+    limites `\\b` entourent seulement "vie", pas "non vie"). Tester NON_VIE
+    en premier (et rejeter aussitôt) est donc nécessaire, pas juste
+    symétrique par style avec `relaxed_is_annexe13_page`."""
+    text = (page.extract_text() or "").strip()
+    normalized = _normalizer.clean(" ".join(text.split("\n")[:lines_checked])) if text else ""
+    if not _FULL_TABLE_PAGE_TITLE_RE.search(normalized):
+        reconstructed = _reconstructed_page_head_text(page, lines_checked)
+        if not reconstructed.strip():
+            return False
+        normalized = _normalizer.clean(reconstructed.replace("\n", " "))
+        if not _FULL_TABLE_PAGE_TITLE_RE.search(normalized):
+            return False
+    if _A13_NON_VIE_RE.search(normalized):
+        return False
+    return bool(_A13_VIE_RE.search(normalized))
+
+
 _JUNK_LABEL_RE = re.compile(r"^[+\-/\s]+$")
 
 MIN_DATA_CELLS = 4  # une vraie ligne de donnees a au moins 4 cellules numeriques (la
@@ -757,7 +784,8 @@ _ANNEXE_TITLE_RE = re.compile(r"\bannexe\b")
 
 def locate_and_extract_full_table(pdf_path, is_target_page, kpi_patterns, raccordement_re=None,
                                    max_pages=120, min_data_cells=MIN_DATA_CELLS, min_sanity_matches=2,
-                                   extra_page_predicate=None):
+                                   extra_page_predicate=None, use_notes_fallback=True,
+                                   use_ocr_fallback=True):
     """Localise la bonne page dans le PDF `pdf_path` (réutilise le prédicat
     `is_target_page` déjà validé par l'extracteur 7-KPI correspondant —
     ex. annexe13_kpi_extractor._is_target_page — plutôt qu'une détection de
@@ -824,13 +852,17 @@ def locate_and_extract_full_table(pdf_path, is_target_page, kpi_patterns, raccor
     # chiffres Non-Vie dans la section narrative « Notes sur les Comptes de
     # Résultats », une dizaine de petits tableaux par poste. On tente de les
     # recoller en une grille au même contrat, filtrée par le MÊME contrôle de
-    # vraisemblance que la voie normale.
-    from extraction.notes_resultat_extractor import assemble_non_vie_grid_from_notes
+    # vraisemblance que la voie normale. `use_notes_fallback=False` (ex.
+    # Annexe 12 Vie, voir annexe12_pipeline.py) saute ce repli, construit et
+    # calibré spécifiquement pour le gabarit Non-Vie.
+    notes_page, notes_grid = None, None
+    if use_notes_fallback:
+        from extraction.notes_resultat_extractor import assemble_non_vie_grid_from_notes
 
-    try:
-        notes_page, notes_grid = assemble_non_vie_grid_from_notes(pdf_path, max_pages=max_pages)
-    except Exception:
-        notes_page, notes_grid = None, None
+        try:
+            notes_page, notes_grid = assemble_non_vie_grid_from_notes(pdf_path, max_pages=max_pages)
+        except Exception:
+            notes_page, notes_grid = None, None
     if (
         notes_grid
         and len(notes_grid["colonnes"]) >= 1
@@ -838,6 +870,9 @@ def locate_and_extract_full_table(pdf_path, is_target_page, kpi_patterns, raccor
         and _sanity_ok(notes_grid["lignes"], kpi_patterns, min_sanity_matches)
     ):
         return notes_page, notes_grid
+
+    if not use_ocr_fallback:
+        return None, None
 
     # Dernier recours : voie OCR, pour les documents dont la couche texte est
     # inexploitable sur toute la zone Annexe 13 (scan image intégral, police

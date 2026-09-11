@@ -173,8 +173,6 @@ CANONICAL_ROWS = [
 # libellé non normalisé visible que silencieusement faux).
 _MATCH_THRESHOLD = 0.55
 
-_CANONICAL_NORMALIZED = [(label, _normalizer.clean(label)) for label in CANONICAL_ROWS]
-
 # Une ligne de repli fragmentée sur 2 libellés bruts consécutifs (ex. le
 # tableau écrit la "part des réassureurs" en 4 sous-lignes commençant par
 # "les..."/"la..." — voir full_table_extractor.py, cas STAR) : ces préfixes,
@@ -199,17 +197,24 @@ _KNOWN_PREFIXED_VARIANTS = {
 _YEAR_MARKER_RE = re.compile(r"[\s-]*annee\s*n([\s-]*1)?\s*$")
 
 
-def normalize_row_label(raw_label):
+def normalize_row_label(raw_label, canonical_rows=CANONICAL_ROWS, threshold=_MATCH_THRESHOLD,
+                         known_prefixed_variants=_KNOWN_PREFIXED_VARIANTS):
     """Rattache un libellé de ligne brut extrait du PDF au poste comptable
-    canonique correspondant (`CANONICAL_ROWS`), par correspondance floue —
-    tolère les variantes de formulation déjà rencontrées entre sociétés
-    ("Charges de prestation" vs "Charges de prestations", "Primes émises et
-    acceptées" vs "Primes émises"...). Renvoie (libelle_normalise, matched)
-    où `matched` est False si aucun poste canonique n'est assez proche (le
-    libellé brut original est alors renvoyé tel quel, jamais perdu)."""
+    canonique correspondant, par correspondance floue — tolère les variantes
+    de formulation déjà rencontrées entre sociétés ("Charges de prestation"
+    vs "Charges de prestations", "Primes émises et acceptées" vs "Primes
+    émises"...). Renvoie (libelle_normalise, matched) où `matched` est False
+    si aucun poste canonique n'est assez proche (le libellé brut original est
+    alors renvoyé tel quel, jamais perdu).
+
+    `canonical_rows`/`threshold`/`known_prefixed_variants` par défaut sur le
+    vocabulaire Non-Vie (`CANONICAL_ROWS`) — paramétrables pour réutiliser ce
+    même moteur de normalisation sur un autre vocabulaire comptable (ex.
+    Annexe 12 Vie, voir extraction/annexe12_pipeline.py) sans dupliquer la
+    logique de correspondance floue."""
     norm = _normalizer.clean(raw_label)
-    if norm in _KNOWN_PREFIXED_VARIANTS:
-        return _KNOWN_PREFIXED_VARIANTS[norm], True
+    if norm in known_prefixed_variants:
+        return known_prefixed_variants[norm], True
 
     match_target = norm
     year_marker = _YEAR_MARKER_RE.search(norm)
@@ -218,8 +223,9 @@ def normalize_row_label(raw_label):
         suffix = "(exercice n-1)" if year_marker.group(1) else "(exercice n)"
         match_target = f"{base} {suffix}"
 
+    canonical_normalized = [(label, _normalizer.clean(label)) for label in canonical_rows]
     best_label, best_score = None, 0.0
-    for canonical, canonical_norm in _CANONICAL_NORMALIZED:
+    for canonical, canonical_norm in canonical_normalized:
         # Un préfixe exact (ex. "primes acquises" contenu dans "primes
         # acquises brutes 31/12/2024") est un signal plus fort qu'un simple
         # ratio de similarité de chaînes — priorité absolue s'il existe.
@@ -230,7 +236,7 @@ def normalize_row_label(raw_label):
         if score > best_score:
             best_label, best_score = canonical, score
 
-    if best_score >= _MATCH_THRESHOLD:
+    if best_score >= threshold:
         return best_label, True
     return raw_label.strip().capitalize(), False
 
@@ -274,6 +280,16 @@ CANONICAL_COLUMNS = [
     # l'année étant un simple suffixe variable retiré avant comparaison
     # (voir `_COLUMN_YEAR_SUFFIX_RE`).
     "Opérations brutes", "Cessions et/ou rétrocessions", "Opérations nettes",
+    # Branches VIE (Annexe 12 — voir extraction/annexe12_pipeline.py),
+    # ajoutées au même vocabulaire PARTAGÉ de colonnes plutôt que dans une
+    # liste séparée : aucune ne collisionne avec une branche Non-Vie, et
+    # `full_table_extractor._recovered_label_ok` (repli de récupération
+    # d'en-tête tronqué) s'appuie sur CETTE liste unique quelle que soit
+    # l'annexe traitée. Construite par relevé sur AMI/BH/COMAR (2026-09-11).
+    "Temporaire décès", "Temporaires décès et capitalisation",
+    "Capital différé", "Mixte", "Rente", "Capitalisation",
+    "Nuptialité-natalité", "Épargne", "Vie individuelle", "Vie collective",
+    "Vie entière", "Décès", "Acceptation Vie", "Prévoyance",
 ]
 
 # Alias observés -> nom canonique (clé = texte déjà passé par
@@ -364,6 +380,23 @@ _COLUMN_ALIASES = {
     "et/ou retrocessions": "Cessions et/ou rétrocessions",
     "retrocessions": "Cessions et/ou rétrocessions",
     "cessions": "Cessions et/ou rétrocessions",
+    # Branches VIE — voir le commentaire sur leur ajout à CANONICAL_COLUMNS.
+    "temporaire deces": "Temporaire décès", "temporaires deces": "Temporaire décès",
+    "temporaires deces et capitalisation": "Temporaires décès et capitalisation",
+    "temporaire deces et capitalisation": "Temporaires décès et capitalisation",
+    "capital differe": "Capital différé", "mixte": "Mixte",
+    "rente": "Rente", "rentes": "Rente",
+    "capitalisation": "Capitalisation",
+    "nuptialite natalite": "Nuptialité-natalité",
+    "epargne": "Épargne",
+    "vie individuelle": "Vie individuelle", "individuelle vie": "Vie individuelle",
+    "vie collective": "Vie collective", "collective": "Vie collective",
+    "vie entiere": "Vie entière",
+    "deces": "Décès",
+    "acceptation vie": "Acceptation Vie",
+    "prevoyance": "Prévoyance",
+    "contrats mixte": "Mixte", "contrats deces": "Décès",
+    "groupe deces": "Décès", "groupe deces temporaire": "Décès",
 }
 
 _CANONICAL_COLUMNS_NORMALIZED = [(label, _normalizer.clean(label)) for label in CANONICAL_COLUMNS]
@@ -435,7 +468,8 @@ _SECTION_SEPARATOR_LABELS = {
 }
 
 
-def normalize_table(grid):
+def normalize_table(grid, canonical_rows=CANONICAL_ROWS, row_threshold=_MATCH_THRESHOLD,
+                     known_prefixed_variants=_KNOWN_PREFIXED_VARIANTS):
     """Applique `normalize_row_label`/`normalize_column_label` à toutes les
     lignes ET colonnes d'une grille issue de `full_table_extractor.
     extract_full_table_camelot` / `locate_and_extract_full_table`. Renvoie
@@ -447,7 +481,12 @@ def normalize_table(grid):
     normalisent vers le même poste/branche canonique (rare — ne devrait pas
     arriver sur une page bien reconstruite) sont fusionnés en gardant la
     valeur non-nulle si l'une des deux est vide, pour ne perdre aucune
-    donnée plutôt que d'écraser silencieusement."""
+    donnée plutôt que d'écraser silencieusement.
+
+    `canonical_rows`/`row_threshold`/`known_prefixed_variants` : voir
+    `normalize_row_label` — les colonnes (branches) réutilisent TOUJOURS le
+    même vocabulaire partagé (`CANONICAL_COLUMNS`), seul le vocabulaire de
+    LIGNE (postes comptables) varie selon l'annexe."""
     # Colonnes : renommage préservant l'ordre, avec désambiguïsation si deux
     # colonnes se retrouvent avec le même libellé normalisé (même principe
     # que la déduplication déjà faite en amont sur les libellés bruts —
@@ -474,7 +513,9 @@ def normalize_table(grid):
         # une valeur résiduelle (Total = 0) par la reconstruction de grille.
         if _normalizer.clean(raw_label) in _SECTION_SEPARATOR_LABELS:
             continue
-        normalized, matched = normalize_row_label(raw_label)
+        normalized, matched = normalize_row_label(
+            raw_label, canonical_rows=canonical_rows, threshold=row_threshold,
+            known_prefixed_variants=known_prefixed_variants)
         if not matched:
             non_reconnues.append(raw_label)
         renamed_values = {col_rename.get(col, col): val for col, val in values.items()}
@@ -604,15 +645,19 @@ def derive_column_groups(colonnes):
     return groups
 
 
-def validate_table(normalized_lignes, columns):
-    """Applique `VALIDATION_RULES` colonne par colonne (chaque branche, plus
-    Total). Renvoie une liste de résultats {regle, colonne, attendu, trouve,
-    ecart, statut} — statut 'ok' (écart ≤ tolérance), 'ecart' (dépassement,
-    signale un souci d'extraction ou une vraie incohérence du document
-    source) ou 'donnees_manquantes' (un des postes de la règle est absent de
-    cette grille — rien à valider)."""
+def validate_table(normalized_lignes, columns, rules=VALIDATION_RULES, tolerance=_TOLERANCE):
+    """Applique `rules` (par défaut `VALIDATION_RULES`, Non-Vie) colonne par
+    colonne (chaque branche, plus Total). Renvoie une liste de résultats
+    {regle, colonne, attendu, trouve, ecart, statut} — statut 'ok' (écart ≤
+    tolérance), 'ecart' (dépassement, signale un souci d'extraction ou une
+    vraie incohérence du document source) ou 'donnees_manquantes' (un des
+    postes de la règle est absent de cette grille — rien à valider).
+
+    `rules`/`tolerance` paramétrables pour réutiliser ce même moteur de
+    validation sur un autre jeu d'identités comptables (ex. Annexe 12 Vie,
+    voir extraction/annexe12_pipeline.py)."""
     results = []
-    for rule_code, rule_desc, target, sources in VALIDATION_RULES:
+    for rule_code, rule_desc, target, sources in rules:
         target_row = normalized_lignes.get(target)
         # Un poste source préfixé "?" est FACULTATIF : s'il est absent de la
         # grille (ou sa cellule vide) il compte 0 et ne déclenche pas
@@ -644,7 +689,7 @@ def validate_table(normalized_lignes, columns):
                 continue
             expected = sum(source_vals)
             ecart = round(found - expected, 2)
-            statut = "ok" if abs(ecart) <= _TOLERANCE else "ecart"
+            statut = "ok" if abs(ecart) <= tolerance else "ecart"
             results.append({**base, "attendu": round(expected, 2),
                              "trouve": round(found, 2), "ecart": ecart, "statut": statut})
     return results
