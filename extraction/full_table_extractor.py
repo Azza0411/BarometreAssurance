@@ -650,6 +650,15 @@ def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_C
         parts = [
             rows_raw[r][col_idx].strip() for r in range(header_start, first_data_idx)
             if rows_raw[r][col_idx].strip() and (col_idx, r) not in spurious_group_cells
+            # Une ligne de VALEURS repliée sur la ligne du dessus (ex. STAR
+            # Annexe 12 : le 1er nombre de chaque colonne imprimé une ligne
+            # au-dessus du libellé "Primes émises", n'ayant pas assez de
+            # cellules numériques pour être reconnue comme `first_data_idx`
+            # — voir sa définition plus haut) ne doit jamais être collée au
+            # libellé de colonne, même partiellement captée dans la plage
+            # d'en-tête. Sans ce filtre : "Vie" + "32 465 786" -> colonne
+            # nommée "Vie 32 465 786" au lieu de "Vie" (constaté 2026-09-11).
+            and not _looks_numeric_cell(rows_raw[r][col_idx].strip())
         ]
         recovered = recovered_headers.get(col_idx)
         if recovered:

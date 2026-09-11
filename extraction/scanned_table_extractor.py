@@ -229,7 +229,14 @@ _HEADER_HINT_RE = re.compile(r"libell", re.IGNORECASE)
 _BRANCH_HEADER_RE = re.compile(
     r"incendie|transport|automobile|risq|groupe|accept|aviation|maladie|"
     r"credit|caution|\btotal\b|travail|divers|marine|construction|transp|"
-    r"individ|assistance|responsab|agricole|grele",
+    r"individ|assistance|responsab|agricole|grele|"
+    # Branches VIE (Annexe 12 — voir extraction/annexe12_pipeline.py) :
+    # sans ces mots, `_header_names` ne compte jamais ≥ 2 "hits" sur une
+    # page Vie, bascule sur le repli position (dernière ligne texte avant
+    # la 1re ligne de données) qui peut à tort choisir une ligne où un mot
+    # de branche est resté collé à des valeurs numériques.
+    r"\bvie\b|deces|d.c.s|mixte|temporaire|capital|rente|capitalisation|"
+    r"epargne|prevoyance|nuptialite",
     re.IGNORECASE,
 )
 _LABEL_ALPHA_RE = re.compile(r"[^\W\d_]", re.UNICODE)

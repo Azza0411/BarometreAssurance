@@ -91,6 +91,15 @@ _KNOWN_PREFIXED_VARIANTS_VIE = {
     "produits alloues transferes a l etat de resultat non technique": "Produits nets de placements",
     "produits de placements alloues transferes de l etat de resultat": "Produits nets de placements",
     "produits de placements alloues transferes a l etat de resultat non technique": "Produits nets de placements",
+    # Bloc réassurance replié sur 4 sous-lignes commençant par "les.../la..."
+    # (gabarit STAR — même schéma que côté Non-Vie, voir
+    # annexe13_pipeline._KNOWN_PREFIXED_VARIANTS) : ces préfixes, une fois
+    # isolés, ne matcheraient rien d'assez proche seuls par correspondance
+    # floue.
+    "les prestations payes": "Part des réassureurs dans les charges de prestations",
+    "les charges de provi. pour prestations": "Part des réassureurs dans les charges de provisions",
+    "les charges de provisions pour prestations": "Part des réassureurs dans les charges de provisions",
+    "la participation aux resultats": "Part des réassureurs dans la participation aux résultats",
 }
 
 

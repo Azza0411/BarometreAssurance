@@ -25,8 +25,16 @@ from extraction.annexe13_kpi_extractor import (
     RACCORDEMENT_RE as _ANNEXE13_RACCORDEMENT_RE,
     KPI_PATTERNS as _ANNEXE13_KPI_PATTERNS,
 )
-from extraction.full_table_extractor import locate_and_extract_full_table, relaxed_is_annexe13_page
+from extraction.full_table_extractor import (
+    locate_and_extract_full_table, relaxed_is_annexe13_page, relaxed_is_annexe12_page,
+)
 from extraction.annexe13_pipeline import normalize_table, CANONICAL_ROWS, derive_column_groups
+from extraction.annexe12_kpi_extractor import (
+    _is_target_page as _is_annexe12_page,
+    _RACCORDEMENT_RE as _ANNEXE12_RACCORDEMENT_RE,
+    KPI_PATTERNS as _ANNEXE12_KPI_PATTERNS,
+)
+from extraction.annexe12_pipeline import normalize_table_vie, CANONICAL_ROWS_VIE
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
@@ -273,6 +281,21 @@ def get_filter_options(conn):
         )
         for (code,) in cur.fetchall():
             societes_par_tableau.setdefault("annexe13", set()).add(code)
+        # Annexe 12 grille complète (extraction/annexe12_pipeline.py) — même
+        # principe que l'Annexe 13 ci-dessus, source de vérité séparée de
+        # kpi_values.
+        cur.execute(
+            """
+            SELECT DISTINCT c.code
+            FROM tableau_cellules tc
+            JOIN documents d ON d.id = tc.document_id
+            JOIN sources s ON s.id = d.source_id
+            JOIN societes c ON c.id = d.cmf_id
+            WHERE s.nom = 'CMF' AND tc.tableau = 'annexe12'
+            """
+        )
+        for (code,) in cur.fetchall():
+            societes_par_tableau.setdefault("annexe12", set()).add(code)
 
     # Garde-fou pour Annexe 13 : kpi_values (ancien extracteur 7-KPI) peut
     # taguer à tort une société structurellement Vie-only comme ayant un
@@ -538,6 +561,23 @@ def _extract_annexe13_full_grid(pdf_path):
     return {"colonnes": normalized["colonnes"], "lignes": normalized["lignes"]}
 
 
+# ── Annexe 12 — tableau complet (même principe, voir Annexe 13 ci-dessus) ──
+def _extract_annexe12_full_grid(pdf_path):
+    """Symétrique de `_extract_annexe13_full_grid`, pour l'Annexe 12
+    (Résultat technique Vie) — voir extraction/annexe12_pipeline.py."""
+    try:
+        _page_num, result = locate_and_extract_full_table(
+            pdf_path, _is_annexe12_page, _ANNEXE12_KPI_PATTERNS, _ANNEXE12_RACCORDEMENT_RE,
+            extra_page_predicate=relaxed_is_annexe12_page, use_notes_fallback=False,
+        )
+    except Exception:
+        return None
+    if result is None:
+        return None
+    normalized = normalize_table_vie(result)
+    return {"colonnes": normalized["colonnes"], "lignes": normalized["lignes"]}
+
+
 # Position de chaque poste dans l'ordre naturel du tableau (ordre déjà
 # significatif de CANONICAL_ROWS — annexe13_pipeline.py, celui d'un vrai
 # relevé "Résultat technique" : Primes en premier, Résultat technique et
@@ -545,10 +585,11 @@ def _extract_annexe13_full_grid(pdf_path):
 # par libellé le temps d'une requête sans ORDER BY explicite, ou ordre
 # d'apparition PDF pour le repli live) et n'est jamais celui attendu.
 _ROW_DISPLAY_ORDER = {label: i for i, label in enumerate(CANONICAL_ROWS)}
+_ROW_DISPLAY_ORDER_VIE = {label: i for i, label in enumerate(CANONICAL_ROWS_VIE)}
 
 
-def _sorted_grid_rows(lignes):
-    return sorted(lignes.items(), key=lambda kv: (_ROW_DISPLAY_ORDER.get(kv[0], len(CANONICAL_ROWS)), kv[0]))
+def _sorted_grid_rows(lignes, order=_ROW_DISPLAY_ORDER, fallback=len(CANONICAL_ROWS)):
+    return sorted(lignes.items(), key=lambda kv: (order.get(kv[0], fallback), kv[0]))
 
 
 # Charte visuelle de ce bloc spécifiquement (grille complète Annexe 13) —
@@ -563,7 +604,7 @@ _REF_HEADER_TEXT = "FFFFFF"
 _REF_ZEBRA = "F3F4F6"
 
 
-def _write_full_grid_block(ws, row, annee, grid):
+def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, row_order_fallback=None):
     cols = grid["colonnes"]
     last_col = max(1 + len(cols), 2)
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=last_col)
@@ -637,7 +678,8 @@ def _write_full_grid_block(ws, row, annee, grid):
             cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
             cell.border = _thin_border()
         row += 1
-    for i, (label, values) in enumerate(_sorted_grid_rows(grid["lignes"])):
+    fallback = row_order_fallback if row_order_fallback is not None else len(row_order)
+    for i, (label, values) in enumerate(_sorted_grid_rows(grid["lignes"], order=row_order, fallback=fallback)):
         fill = PatternFill(start_color=_REF_ZEBRA, end_color=_REF_ZEBRA, fill_type="solid") if i % 2 == 1 else None
         cell = ws.cell(row=row, column=1, value=(label or "").upper())
         cell.border = _thin_border()
@@ -718,7 +760,9 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
     # kpi_values ci-dessous : il sert de repli pour les documents où la
     # grille complète échoue (voir extraction/CAS_PARTICULIERS_FULL_TABLE.md).
     include_annexe13_full = not tableau_keys or "annexe13" in tableau_keys
+    include_annexe12_full = not tableau_keys or "annexe12" in tableau_keys
     _ANNEXE13_DISPLAY = _display_tableau("Annexe13")
+    _ANNEXE12_DISPLAY = _display_tableau("Annexe12")
     active_group_keys = tableau_keys if tableau_keys else [key for key, _label, _raws in TABLEAU_GROUPS]
 
     conn = get_connection()
@@ -801,14 +845,53 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                 if colonne not in grid["colonnes"]:
                     grid["colonnes"].append(colonne)
                 grid["lignes"].setdefault(ligne, {})[colonne] = valeur
+
+        # Symétrique pour l'Annexe 12 (Résultat technique Vie) — voir
+        # extraction/annexe12_pipeline.py. Contrairement à l'Annexe 13,
+        # aucune société n'est présumée hors périmètre a priori (le
+        # référentiel `ANNEXE12_VIE_EXCLUSIONS` ne contient que le Takaful,
+        # cadre réglementaire distinct — voir son commentaire).
+        annexe12_docs = []
+        annexe12_cellules_by_doc = {}
+        if include_annexe12_full:
+            from extraction.annexe12_pipeline import ANNEXE12_VIE_EXCLUSIONS
+            q3 = """
+                SELECT d.id, c.code, c.nom_entreprise, d.annee, d.nom_pdf
+                FROM documents d
+                JOIN sources s ON s.id = d.source_id
+                JOIN societes c ON c.id = d.cmf_id
+                WHERE s.nom = 'CMF'
+            """
+            p3 = []
+            if ANNEXE12_VIE_EXCLUSIONS:
+                q3 += f" AND c.code NOT IN ({','.join(['%s'] * len(ANNEXE12_VIE_EXCLUSIONS))})"
+                p3.extend(sorted(ANNEXE12_VIE_EXCLUSIONS))
+            if codes:
+                placeholders = ",".join(["%s"] * len(codes))
+                q3 += f" AND c.code IN ({placeholders})"
+                p3.extend(codes)
+            if annees:
+                placeholders = ",".join(["%s"] * len(annees))
+                q3 += f" AND d.annee IN ({placeholders})"
+                p3.extend(annees)
+            q3 += " ORDER BY c.code, d.annee"
+            with conn.cursor() as cur:
+                cur.execute(q3, p3)
+                annexe12_docs = cur.fetchall()
+            doc_ids12 = [doc_id for doc_id, *_ in annexe12_docs]
+            for doc_id, ligne, colonne, valeur in get_tableau_cellules(conn, doc_ids12, "annexe12"):
+                grid = annexe12_cellules_by_doc.setdefault(doc_id, {"colonnes": [], "lignes": {}})
+                if colonne not in grid["colonnes"]:
+                    grid["colonnes"].append(colonne)
+                grid["lignes"].setdefault(ligne, {})[colonne] = valeur
     finally:
         conn.close()
 
     # ── Regroupement société → tableau affiché → kpi → année → valeur ──────
-    par_societe = {}  # code -> {"nom": ..., "blocs": {display_tableau: {kpi: {annee: valeur}}}, "annexe13_grids": {annee: grille_ou_None}}
+    par_societe = {}  # code -> {"nom": ..., "blocs": {display_tableau: {kpi: {annee: valeur}}}, "annexe13_grids": {annee: grille_ou_None}, "annexe12_grids": {...}}
     for code, nom_entreprise, annee, tableau, kpi, valeur_nombre, valeur_texte in rows:
         valeur = valeur_nombre if valeur_nombre is not None else valeur_texte
-        soc = par_societe.setdefault(code, {"nom": nom_entreprise, "blocs": {}, "annexe13_grids": {}})
+        soc = par_societe.setdefault(code, {"nom": nom_entreprise, "blocs": {}, "annexe13_grids": {}, "annexe12_grids": {}})
         display = _resolve_display_tableau(tableau, active_group_keys)
         bloc = soc["blocs"].setdefault(display, {})
         bloc.setdefault(kpi, {})[annee] = valeur
@@ -829,7 +912,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
     MAX_LIVE_EXTRACTIONS = 15
     live_extractions_done = 0
     for doc_id, code, nom_entreprise, annee, nom_pdf in annexe13_docs:
-        soc = par_societe.setdefault(code, {"nom": nom_entreprise, "blocs": {}, "annexe13_grids": {}})
+        soc = par_societe.setdefault(code, {"nom": nom_entreprise, "blocs": {}, "annexe13_grids": {}, "annexe12_grids": {}})
         cached = annexe13_cellules_by_doc.get(doc_id)
         if cached is not None:
             soc["annexe13_grids"][annee] = cached
@@ -841,6 +924,25 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             continue
         soc["annexe13_grids"][annee] = _extract_annexe13_full_grid(pdf_path)
         live_extractions_done += 1
+
+    # Même repli en direct pour l'Annexe 12, budget de secours SÉPARÉ (ne
+    # doit jamais se disputer les quelques extractions live autorisées avec
+    # l'Annexe 13 — un export "tous les tableaux" doit pouvoir rafraîchir
+    # les deux indépendamment).
+    live_extractions_done_12 = 0
+    for doc_id, code, nom_entreprise, annee, nom_pdf in annexe12_docs:
+        soc = par_societe.setdefault(code, {"nom": nom_entreprise, "blocs": {}, "annexe13_grids": {}, "annexe12_grids": {}})
+        cached = annexe12_cellules_by_doc.get(doc_id)
+        if cached is not None:
+            soc["annexe12_grids"][annee] = cached
+            continue
+        if live_extractions_done_12 >= MAX_LIVE_EXTRACTIONS:
+            continue
+        pdf_path = local_pdf_path("CMF", code, nom_pdf)
+        if not pdf_path or not os.path.isfile(pdf_path):
+            continue
+        soc["annexe12_grids"][annee] = _extract_annexe12_full_grid(pdf_path)
+        live_extractions_done_12 += 1
 
     wb = Workbook()
     wb.remove(wb.active)  # une vraie feuille par société ci-dessous ; pas de feuille "Sheet" vide
@@ -866,15 +968,21 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             n_cols = max(
                 [2] +
                 [1 + len({a for kpi_annees in bloc.values() for a in kpi_annees.keys()})
-                 for name, bloc in soc["blocs"].items() if not (name == _ANNEXE13_DISPLAY and include_annexe13_full)] +
+                 for name, bloc in soc["blocs"].items()
+                 if not ((name == _ANNEXE13_DISPLAY and include_annexe13_full)
+                         or (name == _ANNEXE12_DISPLAY and include_annexe12_full))] +
                 ([1 + max((len(g["colonnes"]) for g in soc.get("annexe13_grids", {}).values() if g and g.get("lignes")), default=0),
-                  2] if include_annexe13_full else [])
+                  2] if include_annexe13_full else []) +
+                ([1 + max((len(g["colonnes"]) for g in soc.get("annexe12_grids", {}).values() if g and g.get("lignes")), default=0),
+                  2] if include_annexe12_full else [])
             )
             _write_sheet_title(ws, n_cols, f"{soc['nom'] or code} ({code})", "FS Market Intelligence — Export de données")
 
             row = 4
             for display_tableau in sorted(soc["blocs"].keys()):
                 if display_tableau == _ANNEXE13_DISPLAY and include_annexe13_full:
+                    continue  # remplacé par la grille complète ci-dessous
+                if display_tableau == _ANNEXE12_DISPLAY and include_annexe12_full:
                     continue  # remplacé par la grille complète ci-dessous
                 bloc = soc["blocs"][display_tableau]
                 annees_bloc = sorted({a for kpi_annees in bloc.values() for a in kpi_annees.keys()})
@@ -929,6 +1037,27 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                             row, used_cols = _write_full_grid_block(ws, row, annee, grid)
                         else:
                             row, used_cols = _write_narrow_fallback_block(ws, row, annee, narrow_annexe13)
+                        n_cols = max(n_cols, used_cols)
+
+            if include_annexe12_full:
+                grids12 = soc.get("annexe12_grids", {})
+                narrow_annexe12 = soc["blocs"].get(_ANNEXE12_DISPLAY, {})
+                annees_a_rendre12 = sorted(grids12.keys())
+                if annees_a_rendre12:
+                    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=max(n_cols, 2))
+                    title_cell = ws.cell(row=row, column=1, value=_ANNEXE12_DISPLAY)
+                    title_cell.font = Font(bold=True, size=12, color=DARK, name="Calibri")
+                    title_cell.alignment = Alignment(horizontal="center", vertical="center")
+                    row += 1
+                    for annee in annees_a_rendre12:
+                        grid = grids12[annee]
+                        if grid and grid.get("lignes"):
+                            row, used_cols = _write_full_grid_block(
+                                ws, row, annee, grid,
+                                row_order=_ROW_DISPLAY_ORDER_VIE, row_order_fallback=len(CANONICAL_ROWS_VIE),
+                            )
+                        else:
+                            row, used_cols = _write_narrow_fallback_block(ws, row, annee, narrow_annexe12)
                         n_cols = max(n_cols, used_cols)
 
             _autosize_columns(ws)
