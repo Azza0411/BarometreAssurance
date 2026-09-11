@@ -1908,3 +1908,32 @@ facultative), **2019, 2023, 2024, 2025 passent écart nul**.
 de formule (PRNV11, CHNV12 + CHNV2…) retirées. SS = PE + Var.PNA + Prest +
 Ch.prov ; RT = SS + CAG + SF + SR : écart nul. **ASTREE 10/11** (reste
 2023 : ni per-catégorie ni raccordement dans le dépôt).
+
+## 2026-09-11 — SAISIE MANUELLE des pages scannées (Annexe 13) : AMI 9/9 (COMPLET)
+
+Suite à la demande « faites la saisie manuelle » : pour les documents où
+l'Annexe 13 par catégorie existe mais est **scannée** (calque texte absent
+ou nul), lecture VISUELLE du PDF (rendu 400dpi, `pdfplumber.page.to_image`,
+crops par bande de colonnes) et transcription manuelle, avec les mêmes
+contrôles croisés (identités verticales SS/CAG/SF/SR/RT + somme
+horizontale des catégories = Total) que pour l'extraction automatique.
+
+**AMI 2015** (p39), **2016** (p37), **2017** (p39) : mêmes 7 colonnes /
+24 lignes / modèle que 2018 (SS = PA − CP magnitude ; RT = SS − CAG + SF +
+SR). Écart nul sauf résidus SOURCE ponctuels de faible montant (2015 :
+Transport CAG/RT +90 DT — confirmé présent dans le document imprimé lui-
+même, pas une erreur de lecture ; 2016/2017 : ±1 DT d'arrondi sur le Total).
+**AMI 2022** (p42) : modèle SIGNÉ comme 2021 (RT = SS + CAG + SF + SR, tout
+additif) — écart nul, aucun résidu, toutes les identités + le contrôle
+horizontal collent exactement.
+
+**AMI passe de 5/9 à 9/9 — société complète.**
+
+### Méthode : automatique vs saisie manuelle (bilan par société)
+
+| Société | Automatique (texte/géométrique) | Saisie manuelle (page scannée, lecture visuelle) |
+|---|---|---|
+| AMI | 2018, 2019, 2020, 2021, 2023 | **2015, 2016, 2017, 2022** (nouveau) |
+| ASTREE | tous sauf 2017/2022 | 2017, 2022 (raccordement C16, texte propre — pas un scan, mais 1 seule colonne faute de page par-catégorie exploitable) |
+| BH, BNA, CARTE, COMAR, COTUNACE, GAT, LLOYD, MAGHREBIA, STAR, TUNIS_RE, BIAT | tous | aucune (à ce stade) |
+
