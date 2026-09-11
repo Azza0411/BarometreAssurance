@@ -1950,3 +1950,24 @@ recoupement RT). Écart nul sur toutes les identités du modèle + Σ
 horizontale. **BH passe de 6/7 à 7/7 — société complète.**
 Alias colonne ajouté à `annexe13_pipeline.py` : "Engineering"/"ENG" ->
 "Risques techniques" (générique, réutilisable pour d'autres sociétés).
+
+**COTUNACE 2022** (p67, saisie manuelle) : couche texte corrompue à la
+source (police mal encodée), mais PDF natif vectoriel -> rendu visuel net,
+lecture directe sans ambiguïté. Colonne Crédit-Caution dupliquée dans le
+PDF (identique) -> gardée en 1 colonne. Modèle magnitude déjà connu pour
+COTUNACE : écart nul, toutes identités exactes. **COTUNACE passe de 8/11 à
+9/11** (restent 2015/2016, annexe absente des dépôts).
+
+**COMAR 2016 et 2018 examinés mais NON intégrés** : contrairement à
+AMI/BH/COTUNACE, les dépôts CMF de ces 2 années sont des scans à très
+basse résolution native (~72 dpi — vérifié : l'image intégrée dans le PDF
+ne fait que ~640×400px pour toute la page). À cette résolution, plusieurs
+chiffres restent ambigus même après agrandissement (l'agrandissement
+n'ajoute aucune information réelle) ; des recoupements arithmétiques ont
+permis de lever une partie des ambiguïtés (ex. Solde de souscription,
+Charges d'acquisition et de gestion) mais pas la totalité (écarts résiduels
+de l'ordre de 100 000 à 300 000 DT sur Solde financier / Solde de
+réassurance / Résultat technique, non résolus). Saisir des valeurs
+incertaines aurait un risque d'erreur trop élevé pour un tableau destiné à
+la soutenance -> **restent documentés comme bloqués**, par choix de
+fiabilité plutôt que de complétude forcée.

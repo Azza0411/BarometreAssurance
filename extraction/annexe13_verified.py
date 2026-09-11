@@ -225,6 +225,23 @@ _COT_2021 = _grid(_COT_COLS, 66, [[v] for v in [
     7097359.115, 7396056.081,
 ]], rows=_R_COT)
 
+# COTUNACE 2022 (p67) — SAISIE MANUELLE : couche texte corrompue à la
+# source (police mal encodée, ex. « Ch araq�9 de Drestations »), mais le
+# PDF est natif (vectoriel) et se RENDU visuellement net — lu directement
+# depuis le rendu, sans ambiguïté. Colonne dupliquée dans le PDF (« Crédit-
+# Caution » x2, valeurs identiques) -> gardée en 1 seule colonne. Modèle
+# magnitude (comme 2020/2021/2023) : SS = PA − CP ; SF = PNP − Participation ;
+# SR = −RA(primes) + RA(prest) + RA(prov) + RA(partic) + Commissions ;
+# RT = SS − CAG + SF + SR : écart nul, toutes identités exactes.
+_COT_2022 = _grid(_COT_COLS, 67, [[v] for v in [
+    14080987.393, 13805710.941, 275276.452, 4975256.783, 3521440.195,
+    1453816.588, 9105730.610, 1955522.304, 3581332.124, 5536854.428,
+    2580891.469, 310954.620, 2269936.849, 8951288.506, 1697370.936,
+    1465283.017, 184538.044, 2593412.983, -3010683.526, 2828129.505,
+    2400158.820, 2675435.272, 21773736.456, 20755503.213,
+    7843897.080, 7097359.115,
+]], rows=_R_COT)
+
 _COT_2024 = _grid(_COT_COLS, 67, [[v] for v in [
     13301587.065, 13428244.235, -126657.170, 4596532.765, 7564841.283,
     -2968308.518, 8705054.300, 2320032.994, 3505343.909, 5825376.903,
@@ -4021,7 +4038,7 @@ VERIFIED = {
     ("AMI", 2015): _AMI_2015, ("AMI", 2016): _AMI_2016, ("AMI", 2017): _AMI_2017,
     ("AMI", 2022): _AMI_2022,
     ("COTUNACE", 2017): _COT_2017, ("COTUNACE", 2018): _COT_2018, ("COTUNACE", 2019): _COT_2019,
-    ("COTUNACE", 2020): _COT_2020, ("COTUNACE", 2021): _COT_2021,
+    ("COTUNACE", 2020): _COT_2020, ("COTUNACE", 2021): _COT_2021, ("COTUNACE", 2022): _COT_2022,
     ("COTUNACE", 2023): _COT_2023, ("COTUNACE", 2024): _COT_2024,
     ("COTUNACE", 2025): _COT_2025,
     ("LLOYD_TUNISIEN", 2021): _LL_2021, ("LLOYD_TUNISIEN", 2022): _LL_2022,
