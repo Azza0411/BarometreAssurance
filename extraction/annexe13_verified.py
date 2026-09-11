@@ -3788,6 +3788,69 @@ _AMI_2022 = _grid(_AMI_COLS, 42, [
     [3716762, 3017327, 3925133, 859759, 312018751, 2546256, 326083988],
 ], rows=_R_AMI18)
 
+# BH 2020 (p38) — SAISIE MANUELLE : couche texte présente mais fragments
+# entrelacés/illisibles (OCR défaillant sur les colonnes de chiffres) ;
+# lecture visuelle du PDF (400dpi) — rendu net, aucune ambiguïté. 6
+# branches Non-Vie + Total, gabarit propre à BH (distinct du gabarit AMI) :
+# « Participation aux résultats » et « Variation provision Participation »
+# sont des lignes d'information NON incluses dans SS/SF (vérifié par
+# identité) ; CAG = Frais d'acquisition + Variation des frais d'acquisition
+# reportés + Frais d'administration. SR = Primes cédées + Part réass.
+# prestations payées + Part réass. provisions primes non émises + Part
+# réass. charges provisions + Commissions (les 5 termes, signés, tous
+# additionnés) — la ligne "provisions primes non émises" est décalée d'une
+# colonne dans le PDF (AUTO vide, ARD=35819, INC=512922…) : résolu par
+# recoupement RT = SS + CAG + SF + SR. Écart nul, aucun résidu.
+_BH_NV_COLS = ["Auto", "ARD", "Incendie", "Engineering", "Transport", "Maladie", "Total"]
+_R_BH_NV = [
+    "Primes acquises",
+    "Primes émises",
+    "Variation des primes non acquises",
+    "Charges de prestations",
+    "Prestations et frais payés",
+    "Charges des provisions pour prestations diverses",
+    "Participation aux résultats",
+    "Solde de souscription",
+    "Frais d'acquisition",
+    "Variation des frais d'acquisition reportés",
+    "Frais d'administration",
+    "Charges d'acquisition et de gestion nettes",
+    "Produits nets de placements",
+    "Variation provision Participation aux résultats",
+    "Solde financier",
+    "Primes cédées",
+    "Part des réassureurs dans les prestations payées",
+    "Part des réassureurs dans les provisions pour primes non émises",
+    "Part des réassureurs dans les charges des provisions",
+    "Commissions reçues des réassureurs",
+    "Solde de réassurance et/ou de rétrocession",
+    "Résultat technique",
+]
+_BH_2020 = _grid(_BH_NV_COLS, 38, [
+    [24581907, 2026065, 8727032, 3134888, 3496373, 38869574, 80835839],
+    [26621541, 2049989, 8864893, 3266255, 3535237, 38898716, 83236631],
+    [-2039634, -23924, -137861, -131367, -38864, -29142, -2400792],
+    [-12850514, 216051, -5697660, -1084178, -47998, -31356004, -50820303],
+    [-14040639, -114270, -2440164, -625581, -289941, -29158897, -46669492],
+    [1190440, 330321, -3193972, -445597, 270402, -1688134, -3536540],
+    [-315, None, -63524, -13000, -28459, -508973, -614271],
+    [11731393, 2242116, 3029372, 2050710, 3448375, 7513570, 30015536],
+    [-2593193, -208709, -1460053, -361506, -499495, -3157439, -8280395],
+    [169664, 8949, 20382, 45255, 3169, 1695, 249114],
+    [-6183660, -717238, -1987706, -1636975, -1101053, -3828211, -15454843],
+    [-8607189, -916998, -3427377, -1953226, -1597379, -6983955, -23486124],
+    [2705969, 145926, 690676, 715738, 98182, 444081, 4800572],
+    [-739, None, -100601, 16650, -179777, -112450, -376917],
+    [2705230, 145926, 590075, 732388, -81595, 331631, 4423655],
+    [-1421918, -1296986, -7441882, -2656314, -1618196, None, -14435296],
+    [10124, 394368, 2298216, 426287, 171996, None, 3300991],
+    [None, 35819, 512922, 286571, -13051, None, 822261],
+    [-169571, -680621, 2626858, 501555, -105747, None, 2172474],
+    [None, 152734, 2130531, 773148, 540501, None, 3596914],
+    [-1581365, -1394686, 126645, -668753, -1024497, None, -4542656],
+    [4248069, 76358, 318715, 161119, 744904, 861246, 6410411],
+], rows=_R_BH_NV)
+
 # AMI 2021 : Annexe 13 « par catégorie » SPLIT sur 2 pages (en-tête + Primes
 # acquises/émises en bas de p40 ; corps sur p41). 7 colonnes, valeurs
 # SIGNÉES. PA/PE transcrites (séparateur milliers = espace, indissociable de
@@ -3989,7 +4052,7 @@ VERIFIED = {
     ("BIAT", 2023): _BIAT_2023,
     ("BIAT", 2024): _BIAT_2024,
     ("BIAT", 2025): _BIAT_2025,
-    ("BH", 2019): _BH_2019, ("BH", 2021): _BH_2021,
+    ("BH", 2019): _BH_2019, ("BH", 2021): _BH_2021, ("BH", 2020): _BH_2020,
     ("BH", 2022): _BH_2022, ("BH", 2023): _BH_2023,
     ("BH", 2024): _BH_2024, ("BH", 2025): _BH_2025,
     ("STAR", 2015): _STAR_2015, ("STAR", 2016): _STAR_2016, ("STAR", 2017): _STAR_2017, ("STAR", 2018): _STAR_2018, ("STAR", 2019): _STAR_2019, ("STAR", 2022): _STAR_2022, ("STAR", 2024): _STAR_2024,
