@@ -1971,3 +1971,13 @@ réassurance / Résultat technique, non résolus). Saisir des valeurs
 incertaines aurait un risque d'erreur trop élevé pour un tableau destiné à
 la soutenance -> **restent documentés comme bloqués**, par choix de
 fiabilité plutôt que de complétude forcée.
+
+**LLOYD_TUNISIEN 2018** (p33, saisie manuelle) : couche texte sans espaces
+dans les libellés + fusion de la ligne « Primes cédées » avec « Solde
+financier » côté extraction pdfplumber. PDF natif rendu net -> lecture
+visuelle directe (confirme même que « Primes cédées aux réassureurs »
+imprime EXACTEMENT les mêmes valeurs que « Solde financier » dans ce
+document — particularité de la source, pas une erreur). Modèle LLOYD
+habituel (SS = PA − CP magnitude, SF = PNP + Participation signé) : écart
+nul sauf ±1 DT (Incendie/Transport, arrondi source). **LLOYD passe de 9/10
+à 10/10 — société complète.**
