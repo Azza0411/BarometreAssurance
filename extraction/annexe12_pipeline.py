@@ -176,7 +176,7 @@ def process_annexe12(pdf_path, is_target_page, kpi_patterns, raccordement_re, re
     page_num, grid = locate_and_extract_full_table(
         pdf_path, is_target_page, kpi_patterns, raccordement_re,
         extra_page_predicate=relaxed_page_predicate, use_notes_fallback=False,
-        use_ocr_fallback=use_ocr_fallback,
+        use_ocr_fallback=use_ocr_fallback, ocr_vie_mode=True,
     )
     if grid is None:
         return None

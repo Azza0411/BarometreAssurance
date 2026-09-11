@@ -785,7 +785,7 @@ _ANNEXE_TITLE_RE = re.compile(r"\bannexe\b")
 def locate_and_extract_full_table(pdf_path, is_target_page, kpi_patterns, raccordement_re=None,
                                    max_pages=120, min_data_cells=MIN_DATA_CELLS, min_sanity_matches=2,
                                    extra_page_predicate=None, use_notes_fallback=True,
-                                   use_ocr_fallback=True):
+                                   use_ocr_fallback=True, ocr_vie_mode=False):
     """Localise la bonne page dans le PDF `pdf_path` (réutilise le prédicat
     `is_target_page` déjà validé par l'extracteur 7-KPI correspondant —
     ex. annexe13_kpi_extractor._is_target_page — plutôt qu'une détection de
@@ -891,6 +891,7 @@ def locate_and_extract_full_table(pdf_path, is_target_page, kpi_patterns, raccor
             pdf_path, kpi_patterns,
             lambda lignes: _sanity_ok(lignes, kpi_patterns, min_sanity_matches),
             max_pages=max_pages, min_sanity_matches=min_sanity_matches,
+            vie_mode=ocr_vie_mode,
         )
     except Exception:
         return None, None
