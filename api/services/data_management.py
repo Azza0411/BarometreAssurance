@@ -19,7 +19,10 @@ from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
 from openpyxl.drawing.xdr import XDRPositiveSize2D
 import io
 
-from database.repository import get_connection, list_all_documents, get_tableau_cellules, get_document_id
+from database.repository import (
+    get_connection, list_all_documents, get_tableau_cellules, get_document_id,
+    get_cached_tableau_page, save_cached_tableau_page, TABLEAU_PAGE_MISS,
+)
 from extraction.annexe13_kpi_extractor import (
     _is_target_page as _is_annexe13_page,
     RACCORDEMENT_RE as _ANNEXE13_RACCORDEMENT_RE,
@@ -444,18 +447,22 @@ def locate_source_page(conn, code, annee, tableau):
     """Numéro de page du PDF source où se trouve le tableau demandé — pour
     l'afficher à côté de l'aperçu Excel dans la page de correction manuelle
     et aider l'utilisateur à repérer visuellement les fautes d'extraction.
-    Recalculé à la demande avec exactement le même repérage que l'extraction
-    (voir extraction/annexe13_pipeline.py::process_annexe13 et l'équivalent
-    Annexe 12) plutôt que stocké : `tableau_cellules` ne conserve pas ce
-    numéro aujourd'hui, et il n'y a qu'un seul document à traiter ici (pas un
-    lot), donc le recalcul reste rapide. None si le tableau n'a pas encore de
-    pipeline de repérage dédié (bilan, pas encore construit) ou si la page
-    n'a pas pu être retrouvée."""
+    Mis en cache dans `tableau_pages` (voir schema.sql) dès le premier appel
+    pour ce document : le repérage complet (camelot inclus, plusieurs
+    secondes) ne doit se faire qu'une fois, jamais à chaque ouverture — un
+    document déjà publié ne change pas de pagination. None si le tableau n'a
+    pas encore de pipeline de repérage dédié (bilan, pas encore construit)
+    ou si la page n'a pas pu être retrouvée."""
     if tableau not in ("annexe12", "annexe13"):
         return None
     doc_id = get_document_id(conn, code, annee)
     if not doc_id:
         return None
+
+    cached = get_cached_tableau_page(conn, doc_id, tableau)
+    if cached is not TABLEAU_PAGE_MISS:
+        return cached
+
     path = get_local_pdf_path_for_document(conn, doc_id)
     if not path:
         return None
@@ -471,7 +478,8 @@ def locate_source_page(conn, code, annee, tableau):
                 extra_page_predicate=relaxed_is_annexe12_page, use_notes_fallback=False,
             )
     except Exception:
-        return None
+        page_num = None
+    save_cached_tableau_page(conn, doc_id, tableau, page_num)
     return page_num
 
 

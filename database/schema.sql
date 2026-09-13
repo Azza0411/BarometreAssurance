@@ -166,6 +166,22 @@ CREATE TABLE IF NOT EXISTS tableau_validations (
     CONSTRAINT fk_tableau_validations_document FOREIGN KEY (document_id) REFERENCES documents(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Cache du numero de page PDF ou se trouve un tableau (annexe12/annexe13),
+-- pour la page Correction manuelle (afficher le PDF source a cote de
+-- l'apercu Excel sans re-scanner tout le document a chaque ouverture — le
+-- reperage complet, camelot inclus, prend plusieurs secondes). Calcule a la
+-- demande (voir api/services/data_management.py::locate_source_page) via
+-- exactement la meme logique que l'extraction, puis conserve ici une bonne
+-- fois pour toutes : un document deja publie ne change pas de pagination.
+CREATE TABLE IF NOT EXISTS tableau_pages (
+    document_id INT NOT NULL,
+    tableau     VARCHAR(50) NOT NULL,
+    page        INT NULL,   -- NULL = repere comme "non trouvee" (evite de re-scanner en vain)
+    date_ajout  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (document_id, tableau),
+    CONSTRAINT fk_tableau_pages_document FOREIGN KEY (document_id) REFERENCES documents(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS reglementation_vues (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     doc_key     VARCHAR(64)  NOT NULL,  -- id (hash) ou url du texte source

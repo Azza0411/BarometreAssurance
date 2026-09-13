@@ -480,6 +480,43 @@ def get_tableau_cellules(conn, document_ids, tableau):
         return cur.fetchall()
 
 
+# ── Cache de repérage de page (tableau_pages) ───────────────────────────────
+# Voir schema.sql::tableau_pages — évite de refaire le repérage complet
+# (camelot inclus, plusieurs secondes) à chaque ouverture de la page de
+# correction manuelle pour un document déjà consulté.
+
+TABLEAU_PAGE_MISS = object()  # distingue "pas encore mis en cache" de "mis en cache comme introuvable (NULL)"
+
+
+def get_cached_tableau_page(conn, document_id, tableau):
+    """Renvoie le numéro de page mis en cache, ou None si repéré comme
+    introuvable, ou `TABLEAU_PAGE_MISS` si jamais calculé pour ce document —
+    à distinguer explicitement d'une page réellement introuvable (NULL en
+    base), sous peine de re-scanner en vain à chaque appel."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT page FROM tableau_pages WHERE document_id = %s AND tableau = %s",
+            (document_id, tableau),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return TABLEAU_PAGE_MISS
+        return row[0]
+
+
+def save_cached_tableau_page(conn, document_id, tableau, page):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO tableau_pages (document_id, tableau, page)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE page = VALUES(page)
+            """,
+            (document_id, tableau, page),
+        )
+    conn.commit()
+
+
 def get_tableau_validation_summary(conn, document_id, tableau):
     """Résumé des validations pour un document (compte par statut) — utilisé
     pour afficher un badge de fiabilité dans la page Gestion de données."""

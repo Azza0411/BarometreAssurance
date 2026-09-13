@@ -153,11 +153,13 @@ export default function CorrectionManuelle() {
   const [gridLoading, setGridLoading] = useState(false);
   const [gridErreur, setGridErreur] = useState(null);
   const [referentiel, setReferentiel] = useState({ lignes: [], colonnes: [] });
-  // Page du PDF source où se trouve ce tableau — recalculée à la demande
-  // (voir api/services/data_management.py::locate_source_page), pour
-  // ouvrir directement la bonne page dans le visualiseur PDF à côté de
-  // l'aperçu Excel. `undefined` = pas encore su, `null` = pas trouvée
-  // (repli sur la page 1, ex. tableau "bilan" sans pipeline de repérage).
+  // PDF source à côté de l'Excel — une OPTION qu'on active à la demande
+  // (pas affichée par défaut) : `showPdf` pilote son affichage, `pdfPage`
+  // sa page (voir api/services/data_management.py::locate_source_page,
+  // mis en cache en base dès le premier repérage pour rester rapide aux
+  // ouvertures suivantes). `undefined` = pas encore su, `null` = pas
+  // trouvée (tableau "bilan", pas encore de pipeline de repérage).
+  const [showPdf, setShowPdf] = useState(false);
   const [pdfPage, setPdfPage] = useState(undefined);
 
   // { kind: 'valeur'|'ligne'|'colonne', ligne, colonne, actuelle }
@@ -198,9 +200,19 @@ export default function CorrectionManuelle() {
     fetch(`${API}/api/gestion-donnees/referentiel?tableau=${tableau}`)
       .then(r => r.json()).then(setReferentiel).catch(() => setReferentiel({ lignes: [], colonnes: [] }));
     setPdfPage(undefined);
+  }, [code, annee, tableau]);
+
+  // Repérage de la page PDF — seulement si le panneau est affiché (option,
+  // pas de coût pour qui ne l'ouvre jamais) : au premier affichage, et à
+  // nouveau si on change de société/année/tableau pendant qu'il est ouvert.
+  // Rapide dès le 2e appel pour un même document (mis en cache en base par
+  // locate_source_page), sinon quelques secondes le temps du repérage réel.
+  useEffect(() => {
+    if (!showPdf || !code || !annee || !tableau || pdfPage !== undefined) return;
+    const p = new URLSearchParams({ societe: code, annee: String(annee), tableau });
     fetch(`${API}/api/gestion-donnees/page-pdf?${p.toString()}`)
       .then(r => r.json()).then(d => setPdfPage(d.page ?? null)).catch(() => setPdfPage(null));
-  }, [code, annee, tableau]);
+  }, [showPdf, code, annee, tableau, pdfPage]);
 
   // Recalcule le zoom "ajusté" à chaque nouveau tableau chargé, pendant que
   // `zoom` vaut encore 1 (mesure de la taille NATURELLE de la carte, avant
@@ -408,7 +420,7 @@ export default function CorrectionManuelle() {
           donne le maximum de place aux deux visualiseurs, Excel et PDF côte
           à côte, pour que l'utilisateur puisse comparer visuellement et
           repérer une faute d'extraction sans naviguer entre deux onglets. */}
-      <div style={{ display: "grid", gridTemplateColumns: "336px 1fr 1fr", flex: 1, minHeight: 0, overflow: "hidden" }}>
+      <div style={{ display: "grid", gridTemplateColumns: showPdf ? "336px 1fr 1fr" : "336px 1fr", flex: 1, minHeight: 0, overflow: "hidden" }}>
         {/* Gauche */}
         <div style={{ overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}>
           {/* Résumé du document — une seule ligne compacte. */}
@@ -538,9 +550,17 @@ export default function CorrectionManuelle() {
                 Feuille : {tableauLabel}
               </span>
               {pdfHref && (
-                <a href={pdfHref} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 5, color: "#93C5FD", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>
-                  Voir le PDF source ↗
-                </a>
+                <button
+                  onClick={() => setShowPdf(s => !s)}
+                  title={showPdf ? "Masquer le PDF source" : "Afficher le PDF source à côté de l'Excel, pour comparer"}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6, border: `1px solid ${showPdf ? "#93C5FD" : "#334155"}`,
+                    background: showPdf ? "rgba(147,197,253,.12)" : "none", color: "#93C5FD",
+                    borderRadius: 7, padding: "5px 11px", fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+                  }}
+                >
+                  {showPdf ? "Masquer le PDF source" : "Afficher le PDF source"}
+                </button>
               )}
               {exportErreur && <span style={{ fontSize: 11, color: "#FCA5A5", fontWeight: 600 }}>{exportErreur}</span>}
               <button
@@ -692,12 +712,13 @@ export default function CorrectionManuelle() {
           </div>
         </div>
 
-        {/* PDF source — à côté de l'aperçu Excel pour que l'utilisateur
-            compare visuellement et repère lui-même une faute d'extraction
-            (colonne décalée, chiffre mal lu...), sans devoir ouvrir un
-            second onglet. Même composant de rendu (PdfCanvas) et même
-            grammaire de bandeau/contrôles que le visualiseur PDF de la page
-            Qualité des données. */}
+        {/* PDF source — option activée depuis le bouton du panneau Excel, à
+            côté de l'aperçu pour que l'utilisateur compare visuellement et
+            repère lui-même une faute d'extraction (colonne décalée, chiffre
+            mal lu...), sans devoir ouvrir un second onglet. Même composant
+            de rendu (PdfCanvas) et même grammaire de bandeau/contrôles que
+            le visualiseur PDF de la page Qualité des données. */}
+        {showPdf && (
         <div style={{ background: VIEWER_BG, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, borderLeft: "1px solid rgba(255,255,255,.08)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: "1px solid rgba(255,255,255,.08)", flexWrap: "wrap" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 7, color: "#E5E7EB", fontSize: 12.5, fontWeight: 700 }}>
@@ -740,6 +761,7 @@ export default function CorrectionManuelle() {
             <PdfCanvas pdfUrl={pdfEmbedUrl} pageNum={pdfPage} highlight={null} />
           )}
         </div>
+        )}
       </div>
     </div>
   );
