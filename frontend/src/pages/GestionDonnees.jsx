@@ -238,9 +238,9 @@ function FiabiliteBar() {
 // grand, sur le fond de la barre.
 function SourceFilterBar({ counts, active, onChange }) {
   return (
-    <Card style={{ padding: "12px 22px", display: "flex", alignItems: "center", gap: 26, flexWrap: "wrap" }}>
+    <Card style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
       <span style={{ fontSize: 10, fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".5px" }}>Source</span>
-      <div style={{ display: "flex", gap: 28 }}>
+      <div style={{ display: "flex", gap: 12, justifyContent: "space-between" }}>
         {SOURCES.map(s => {
           const isActive = s.key === active;
           return (
@@ -249,8 +249,8 @@ function SourceFilterBar({ counts, active, onChange }) {
               border: "none", background: "none", cursor: "pointer", padding: 0,
             }}>
               <span style={{
-                position: "relative", width: 92, height: 92, borderRadius: 16, background: "#fff",
-                display: "flex", alignItems: "center", justifyContent: "center", padding: 6,
+                position: "relative", width: 76, height: 76, borderRadius: 14, background: "#fff",
+                display: "flex", alignItems: "center", justifyContent: "center", padding: 5,
                 boxShadow: isActive ? `0 0 0 2.5px ${ACCENT_BG}, 0 0 0 1px ${ACCENT}` : `0 0 0 1px #EEF0F5`,
                 transition: "box-shadow .15s, transform .15s", transform: isActive ? "scale(1.04)" : "scale(1)",
               }}>
@@ -692,11 +692,15 @@ export default function GestionDonnees() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 1220, margin: "0 auto", padding: "24px 32px", display: "flex", flexDirection: "column", gap: 16 }}>
-        <SourceFilterBar counts={counts} active={source} onChange={setSource} />
-        <CollecteBar />
-        <FiabiliteBar />
-        <DocumentsConsole docs={docs} opts={opts} source={source} />
+      <div style={{ maxWidth: 1220, margin: "0 auto", padding: "24px 32px", display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, width: 300, flexShrink: 0 }}>
+          <SourceFilterBar counts={counts} active={source} onChange={setSource} />
+          <CollecteBar />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, flex: 1, minWidth: 320 }}>
+          <FiabiliteBar />
+          <DocumentsConsole docs={docs} opts={opts} source={source} />
+        </div>
       </div>
     </div>
   );
