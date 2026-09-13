@@ -440,6 +440,41 @@ def get_referentiel(tableau):
     return {"lignes": [], "colonnes": []}
 
 
+def locate_source_page(conn, code, annee, tableau):
+    """Numéro de page du PDF source où se trouve le tableau demandé — pour
+    l'afficher à côté de l'aperçu Excel dans la page de correction manuelle
+    et aider l'utilisateur à repérer visuellement les fautes d'extraction.
+    Recalculé à la demande avec exactement le même repérage que l'extraction
+    (voir extraction/annexe13_pipeline.py::process_annexe13 et l'équivalent
+    Annexe 12) plutôt que stocké : `tableau_cellules` ne conserve pas ce
+    numéro aujourd'hui, et il n'y a qu'un seul document à traiter ici (pas un
+    lot), donc le recalcul reste rapide. None si le tableau n'a pas encore de
+    pipeline de repérage dédié (bilan, pas encore construit) ou si la page
+    n'a pas pu être retrouvée."""
+    if tableau not in ("annexe12", "annexe13"):
+        return None
+    doc_id = get_document_id(conn, code, annee)
+    if not doc_id:
+        return None
+    path = get_local_pdf_path_for_document(conn, doc_id)
+    if not path:
+        return None
+    try:
+        if tableau == "annexe13":
+            page_num, _ = locate_and_extract_full_table(
+                path, _is_annexe13_page, _ANNEXE13_KPI_PATTERNS, _ANNEXE13_RACCORDEMENT_RE,
+                extra_page_predicate=relaxed_is_annexe13_page,
+            )
+        else:
+            page_num, _ = locate_and_extract_full_table(
+                path, _is_annexe12_page, _ANNEXE12_KPI_PATTERNS, _ANNEXE12_RACCORDEMENT_RE,
+                extra_page_predicate=relaxed_is_annexe12_page, use_notes_fallback=False,
+            )
+    except Exception:
+        return None
+    return page_num
+
+
 def _raw_tableaux_for_groups(group_keys):
     if not group_keys:
         return None

@@ -19,7 +19,7 @@ from database.repository import get_connection
 from api.services.data_management import (
     list_documents_for_ui, get_local_pdf_path_for_document,
     get_filter_options, build_flexible_export_xlsx, get_reliability_stats,
-    get_document_grid, get_referentiel,
+    get_document_grid, get_referentiel, locate_source_page,
 )
 from api.services import tableau_pipeline_service
 
@@ -258,6 +258,32 @@ def cellules():
     if grille is None:
         return jsonify({"error": "Aucun document CMF pour cette société/année"}), 404
     return jsonify(grille)
+
+
+@bp.route("/api/gestion-donnees/page-pdf")
+def page_pdf():
+    """Numéro de page du PDF source pour une combinaison société/année/
+    tableau — sert à ouvrir directement la bonne page dans le visualiseur
+    PDF affiché à côté de l'aperçu Excel (correction manuelle), pour aider
+    l'utilisateur à repérer visuellement une faute d'extraction. `page: null`
+    si le tableau n'a pas de pipeline de repérage dédié (bilan) ou si la
+    page n'a pas pu être retrouvée — le front se rabat alors sur la page 1."""
+    code = request.args.get("societe")
+    annee_raw = request.args.get("annee")
+    tableau = request.args.get("tableau")
+    if not code or not annee_raw or not tableau:
+        return jsonify({"error": "Paramètres 'societe', 'annee' et 'tableau' requis"}), 400
+    try:
+        annee = int(annee_raw)
+    except ValueError:
+        return jsonify({"error": "Paramètre 'annee' invalide"}), 400
+
+    conn = get_connection()
+    try:
+        page = locate_source_page(conn, code, annee, tableau)
+    finally:
+        conn.close()
+    return jsonify({"page": page})
 
 
 @bp.route("/api/gestion-donnees/referentiel")

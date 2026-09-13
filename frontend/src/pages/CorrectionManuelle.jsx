@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { getLogoSrc } from "../utils/logos";
+import PdfCanvas from "../components/PdfCanvas";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
 
@@ -152,6 +153,12 @@ export default function CorrectionManuelle() {
   const [gridLoading, setGridLoading] = useState(false);
   const [gridErreur, setGridErreur] = useState(null);
   const [referentiel, setReferentiel] = useState({ lignes: [], colonnes: [] });
+  // Page du PDF source où se trouve ce tableau — recalculée à la demande
+  // (voir api/services/data_management.py::locate_source_page), pour
+  // ouvrir directement la bonne page dans le visualiseur PDF à côté de
+  // l'aperçu Excel. `undefined` = pas encore su, `null` = pas trouvée
+  // (repli sur la page 1, ex. tableau "bilan" sans pipeline de repérage).
+  const [pdfPage, setPdfPage] = useState(undefined);
 
   // { kind: 'valeur'|'ligne'|'colonne', ligne, colonne, actuelle }
   const [selected, setSelected] = useState(null);
@@ -190,6 +197,9 @@ export default function CorrectionManuelle() {
       .finally(() => setGridLoading(false));
     fetch(`${API}/api/gestion-donnees/referentiel?tableau=${tableau}`)
       .then(r => r.json()).then(setReferentiel).catch(() => setReferentiel({ lignes: [], colonnes: [] }));
+    setPdfPage(undefined);
+    fetch(`${API}/api/gestion-donnees/page-pdf?${p.toString()}`)
+      .then(r => r.json()).then(d => setPdfPage(d.page ?? null)).catch(() => setPdfPage(null));
   }, [code, annee, tableau]);
 
   // Recalcule le zoom "ajusté" à chaque nouveau tableau chargé, pendant que
@@ -233,6 +243,11 @@ export default function CorrectionManuelle() {
   const pdfHref = currentDoc
     ? (currentDoc.fichier_local ? `${API}/api/gestion-donnees/documents/${currentDoc.id}/pdf` : currentDoc.lien)
     : null;
+  // Le visualiseur intégré (pdf.js) ne peut charger que le fichier servi
+  // localement par l'API — un lien externe (currentDoc.lien, pas de fichier
+  // stocké) reste seulement accessible via le lien "Voir le PDF source" en
+  // nouvel onglet, pas embarqué ici.
+  const pdfEmbedUrl = currentDoc?.fichier_local ? pdfHref : null;
 
   const goTableau = (t) => setParams(prev => { const n = new URLSearchParams(prev); n.set("tableau", t); return n; });
   const goAnnee = (a) => setParams(prev => { const n = new URLSearchParams(prev); n.set("annee", String(a)); return n; });
@@ -387,12 +402,13 @@ export default function CorrectionManuelle() {
         </div>
       </div>
 
-      {/* ── Corps : formulaire à gauche, visualiseur à droite ────────────── */}
-      {/* Même proportion 1fr / 1fr que le corps de KpiDetail (page Qualité
-          des données) — le visualiseur Excel occupe la même place que le
-          visualiseur PDF là-bas, pas une colonne étroite à côté d'un
-          panneau large. */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", flex: 1, minHeight: 0, overflow: "hidden" }}>
+      {/* ── Corps : formulaire à gauche, Excel puis PDF source à droite ──── */}
+      {/* Le formulaire de correction n'a pas besoin de toute une colonne
+          1fr (ses champs restent compacts) — lui laisser une largeur fixe
+          donne le maximum de place aux deux visualiseurs, Excel et PDF côte
+          à côte, pour que l'utilisateur puisse comparer visuellement et
+          repérer une faute d'extraction sans naviguer entre deux onglets. */}
+      <div style={{ display: "grid", gridTemplateColumns: "336px 1fr 1fr", flex: 1, minHeight: 0, overflow: "hidden" }}>
         {/* Gauche */}
         <div style={{ overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}>
           {/* Résumé du document — une seule ligne compacte. */}
@@ -674,6 +690,55 @@ export default function CorrectionManuelle() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* PDF source — à côté de l'aperçu Excel pour que l'utilisateur
+            compare visuellement et repère lui-même une faute d'extraction
+            (colonne décalée, chiffre mal lu...), sans devoir ouvrir un
+            second onglet. Même composant de rendu (PdfCanvas) et même
+            grammaire de bandeau/contrôles que le visualiseur PDF de la page
+            Qualité des données. */}
+        <div style={{ background: VIEWER_BG, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, borderLeft: "1px solid rgba(255,255,255,.08)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: "1px solid rgba(255,255,255,.08)", flexWrap: "wrap" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 7, color: "#E5E7EB", fontSize: 12.5, fontWeight: 700 }}>
+              <svg viewBox="0 0 16 16" fill="none" width="13" height="13">
+                <path d="M4 1.5h6l3 3v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="#94A3B8" strokeWidth="1.3"/>
+                <path d="M9.5 1.5V4a1 1 0 0 0 1 1H13" stroke="#94A3B8" strokeWidth="1.3"/>
+              </svg>
+              PDF source — {code} · {annee}
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
+              {pdfPage !== undefined && (
+                <span style={{ background: "rgba(255,255,255,.08)", color: "#E5E7EB", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>
+                  {pdfPage ? `Page ${pdfPage}` : "Page non repérée"}
+                </span>
+              )}
+              {pdfHref && (
+                <a href={pdfHref} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 5, color: "#93C5FD", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>
+                  Ouvrir dans un onglet ↗
+                </a>
+              )}
+            </div>
+          </div>
+          {!pdfEmbedUrl ? (
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <p style={{ color: "#94A3B8", fontSize: 12.5, textAlign: "center", padding: "0 24px" }}>
+                {pdfHref ? <>Aucun fichier local pour ce document — <a href={pdfHref} target="_blank" rel="noreferrer" style={{ color: "#93C5FD" }}>ouvrir le lien source ↗</a></> : "Aucun PDF disponible pour ce document."}
+              </p>
+            </div>
+          ) : pdfPage === undefined ? (
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <p style={{ color: "#94A3B8", fontSize: 12.5 }}>Repérage de la page…</p>
+            </div>
+          ) : pdfPage === null ? (
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <p style={{ color: "#94A3B8", fontSize: 12.5, textAlign: "center", padding: "0 24px" }}>
+                Page non repérée automatiquement pour ce tableau. <a href={pdfHref} target="_blank" rel="noreferrer" style={{ color: "#93C5FD" }}>Ouvrir le PDF complet ↗</a>
+              </p>
+            </div>
+          ) : (
+            <PdfCanvas pdfUrl={pdfEmbedUrl} pageNum={pdfPage} highlight={null} />
+          )}
         </div>
       </div>
     </div>
