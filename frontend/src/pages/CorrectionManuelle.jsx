@@ -24,6 +24,14 @@ const EXCEL_BORDER = "1px solid #DDDDE3";
 
 const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 3.0;
+// Plancher de lisibilité pour le zoom AUTOMATIQUE (ajusté à l'ouverture) —
+// en dessous, le texte devient illisible avant même que le tableau tienne
+// entier (constaté sur l'Annexe 13, 15 colonnes × 37 lignes). Mieux vaut
+// rester lisible et laisser défiler que de tout faire tenir au prix de la
+// lisibilité — voir le gel des volets ci-dessous, qui rend ce défilement
+// supportable. Le zoom MANUEL (boutons +/-) peut lui descendre plus bas
+// (ZOOM_MIN) si l'utilisateur veut vraiment une vue d'ensemble.
+const ZOOM_LEGIBLE_FLOOR = 0.72;
 
 // Même format que la cellule Excel réelle (number_format "#,##0" — entier,
 // séparateur de milliers, jamais de décimales).
@@ -134,6 +142,8 @@ export default function CorrectionManuelle() {
   const [nouvelleValeur, setNouvelleValeur] = useState("");
   const [corrections, setCorrections] = useState(new Map()); // key -> { kind, ligne, colonne, actuelle, nouvelle }
   const [saveNote, setSaveNote] = useState(null);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportErreur, setExportErreur] = useState(null);
 
   // Zoom : `fitZoom` est calculé pour que le tableau tienne ENTIER dans le
   // visualiseur (ni trop petit pour être lisible, ni trop grand pour tenir
@@ -179,7 +189,7 @@ export default function CorrectionManuelle() {
       const availW = scroller.clientWidth - 52;
       const availH = scroller.clientHeight - 52;
       const fit = Math.min(availW / card.offsetWidth, availH / card.offsetHeight, 1);
-      const clamped = Math.max(ZOOM_MIN, Math.min(1, +fit.toFixed(2)));
+      const clamped = Math.max(ZOOM_LEGIBLE_FLOOR, Math.min(1, +fit.toFixed(2)));
       setFitZoom(clamped);
       setZoom(clamped);
     });
@@ -247,6 +257,34 @@ export default function CorrectionManuelle() {
     // Le point de sauvegarde réel (écriture en base / audit) reste la
     // prochaine étape, une fois ce contenu de gauche validé.
     setSaveNote("L'enregistrement effectif sera branché à l'étape suivante — cette liste reste locale pour l'instant.");
+  };
+
+  // Télécharge directement ce tableau (société/tableau/année en cours),
+  // depuis la page de correction elle-même — sans repasser par Gestion de
+  // données. Réutilise le même export flexible que là-bas, juste restreint
+  // à cette combinaison précise. Note : les corrections en attente (pas
+  // encore enregistrées en base) ne sont pas reflétées dans ce fichier tant
+  // que l'écriture réelle n'est pas branchée — l'export part des données
+  // stockées, comme "Générer l'Excel" sur Gestion de données.
+  const exporterExcel = () => {
+    setExportErreur(null);
+    setExportLoading(true);
+    const p = new URLSearchParams({ tableau, societe: code, annee: String(annee) });
+    fetch(`${API}/api/gestion-donnees/export.xlsx?${p.toString()}`)
+      .then(async r => {
+        if (!r.ok) throw new Error("echec");
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${code}_${annee}_${tableau}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      })
+      .catch(() => setExportErreur("Échec de la génération de l'export."))
+      .finally(() => setExportLoading(false));
   };
 
   if (!code || !annee) {
@@ -458,6 +496,22 @@ export default function CorrectionManuelle() {
                   Voir le PDF source ↗
                 </a>
               )}
+              {exportErreur && <span style={{ fontSize: 11, color: "#FCA5A5", fontWeight: 600 }}>{exportErreur}</span>}
+              <button
+                onClick={exporterExcel} disabled={exportLoading || !grid}
+                title="Télécharger cette combinaison société/tableau/année en Excel"
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, border: "1px solid #334155",
+                  background: exportLoading ? "#334155" : "none", color: exportLoading || !grid ? "#64748B" : "#CBD5E1",
+                  borderRadius: 7, padding: "5px 11px", fontSize: 11.5, fontWeight: 700,
+                  cursor: exportLoading || !grid ? "not-allowed" : "pointer",
+                }}
+              >
+                <svg viewBox="0 0 14 14" fill="none" width="12" height="12">
+                  <path d="M7 1.5v7m0 0L4.3 6M7 8.5l2.7-2.5M2 11h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                {exportLoading ? "Génération…" : "Télécharger l'Excel"}
+              </button>
             </div>
           </div>
 
@@ -502,11 +556,20 @@ export default function CorrectionManuelle() {
               // appliqué en CSS `zoom` (pas `transform`) pour que la mesure
               // de taille naturelle (voir l'effet ci-dessus) et le calcul du
               // zoom ajusté restent cohérents avec le flux normal du DOM.
+              // Colonne LIBELLÉ et ligne d'en-tête "gelées" (position: sticky)
+              // — comme les volets figés d'Excel : sur un grand tableau
+              // (Annexe 13, 15 colonnes × 37 lignes...), impossible de tout
+              // afficher à une taille lisible, mais on ne perd jamais de vue
+              // "quelle ligne / quelle colonne" en défilant, ligne d'en-tête
+              // et libellés restant visibles en permanence.
               <div ref={tableCardRef} style={{ background: "#fff", borderRadius: 4, boxShadow: "0 8px 30px rgba(0,0,0,.35)", padding: "30px 34px", flexShrink: 0, zoom }}>
                 <table style={{ borderCollapse: "collapse", fontSize: 12.5, fontFamily: "Arial, sans-serif" }}>
                   <thead>
                     <tr>
-                      <th style={{ background: EXCEL_HEADER, color: "#fff", padding: "8px 14px", border: EXCEL_BORDER, fontWeight: 700 }}>LIBELLÉ</th>
+                      <th style={{
+                        background: EXCEL_HEADER, color: "#fff", padding: "8px 14px", border: EXCEL_BORDER, fontWeight: 700,
+                        position: "sticky", top: 0, left: 0, zIndex: 3,
+                      }}>LIBELLÉ</th>
                       {grid.colonnes.map(col => {
                         const isSel = selected?.kind === "colonne" && selected.colonne === col;
                         const isCorr = corrections.has(`colonne::${col}`);
@@ -519,6 +582,7 @@ export default function CorrectionManuelle() {
                               background: isCorr ? ACCENT : EXCEL_HEADER, color: "#fff", padding: "8px 14px",
                               border: EXCEL_BORDER, fontWeight: 700, whiteSpace: "nowrap", cursor: "pointer", textAlign: "center",
                               outline: isSel ? `2px solid ${BAD}` : "none", outlineOffset: -2,
+                              position: "sticky", top: 0, zIndex: 2,
                             }}
                           >
                             {displayColonne(col).toUpperCase()}
@@ -541,6 +605,7 @@ export default function CorrectionManuelle() {
                               padding: "7px 14px", border: EXCEL_BORDER, color: EXCEL_TEXT, whiteSpace: "nowrap", cursor: "pointer", textAlign: "left",
                               background: isLigneSel ? "#FDE8E8" : isLigneCorr ? ACCENT_BG : zebra ? EXCEL_ZEBRA : "#fff",
                               outline: isLigneSel ? `2px solid ${BAD}` : "none", outlineOffset: -2,
+                              position: "sticky", left: 0, zIndex: 1,
                             }}
                           >
                             {displayLigne(row.ligne).toUpperCase()}
