@@ -1,16 +1,29 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { getLogoSrc } from "../utils/logos";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
 
 const DARK    = "#2E2E38";
-const YELLOW  = "#FFE600";
 const BG      = "#F2F5FB";
 const BORDER  = "#DDE2EC";
 const MUTED   = "#6B7280";
 const ACCENT  = "#0F6E56";
 const ACCENT_BG = "#E1F5EE";
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 10;
+
+// Sources dont les documents correspondent réellement à des PDF individuels
+// scrapés (voir api/services/data_management.py::local_pdf_path) — les
+// seules dont la page de gestion a du sens à afficher document par
+// document. CGA/FTUSA n'ont pas de société associée (sources sectorielles),
+// seul CMF a une entreprise par document — les filtres Entreprise/Tableau
+// ne s'affichent donc que sur cet onglet (gestion d'espace : pas de filtre
+// grisé/inopérant affiché pour rien).
+const SOURCES = [
+  { key: "CMF",   label: "CMF",   logo: "/logos/LogoCMF.png" },
+  { key: "CGA",   label: "CGA",   logo: "/logos/LogoCGA.png" },
+  { key: "FTUSA", label: "FTUSA", logo: "/logos/LogoFTUSA.png" },
+];
 
 function Card({ children, style }) {
   return (
@@ -45,10 +58,9 @@ if (typeof document !== "undefined" && !document.getElementById("gd-spin-kf")) {
   document.head.appendChild(style);
 }
 
-// Style de bouton commun aux 3 actions principales (Collecte, Exporter,
-// Générer l'export) — retour utilisateur : le bloc plein DARK/YELLOW était
-// jugé trop sombre / pas assez minimaliste. Contour clair + accent teal au
-// lieu d'un pavé sombre.
+// Style de bouton commun aux actions principales (Collecte…) — retour
+// utilisateur : le bloc plein DARK/YELLOW était jugé trop sombre / pas
+// assez minimaliste. Contour clair + accent teal au lieu d'un pavé sombre.
 function actionBtnStyle(disabled) {
   return {
     padding: "9px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
@@ -217,59 +229,273 @@ function FiabiliteBar() {
   );
 }
 
-/* ═══════════════════════════ Documents ═══════════════════════════ */
-function DocumentsPanel({ onExporter }) {
+/* ═══════════════════════════ Onglets de source (logos CMF / CGA / FTUSA) ═══════════════════════════ */
+function SourceTabs({ counts, active, onChange }) {
+  return (
+    <div style={{ display: "flex", gap: 10 }}>
+      {SOURCES.map(s => {
+        const isActive = s.key === active;
+        return (
+          <button
+            key={s.key}
+            onClick={() => onChange(s.key)}
+            style={{
+              display: "flex", alignItems: "center", gap: 10, padding: "10px 18px",
+              borderRadius: 12, cursor: "pointer", flex: 1, minWidth: 0,
+              border: `1.5px solid ${isActive ? ACCENT : BORDER}`,
+              background: isActive ? ACCENT_BG : "#fff",
+              boxShadow: isActive ? "0 2px 8px rgba(15,110,86,0.12)" : "none",
+              transition: "background .12s, border-color .12s",
+            }}
+          >
+            <span style={{
+              width: 34, height: 34, borderRadius: 8, background: "#fff",
+              border: `1px solid ${BORDER}`, display: "flex", alignItems: "center",
+              justifyContent: "center", flexShrink: 0, overflow: "hidden",
+            }}>
+              <img src={s.logo} alt={s.label} style={{ maxWidth: 26, maxHeight: 26, objectFit: "contain" }} />
+            </span>
+            <span style={{ textAlign: "left", minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: isActive ? ACCENT : DARK }}>{s.label}</div>
+              <div style={{ fontSize: 10.5, color: MUTED }}>{counts?.[s.key] ?? 0} document(s)</div>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ═══════════════════════════ Filtre Entreprise (logos priorisés) ═══════════════════════════ */
+function EntrepriseSelect({ societes, selected, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onDocClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const selectedLogo = selected ? getLogoSrc(selected.code) : null;
+
+  return (
+    <div ref={ref} style={{ position: "relative", flex: "1 1 220px", minWidth: 200 }}>
+      <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 5 }}>
+        Entreprise
+      </label>
+      <button type="button" onClick={() => setOpen(o => !o)} style={{
+        width: "100%", display: "flex", alignItems: "center", gap: 8, textAlign: "left",
+        background: "#fff", border: `1px solid ${open ? ACCENT : BORDER}`, borderRadius: 8,
+        padding: "6px 10px", cursor: "pointer", font: "inherit",
+      }}>
+        <span style={{
+          width: 24, height: 24, borderRadius: 6, background: "#F8F9FC", flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+          border: `1px solid ${BORDER}`,
+        }}>
+          {selectedLogo
+            ? <img src={selectedLogo} alt="" style={{ maxWidth: 20, maxHeight: 20, objectFit: "contain" }} />
+            : <span style={{ fontSize: 9, fontWeight: 800, color: MUTED }}>TN</span>}
+        </span>
+        <span style={{ fontSize: 12.5, color: selected ? DARK : "#9CA3AF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+          {selected ? (selected.nom || selected.code) : "Toutes les entreprises"}
+        </span>
+        <span style={{ fontSize: 9, color: MUTED, transform: open ? "rotate(180deg)" : "none" }}>▾</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, zIndex: 30,
+          background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 10,
+          boxShadow: "0 8px 22px rgba(0,0,0,.1)", maxHeight: 280, overflowY: "auto", padding: 6,
+        }}>
+          <button onClick={() => { onSelect(null); setOpen(false); }} style={{
+            display: "flex", alignItems: "center", width: "100%", gap: 8, padding: "7px 8px",
+            border: "none", background: !selected ? "#F8F9FC" : "transparent", borderRadius: 8,
+            cursor: "pointer", fontSize: 12.5, fontWeight: 700, color: DARK, textAlign: "left",
+          }}>
+            Toutes les entreprises
+          </button>
+          {societes.map(s => {
+            const logo = getLogoSrc(s.code);
+            const isSel = selected?.code === s.code;
+            return (
+              <button key={s.code} onClick={() => { onSelect(s); setOpen(false); }} style={{
+                display: "flex", alignItems: "center", width: "100%", gap: 10, padding: "7px 8px",
+                border: "none", background: isSel ? ACCENT_BG : "transparent", borderRadius: 8,
+                cursor: "pointer", textAlign: "left",
+              }}
+                onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = "#F8F9FC"; }}
+                onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = "transparent"; }}>
+                <span style={{
+                  width: 26, height: 26, borderRadius: 6, background: "#fff", flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+                  border: `1px solid ${BORDER}`,
+                }}>
+                  {logo
+                    ? <img src={logo} alt="" style={{ maxWidth: 21, maxHeight: 21, objectFit: "contain" }} />
+                    : <span style={{ fontSize: 9, fontWeight: 800, color: MUTED }}>{s.code.slice(0, 2)}</span>}
+                </span>
+                <span style={{ fontSize: 12.5, fontWeight: isSel ? 700 : 500, color: DARK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {s.nom || s.code}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════ Filtres à puces (Année / Tableau) ═══════════════════════════ */
+function ChipToggleGroup({ label, options, selected, onToggle }) {
+  return (
+    <div style={{ flex: "1 1 260px", minWidth: 220 }}>
+      <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 5 }}>
+        {label}
+      </label>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {options.map(o => {
+          const isSel = selected.has(o.value);
+          return (
+            <button key={o.value} onClick={() => onToggle(o.value)} style={{
+              padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: "pointer",
+              border: `1.5px solid ${isSel ? ACCENT : BORDER}`,
+              background: isSel ? ACCENT : "#fff", color: isSel ? "#fff" : DARK,
+              transition: "background .12s",
+            }}>
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════ Documents (traitement visuel, une seule page) ═══════════════════════════ */
+function DocumentsPanel() {
   const [docs, setDocs] = useState(null);
+  const [opts, setOpts] = useState(null);
+  const [source, setSource] = useState("CMF");
+  const [entreprise, setEntreprise] = useState(null);
+  const [annees, setAnnees] = useState(new Set());
+  const [tableaux, setTableaux] = useState(new Set());
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     fetch(`${API}/api/gestion-donnees/documents`).then(r => r.json()).then(setDocs).catch(() => setDocs([]));
+    fetch(`${API}/api/gestion-donnees/filtres`).then(r => r.json()).then(setOpts).catch(() => {});
   }, []);
 
-  // Uniquement CMF pour l'instant — seule source couverte par la pipeline
-  // d'extraction/validation ; les autres sources (CGA, FTUSA, BVMT, INS,
-  // Enquête) reviendront quand elles seront traitées de la même façon.
-  const cmfDocs = useMemo(() => (docs ?? []).filter(d => d.source === "CMF"), [docs]);
-  const filtered = useMemo(() => cmfDocs
+  const counts = useMemo(() => {
+    const c = { CMF: 0, CGA: 0, FTUSA: 0 };
+    (docs ?? []).forEach(d => { if (c[d.source] != null) c[d.source] += 1; });
+    return c;
+  }, [docs]);
+
+  const sourceDocs = useMemo(() => (docs ?? []).filter(d => d.source === source), [docs, source]);
+  const anneesDisponibles = useMemo(
+    () => [...new Set(sourceDocs.map(d => d.annee))].sort((a, b) => b - a),
+    [sourceDocs],
+  );
+  const tableauOptions = opts?.tableaux ?? [];
+
+  // Les filtres Entreprise/Tableau n'existent que pour CMF : CGA/FTUSA sont
+  // des sources sectorielles, sans société associée par document (voir
+  // database/repository.py::list_all_documents) — les cacher plutôt que de
+  // les afficher désactivés économise de l'espace pour rien d'utilisable.
+  const showEntrepriseFiltre = source === "CMF";
+  const showTableauFiltre = source === "CMF";
+
+  useEffect(() => { setEntreprise(null); setTableaux(new Set()); setAnnees(new Set()); setSearch(""); setPage(1); }, [source]);
+
+  const toggleAnnee = (a) => setAnnees(prev => {
+    const next = new Set(prev);
+    next.has(a) ? next.delete(a) : next.add(a);
+    return next;
+  });
+  const toggleTableau = (t) => setTableaux(prev => {
+    const next = new Set(prev);
+    next.has(t) ? next.delete(t) : next.add(t);
+    return next;
+  });
+
+  const filtered = useMemo(() => sourceDocs
+    .filter(d => !entreprise || d.code === entreprise.code)
+    .filter(d => annees.size === 0 || annees.has(d.annee))
+    .filter(d => tableaux.size === 0 || (d.code && [...tableaux].some(t => (opts?.societes_par_tableau?.[t] ?? []).includes(d.code))))
     .filter(d => !search || `${d.code ?? ""} ${d.nom_entreprise ?? ""} ${d.nom_pdf}`.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => b.annee - a.annee), // le plus recent d'abord
-  [cmfDocs, search]);
+    .sort((a, b) => b.annee - a.annee),
+  [sourceDocs, entreprise, annees, tableaux, opts, search]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageSafe = Math.min(page, totalPages);
   const pageRows = filtered.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE);
 
+  const filtresActifs = (entreprise ? 1 : 0) + annees.size + tableaux.size;
+  const reinitialiser = () => { setEntreprise(null); setAnnees(new Set()); setTableaux(new Set()); setSearch(""); setPage(1); };
+
   return (
-    <Card style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: DARK }}>Documents</h2>
-          <span style={{ fontSize: 11, background: BORDER, color: MUTED, padding: "1px 9px", borderRadius: 20, fontWeight: 700 }}>
-            {cmfDocs.length}
-          </span>
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: MUTED, background: "#F3F4F6", padding: "3px 9px", borderRadius: 6 }}>
-            Source : CMF
-          </span>
-        </div>
-        <button onClick={() => onExporter(null, null)} style={actionBtnStyle(false)}
-          onMouseEnter={e => (e.currentTarget.style.background = ACCENT_BG)}
-          onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
-          Exporter des données
-        </button>
+    <Card>
+      <div style={{ marginBottom: 18 }}>
+        <h2 style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 800, color: DARK }}>Documents collectés</h2>
+        <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>
+          Sélectionnez une source puis affinez par entreprise, année ou tableau.
+        </p>
       </div>
-      <p style={{ margin: "4px 0 14px", fontSize: 11.5, color: MUTED }}>
-        Cliquez une ligne pour exporter directement cette société/année, ou le bouton ci-dessus pour un export libre.
-      </p>
 
-      <input
-        placeholder="Rechercher (société, fichier…)"
-        value={search}
-        onChange={e => { setSearch(e.target.value); setPage(1); }}
-        style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 12, width: "100%", marginBottom: 12 }}
-      />
+      <SourceTabs counts={counts} active={source} onChange={setSource} />
 
-      <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-end", margin: "18px 0 6px" }}>
+        {showEntrepriseFiltre && (
+          <EntrepriseSelect
+            societes={opts?.societes ?? []}
+            selected={entreprise}
+            onSelect={s => { setEntreprise(s); setPage(1); }}
+          />
+        )}
+        <div onClick={() => setPage(1)}>
+          <ChipToggleGroup
+            label="Année"
+            options={anneesDisponibles.map(a => ({ value: a, label: String(a) }))}
+            selected={annees} onToggle={a => { toggleAnnee(a); setPage(1); }}
+          />
+        </div>
+        {showTableauFiltre && (
+          <div onClick={() => setPage(1)}>
+            <ChipToggleGroup
+              label="Tableau"
+              options={tableauOptions.map(t => ({ value: t.key, label: t.label.split(" — ")[0] }))}
+              selected={tableaux} onToggle={t => { toggleTableau(t); setPage(1); }}
+            />
+          </div>
+        )}
+        <div style={{ flex: "1 1 200px", minWidth: 180 }}>
+          <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 5 }}>
+            Recherche
+          </label>
+          <input
+            placeholder="Fichier, code…"
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 12, width: "100%" }}
+          />
+        </div>
+        {filtresActifs > 0 && (
+          <button onClick={reinitialiser} style={{
+            border: "none", background: "none", color: ACCENT, fontWeight: 700, fontSize: 12,
+            cursor: "pointer", padding: "8px 4px",
+          }}>
+            Réinitialiser ({filtresActifs})
+          </button>
+        )}
+      </div>
+
+      <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden", marginTop: 12 }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
           <thead>
             <tr style={{ background: "#F8F9FC" }}>
@@ -280,38 +506,47 @@ function DocumentsPanel({ onExporter }) {
           </thead>
           <tbody>
             {!docs ? (
-              <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: MUTED }}>
+              <tr><td colSpan={4} style={{ padding: 28, textAlign: "center", color: MUTED }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Spinner color={MUTED} /> Chargement…</span>
               </td></tr>
             ) : pageRows.length === 0 ? (
-              <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: MUTED }}>Aucun document.</td></tr>
-            ) : pageRows.map(d => (
-              <tr
-                key={d.id}
-                onClick={() => onExporter(d.code, d.annee)}
-                style={{ borderBottom: "1px solid #F0F1F5", cursor: d.code ? "pointer" : "default" }}
-                onMouseEnter={e => (e.currentTarget.style.background = ACCENT_BG)}
-                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-              >
-                <td style={{ padding: "8px 12px" }}>{d.nom_entreprise ?? d.code ?? "—"}</td>
-                <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 11.5, color: "#4B5563" }}>{d.nom_pdf}</td>
-                <td style={{ padding: "8px 12px" }}>{d.annee}</td>
-                <td style={{ padding: "8px 12px", textAlign: "right" }}>
-                  {(d.fichier_local || d.lien) && (
-                    <a
-                      href={d.fichier_local ? `${API}/api/gestion-donnees/documents/${d.id}/pdf` : d.lien}
-                      target="_blank" rel="noreferrer"
-                      onClick={e => e.stopPropagation()}
-                      style={{
-                        color: ACCENT, background: ACCENT_BG, fontWeight: 700, fontSize: 11.5,
-                        padding: "5px 10px", borderRadius: 6, textDecoration: "none", whiteSpace: "nowrap",
+              <tr><td colSpan={4} style={{ padding: 28, textAlign: "center", color: MUTED }}>Aucun document pour cette sélection.</td></tr>
+            ) : pageRows.map(d => {
+              const logo = d.code ? getLogoSrc(d.code) : null;
+              const href = d.fichier_local ? `${API}/api/gestion-donnees/documents/${d.id}/pdf` : d.lien;
+              return (
+                <tr key={d.id} style={{ borderBottom: "1px solid #F0F1F5" }}>
+                  <td style={{ padding: "8px 12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                      <span style={{
+                        width: 26, height: 26, borderRadius: 6, background: "#F8F9FC", flexShrink: 0,
+                        display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+                        border: `1px solid ${BORDER}`,
                       }}>
-                      Voir le PDF ↗
-                    </a>
-                  )}
-                </td>
-              </tr>
-            ))}
+                        {logo
+                          ? <img src={logo} alt="" style={{ maxWidth: 21, maxHeight: 21, objectFit: "contain" }} />
+                          : <span style={{ fontSize: 9, fontWeight: 800, color: MUTED }}>{(d.code ?? d.source).slice(0, 2)}</span>}
+                      </span>
+                      <span>{d.nom_entreprise ?? d.code ?? "—"}</span>
+                    </div>
+                  </td>
+                  <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 11.5, color: "#4B5563" }}>{d.nom_pdf}</td>
+                  <td style={{ padding: "8px 12px" }}>{d.annee}</td>
+                  <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                    {href && (
+                      <a
+                        href={href} target="_blank" rel="noreferrer"
+                        style={{
+                          color: ACCENT, background: ACCENT_BG, fontWeight: 700, fontSize: 11.5,
+                          padding: "5px 10px", borderRadius: 6, textDecoration: "none", whiteSpace: "nowrap",
+                        }}>
+                        Voir le PDF ↗
+                      </a>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -333,262 +568,8 @@ function DocumentsPanel({ onExporter }) {
   );
 }
 
-// Micro-étiquette + zone de champ compacte partagées par les 3 filtres.
-const fieldWrap = { flex: 1, minWidth: 0, position: "relative" };
-const fieldLabel = { display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 5 };
-
-// Sélection multiple compacte — retour utilisateur : pouvoir choisir
-// plusieurs sociétés/années/tableaux à la fois (le backend le supportait
-// déjà via des paramètres répétés, seule l'interface ne le permettait pas).
-// Un bouton façon menu déroulant qui ouvre un panneau à cases à cocher,
-// plutôt qu'un mur de puces (déjà écarté comme trop volumineux) ou un
-// <select multiple> natif (peu intuitif, nécessite ctrl/cmd+clic).
-function MultiSelect({ label, options, selected, onToggle, allLabel = "Toutes", disabledSet, disabledHint }) {
-  const [openMenu, setOpenMenu] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    function onDocClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpenMenu(false);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
-
-  const summary = selected.size === 0
-    ? allLabel
-    : selected.size === 1
-      ? (options.find(o => o.value === [...selected][0])?.label ?? [...selected][0])
-      : `${selected.size} sélectionnées`;
-
-  return (
-    <div ref={ref} style={fieldWrap}>
-      <label style={fieldLabel}>{label}</label>
-      <button
-        type="button" onClick={() => setOpenMenu(o => !o)}
-        style={{
-          width: "100%", textAlign: "left", background: "#fff", color: selected.size ? DARK : "#9CA3AF",
-          border: `1px solid ${openMenu ? ACCENT : BORDER}`, borderRadius: 8, font: "inherit", fontSize: 12.5,
-          padding: "8px 26px 8px 10px", cursor: "pointer", position: "relative",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>
-        {summary}
-        <span style={{ position: "absolute", right: 9, top: "50%", transform: `translateY(-50%) ${openMenu ? "rotate(180deg)" : ""}`, fontSize: 9, color: MUTED }}>▾</span>
-      </button>
-      {openMenu && (
-        <div style={{
-          position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, zIndex: 30,
-          background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 8,
-          boxShadow: "0 6px 18px rgba(0,0,0,.1)", maxHeight: 230, overflowY: "auto", padding: 4,
-        }}>
-          {options.map(o => {
-            const isDisabled = disabledSet?.has(o.value);
-            return (
-              <label key={o.value}
-                title={isDisabled ? disabledHint : undefined}
-                style={{
-                  display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", fontSize: 12.5,
-                  cursor: isDisabled ? "not-allowed" : "pointer", borderRadius: 6,
-                  color: isDisabled ? "#C2C6D2" : DARK,
-                }}
-                onMouseEnter={e => { if (!isDisabled) e.currentTarget.style.background = "#F8F9FC"; }}
-                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-                <input type="checkbox" checked={selected.has(o.value)} disabled={isDisabled}
-                  onChange={() => onToggle(o.value)} />
-                {o.label}
-              </label>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ═══════════════════════════ Export Excel (tiroir) ═══════════════════════════ */
-function ExportDrawer({ open, prefill, onClose }) {
-  const [opts, setOpts] = useState(null);
-  const [tableaux, setTableaux] = useState(new Set());
-  const [societes, setSocietes] = useState(new Set());
-  const [annees, setAnnees] = useState(new Set());
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportErreur, setExportErreur] = useState(null);
-
-  useEffect(() => {
-    fetch(`${API}/api/gestion-donnees/filtres`).then(r => r.json()).then(setOpts).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    setSocietes(prefill?.societe ? new Set([prefill.societe]) : new Set());
-    setAnnees(prefill?.annee ? new Set([String(prefill.annee)]) : new Set());
-    if (!prefill) setTableaux(new Set());
-  }, [open, prefill]);
-
-  const toggleIn = (setter) => (value) => setter(prev => {
-    const next = new Set(prev);
-    next.has(value) ? next.delete(value) : next.add(value);
-    return next;
-  });
-
-  // Sociétés éligibles pour la sélection de tableau en cours — retour
-  // utilisateur : une société sans AUCUNE donnée pour un tableau choisi (ex.
-  // ATTIJARI/UIB pour l'Annexe 13, sociétés Vie exclusivement) doit être
-  // désactivée dans le sélecteur plutôt que de rester choisissable pour
-  // produire un export vide. Aucun tableau sélectionné = tous éligibles
-  // (pas de filtre). Plusieurs tableaux sélectionnés = éligible si la
-  // société a AU MOINS UN des tableaux choisis (union, pas intersection —
-  // sinon une société qui n'a que l'Annexe 12 serait exclue dès qu'on
-  // ajoute l'Annexe 13 à la sélection).
-  const societesDisabled = useMemo(() => {
-    if (!opts?.societes_par_tableau || tableaux.size === 0) return new Set();
-    const eligible = new Set();
-    tableaux.forEach(t => (opts.societes_par_tableau[t] || []).forEach(c => eligible.add(c)));
-    // Filet de sécurité : si `eligible` finit vide alors qu'un tableau EST
-    // sélectionné, c'est que la donnée n'est structurellement pas dispo côté
-    // client (jamais le cas réel — chaque groupe a au moins une société) —
-    // ne désactive personne plutôt que de bloquer tout le sélecteur (repli
-    // "fail open", pas "fail closed").
-    if (eligible.size === 0) return new Set();
-    return new Set(opts.societes.map(s => s.code).filter(c => !eligible.has(c)));
-  }, [opts, tableaux]);
-
-  // Une société déjà cochée qui devient désactivée (l'utilisateur change la
-  // sélection de tableau après coup) est retirée automatiquement — jamais
-  // laissée sélectionnée mais grisée/invisible dans son propre résumé.
-  useEffect(() => {
-    if (societesDisabled.size === 0) return;
-    setSocietes(prev => {
-      const next = new Set([...prev].filter(c => !societesDisabled.has(c)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [societesDisabled]);
-
-  const buildUrl = () => {
-    const p = new URLSearchParams();
-    tableaux.forEach(t => p.append("tableau", t));
-    societes.forEach(s => p.append("societe", s));
-    annees.forEach(a => p.append("annee", a));
-    return `${API}/api/gestion-donnees/export.xlsx?${p.toString()}`;
-  };
-
-  const resume = () => {
-    const t = tableaux.size ? `${tableaux.size} tableau(x)` : "tous les tableaux";
-    const s = societes.size ? [...societes].join(", ") : "toutes les sociétés";
-    const a = annees.size ? [...annees].sort().join(", ") : "toutes les années";
-    return `${t} · ${s} · ${a}`;
-  };
-
-  // Génère l'export via fetch (au lieu d'un <a href> nu) pour pouvoir
-  // afficher un indicateur de chargement — retour utilisateur : une
-  // génération large peut prendre jusqu'à ~1-2 minutes (voir le plafond
-  // d'extraction live côté serveur), la page restait silencieuse pendant
-  // l'attente. Le téléchargement lui-même est déclenché en JS une fois le
-  // fichier reçu (lien blob synthétique, jamais visible de l'utilisateur).
-  const genererExport = () => {
-    setExportErreur(null);
-    setExportLoading(true);
-    fetch(buildUrl())
-      .then(async r => {
-        if (!r.ok) throw new Error("echec");
-        const blob = await r.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "Export_donnees.xlsx";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      })
-      .catch(() => setExportErreur("Échec de la génération de l'export."))
-      .finally(() => setExportLoading(false));
-  };
-
-  return (
-    <div style={{
-      width: open ? 460 : 0, opacity: open ? 1 : 0, padding: open ? "20px 22px" : 0,
-      border: open ? `1px solid ${BORDER}` : "none", overflow: open ? "visible" : "hidden", flexShrink: 0,
-      background: "#fff", borderRadius: 14, boxShadow: open ? "0 2px 10px rgba(0,0,0,0.05)" : "none",
-      transition: "width .38s cubic-bezier(.2,.8,.2,1), opacity .25s ease, padding .38s, border-width .38s",
-    }}>
-      <div style={{ minWidth: 416 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: DARK }}>Export Excel</h2>
-          <button onClick={onClose} aria-label="Fermer" style={{
-            background: "none", border: `1px solid ${BORDER}`, borderRadius: 8, width: 30, height: 30,
-            cursor: "pointer", fontSize: 14, color: DARK,
-          }}>×</button>
-        </div>
-        {prefill?.societe && (
-          <p style={{ margin: "10px 0 0", fontSize: 11.5, color: ACCENT, fontWeight: 700 }}>
-            Pré-rempli depuis {prefill.societe}{prefill.annee ? ` · ${prefill.annee}` : ""}
-          </p>
-        )}
-
-        {!opts ? (
-          <div style={{ color: MUTED, fontSize: 12.5, marginTop: 16, display: "flex", alignItems: "center", gap: 8 }}>
-            <Spinner color={MUTED} /> Chargement des filtres…
-          </div>
-        ) : (
-          <>
-            <div style={{ margin: "18px 0 10px", display: "flex", flexDirection: "column", gap: 10 }}>
-              <MultiSelect
-                label="Tableau"
-                options={opts.tableaux.map(t => ({ value: t.key, label: t.label }))}
-                selected={tableaux} onToggle={toggleIn(setTableaux)}
-              />
-              <div style={{ display: "flex", gap: 10 }}>
-                <MultiSelect
-                  label="Société"
-                  options={opts.societes.map(s => ({ value: s.code, label: s.code }))}
-                  selected={societes} onToggle={toggleIn(setSocietes)}
-                  disabledSet={societesDisabled}
-                  disabledHint="Aucune donnée pour le(s) tableau(x) sélectionné(s)"
-                />
-                <MultiSelect
-                  label="Année"
-                  options={opts.annees.map(a => ({ value: String(a), label: String(a) }))}
-                  selected={annees} onToggle={toggleIn(setAnnees)}
-                />
-              </div>
-            </div>
-            <p style={{ fontSize: 10.5, color: "#9CA3AF", margin: "-4px 0 4px" }}>
-              Sélectionnez plusieurs valeurs par filtre si besoin.
-            </p>
-
-            <p style={{ fontSize: 11.5, color: MUTED, margin: "0 0 18px" }}>
-              Sélection : {resume()}
-            </p>
-
-            {exportErreur && <p style={{ fontSize: 12, color: "#C8102E", fontWeight: 600, margin: "0 0 8px" }}>{exportErreur}</p>}
-            <button onClick={genererExport} disabled={exportLoading}
-              style={{ ...actionBtnStyle(exportLoading), padding: "11px 20px", width: "100%" }}
-              onMouseEnter={e => !exportLoading && (e.currentTarget.style.background = ACCENT_BG)}
-              onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
-              {exportLoading && <Spinner />}
-              {exportLoading ? "Génération en cours…" : "Générer l'export Excel"}
-            </button>
-            <p style={{ fontSize: 10.5, color: "#9CA3AF", margin: "8px 0 0" }}>
-              Une feuille par société, un tableau réel par annexe demandée.
-            </p>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* ═══════════════════════════ Page ═══════════════════════════ */
 export default function GestionDonnees() {
-  const [exportOpen, setExportOpen] = useState(false);
-  const [prefill, setPrefill] = useState(null);
-
-  const ouvrirExport = (societe, annee) => {
-    setPrefill(societe || annee ? { societe, annee } : null);
-    setExportOpen(true);
-  };
-
   return (
     <div style={{ minHeight: "100vh", background: BG, fontFamily: "'Inter', system-ui, sans-serif" }}>
       <div style={{ background: DARK, padding: "20px 32px" }}>
@@ -598,7 +579,7 @@ export default function GestionDonnees() {
           </div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "white" }}>Gestion de base de données</h1>
           <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "rgba(255,255,255,.45)" }}>
-            Accès à toute la donnée collectée — parcourir les documents, exporter n'importe quel extrait en Excel.
+            Accès à toute la donnée collectée par source — CMF, CGA, FTUSA — filtrée par entreprise, année ou tableau.
           </p>
         </div>
       </div>
@@ -606,10 +587,7 @@ export default function GestionDonnees() {
       <div style={{ maxWidth: 1220, margin: "0 auto", padding: "24px 32px", display: "flex", flexDirection: "column", gap: 16 }}>
         <CollecteBar />
         <FiabiliteBar />
-        <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-          <DocumentsPanel onExporter={ouvrirExport} />
-          <ExportDrawer open={exportOpen} prefill={prefill} onClose={() => setExportOpen(false)} />
-        </div>
+        <DocumentsPanel />
       </div>
     </div>
   );
