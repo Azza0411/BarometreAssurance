@@ -71,6 +71,7 @@ export default function CorrectionManuelle() {
   const [motif, setMotif] = useState("");
   const [corrections, setCorrections] = useState(new Map()); // key -> { kind, ligne, colonne, actuelle, nouvelle, motif }
   const [saveNote, setSaveNote] = useState(null);
+  const [zoom, setZoom] = useState(1.0);
 
   useEffect(() => {
     fetch(`${API}/api/gestion-donnees/documents`).then(r => r.json()).then(setDocs).catch(() => setDocs([]));
@@ -83,6 +84,7 @@ export default function CorrectionManuelle() {
     setGridErreur(null);
     setSelected(null);
     setCorrections(new Map());
+    setZoom(1.0);
     const p = new URLSearchParams({ societe: code, annee: String(annee), tableau });
     fetch(`${API}/api/gestion-donnees/cellules?${p.toString()}`)
       .then(async r => { if (!r.ok) throw new Error("echec"); return r.json(); })
@@ -221,7 +223,11 @@ export default function CorrectionManuelle() {
       </div>
 
       {/* ── Corps : formulaire à gauche, visualiseur à droite ────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", height: "calc(100vh - 92px - 58px)", overflow: "hidden" }}>
+      {/* Même proportion 1fr / 1fr que le corps de KpiDetail (page Qualité
+          des données) — le visualiseur Excel occupe la même place que le
+          visualiseur PDF là-bas, pas une colonne étroite à côté d'un
+          panneau large. */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", height: "calc(100vh - 92px - 58px)", overflow: "hidden" }}>
         {/* Gauche */}
         <div style={{ overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
           {/* Résumé du document — une seule ligne compacte, l'essentiel déjà
@@ -395,6 +401,30 @@ export default function CorrectionManuelle() {
             </div>
           </div>
 
+          {/* Barre de contrôles zoom — identique à celle du visualiseur PDF
+              de KpiDetail (Qualité des données) : mêmes boutons, mêmes
+              couleurs, même plage 50 %–300 %. Pas de rotation ici (propre
+              aux PDF sectoriels tournés à 90°, sans objet pour un tableau). */}
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            gap: 8, padding: "6px 10px",
+            background: "#1E293B", borderBottom: "1px solid #334155",
+          }}>
+            <button onClick={() => setZoom(z => Math.max(0.5, +(z - 0.25).toFixed(2)))}
+              style={{ background: "#334155", border: "none", borderRadius: 6, color: "#CBD5E1",
+                width: 28, height: 28, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>−</button>
+            <span style={{ fontSize: 12, color: "#94A3B8", minWidth: 44, textAlign: "center" }}>
+              {Math.round(zoom * 100)} %
+            </span>
+            <button onClick={() => setZoom(z => Math.min(3.0, +(z + 0.25).toFixed(2)))}
+              style={{ background: "#334155", border: "none", borderRadius: 6, color: "#CBD5E1",
+                width: 28, height: 28, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>+</button>
+            <span style={{ width: 1, alignSelf: "stretch", background: "#334155", margin: "0 2px" }} />
+            <button onClick={() => setZoom(1.0)}
+              style={{ background: "none", border: "1px solid #334155", borderRadius: 6,
+                color: "#64748B", fontSize: 10, padding: "3px 8px", cursor: "pointer" }}>Réinitialiser</button>
+          </div>
+
           <div style={{ flex: 1, overflow: "auto", padding: 26, display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
             {gridLoading ? (
               <p style={{ color: "#94A3B8", textAlign: "center", marginTop: 40 }}>Chargement…</p>
@@ -414,7 +444,7 @@ export default function CorrectionManuelle() {
               // sans le titre au-dessus, uniquement le tableau, comme
               // demandé : c'est un aperçu fidèle de ce qui sera téléchargé,
               // pas une mise en page propre à cette page.
-              <div style={{ background: "#fff", borderRadius: 4, boxShadow: "0 8px 30px rgba(0,0,0,.35)", padding: "30px 34px", flexShrink: 0 }}>
+              <div style={{ background: "#fff", borderRadius: 4, boxShadow: "0 8px 30px rgba(0,0,0,.35)", padding: "30px 34px", flexShrink: 0, zoom }}>
                 <table style={{ borderCollapse: "collapse", fontSize: 12.5, fontFamily: "Arial, sans-serif" }}>
                   <thead>
                     <tr>
