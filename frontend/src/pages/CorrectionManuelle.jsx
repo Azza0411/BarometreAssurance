@@ -189,6 +189,40 @@ export default function CorrectionManuelle() {
         {/* Gauche */}
         <div style={{ overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "16px 18px" }}>
+            <h3 style={{ margin: "0 0 12px", fontSize: 13.5, fontWeight: 800, color: DARK }}>Document</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 14px" }}>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: ".3px" }}>Société</div>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: DARK }}>{societe?.nom ?? code}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: ".3px" }}>Tableau</div>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: DARK }}>{tableauxDisponibles.find(t => t.key === tableau)?.label.split(" — ")[0] ?? tableau}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: ".3px" }}>Année</div>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: DARK, fontVariantNumeric: "tabular-nums" }}>{annee}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: ".3px" }}>Cellules</div>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: DARK, fontVariantNumeric: "tabular-nums" }}>
+                  {grid ? `${grid.lignes.length} × ${grid.colonnes.length}` : "—"}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 16, marginTop: 14, paddingTop: 12, borderTop: `1px solid #F0F1F5` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: "#FDE8E8", border: `1.5px solid ${BAD}`, flexShrink: 0 }} />
+                <span style={{ fontSize: 11, color: MUTED }}>Sélectionnée</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: ACCENT_BG, border: `1.5px solid ${ACCENT}`, flexShrink: 0 }} />
+                <span style={{ fontSize: 11, color: MUTED }}>Corrigée</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "16px 18px" }}>
             <h3 style={{ margin: "0 0 3px", fontSize: 13.5, fontWeight: 800, color: DARK }}>Cellule sélectionnée</h3>
             <p style={{ margin: "0 0 12px", fontSize: 11.5, color: MUTED }}>
               Cliquez une cellule dans le tableau à droite pour la corriger.
@@ -278,14 +312,21 @@ export default function CorrectionManuelle() {
         {/* Droite : visualiseur */}
         <div style={{ background: VIEWER_BG, display: "flex", flexDirection: "column", minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: "1px solid rgba(255,255,255,.08)", flexWrap: "wrap" }}>
-            <span style={{ color: "#E5E7EB", fontSize: 12.5, fontWeight: 700 }}>📊 Excel — {code} · {annee}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 7, color: "#E5E7EB", fontSize: 12.5, fontWeight: 700 }}>
+              <svg viewBox="0 0 16 16" fill="none" width="13" height="13">
+                <rect x="2" y="1" width="12" height="14" rx="2" stroke="#94A3B8" strokeWidth="1.3"/>
+                <path d="M5 5h6M5 8h4M5 11h5" stroke="#94A3B8" strokeWidth="1.1" strokeLinecap="round"/>
+              </svg>
+              Excel — {code} · {annee}
+            </span>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
               <span style={{ background: "rgba(255,255,255,.08)", color: "#E5E7EB", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>
                 Feuille : {tableauxDisponibles.find(t => t.key === tableau)?.label.split(" — ")[0] ?? tableau}
               </span>
               {selected && (
                 <span style={{ display: "flex", alignItems: "center", gap: 6, background: BAD_BG, color: "#FCA5A5", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>
-                  📍 {selected.ligne} · {selected.colonne}
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FCA5A5", flexShrink: 0 }} />
+                  {selected.ligne} · {selected.colonne}
                 </span>
               )}
               {pdfHref && (
@@ -296,7 +337,7 @@ export default function CorrectionManuelle() {
             </div>
           </div>
 
-          <div style={{ flex: 1, overflow: "auto", padding: 26 }}>
+          <div style={{ flex: 1, overflow: "auto", padding: 26, display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
             {gridLoading ? (
               <p style={{ color: "#94A3B8", textAlign: "center", marginTop: 40 }}>Chargement…</p>
             ) : gridErreur ? (
@@ -304,20 +345,26 @@ export default function CorrectionManuelle() {
             ) : !grid || grid.lignes.length === 0 ? (
               <p style={{ color: "#94A3B8", textAlign: "center", marginTop: 40 }}>Aucune cellule stockée pour cette combinaison.</p>
             ) : (
-              <div style={{ background: "#fff", borderRadius: 4, boxShadow: "0 8px 30px rgba(0,0,0,.35)", maxWidth: 720, margin: "0 auto", padding: "30px 34px" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+              // Pas de largeur figée : un tableau à beaucoup de colonnes
+              // (ex. Annexe 13 par branche) doit pousser cette carte plus
+              // large que l'écran et laisser le conteneur parent défiler
+              // horizontalement — une largeur fixe le comprimait et faisait
+              // déborder les dernières colonnes, illisibles, sur le fond
+              // sombre du visualiseur.
+              <div style={{ background: "#fff", borderRadius: 4, boxShadow: "0 8px 30px rgba(0,0,0,.35)", padding: "30px 34px", flexShrink: 0 }}>
+                <table style={{ borderCollapse: "collapse", fontSize: 12.5 }}>
                   <thead>
                     <tr>
-                      <th style={{ background: "#1D4E89", color: "#fff", padding: "8px 10px", border: "1px solid #16406F" }} />
+                      <th style={{ background: "#1D4E89", color: "#fff", padding: "8px 14px", border: "1px solid #16406F" }} />
                       {grid.colonnes.map(col => (
-                        <th key={col} style={{ background: "#1D4E89", color: "#fff", padding: "8px 10px", border: "1px solid #16406F", fontWeight: 700 }}>{col}</th>
+                        <th key={col} style={{ background: "#1D4E89", color: "#fff", padding: "8px 14px", border: "1px solid #16406F", fontWeight: 700, whiteSpace: "nowrap" }}>{col}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {grid.lignes.map(row => (
                       <tr key={row.ligne}>
-                        <td style={{ padding: "7px 10px", border: "1px solid #E2E5EA", fontWeight: 600 }}>{row.ligne}</td>
+                        <td style={{ padding: "7px 14px", border: "1px solid #E2E5EA", fontWeight: 600, background: "#fff", whiteSpace: "nowrap" }}>{row.ligne}</td>
                         {grid.colonnes.map(col => {
                           const val = row.valeurs[col];
                           const key = cellKey(row.ligne, col);
@@ -328,13 +375,13 @@ export default function CorrectionManuelle() {
                               key={col}
                               onClick={() => selectCell(row.ligne, col, val)}
                               style={{
-                                padding: "7px 10px", border: "1px solid #E2E5EA", textAlign: "right",
+                                padding: "7px 14px", border: "1px solid #E2E5EA", textAlign: "right", whiteSpace: "nowrap",
                                 fontVariantNumeric: "tabular-nums", cursor: "pointer",
-                                background: isSelected ? "#FDE8E8" : isCorrected ? ACCENT_BG : "transparent",
+                                background: isSelected ? "#FDE8E8" : isCorrected ? ACCENT_BG : "#fff",
                                 outline: isSelected ? `2px solid ${BAD}` : "none", outlineOffset: -2,
                               }}
                             >
-                              {fmt(val)}{isCorrected && <span style={{ color: ACCENT, fontWeight: 800, marginLeft: 5, fontSize: 10.5 }}>✓</span>}
+                              {fmt(val)}{isCorrected && <span style={{ color: ACCENT, fontWeight: 800, marginLeft: 5, fontSize: 10.5 }}>(corrigée)</span>}
                             </td>
                           );
                         })}

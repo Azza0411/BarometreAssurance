@@ -655,11 +655,15 @@ function DocumentsConsole({ docs, opts, source }) {
                           title="Corriger manuellement ce document"
                           onClick={() => navigate(`/correction-manuelle?code=${d.code}&annee=${d.annee}&tableau=${defaultTableauFor(d.code)}`)}
                           style={{
-                            border: "none", cursor: "pointer", fontSize: 11.5, fontWeight: 700,
+                            display: "flex", alignItems: "center", border: "none", cursor: "pointer",
                             color: MUTED, background: "#F3F4F6", padding: "5px 9px", borderRadius: "0 7px 7px 0",
                             borderLeft: `1px solid ${href ? ACCENT_BG : "#E5E7EB"}`,
                           }}
-                        >✎</button>
+                        >
+                          <svg viewBox="0 0 14 14" fill="none" width="12" height="12">
+                            <path d="M9.5 1.5l3 3-7.5 7.5-3.5.5.5-3.5 7.5-7.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
                       )}
                     </span>
                   );
