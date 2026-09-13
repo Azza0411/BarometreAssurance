@@ -282,113 +282,55 @@ function YearGrid({ options, selected, onToggle }) {
   );
 }
 
-/* ═══════════════════════════ Filtre Entreprise — combo multi-sélection ═══════════════════════════
-   Recherche + sélection multiple (cumuler plusieurs sociétés dans un même
-   export), les sociétés choisies apparaissent en puces avec leur logo à
-   l'intérieur du champ — une seule ligne compacte plutôt qu'une liste
-   verticale qui pousserait le reste de la page vers le bas. */
-function EntrepriseCombo({ societes, selected, onToggle, onRemove, disabledSet }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const ref = useRef(null);
-
-  useEffect(() => {
-    function onDocClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
-
-  const filteredOptions = useMemo(() => {
-    const q = query.toLowerCase();
-    if (!q) return societes;
-    return societes.filter(s => (s.nom ?? "").toLowerCase().includes(q) || s.code.toLowerCase().includes(q));
-  }, [societes, query]);
-
+/* ═══════════════════════════ Filtre Entreprise — grille de logos ═══════════════════════════
+   Même logique que le sélecteur d'assureurs d'Analyse comparative : les
+   logos EUX-MÊMES sont les boutons (clic = sélection/désélection), pas une
+   liste déroulante à ouvrir — reconnaître un logo est plus rapide que lire
+   un nom dans une liste. Grille à colonnes égales (comme là-bas) plutôt que
+   flex-wrap : les logos ont des largeurs très variables et un flex-wrap
+   produirait des lignes en escalier au retour à la ligne. */
+function EntrepriseLogoGrid({ societes, selected, onToggle, disabledSet, onReset }) {
   return (
-    <div ref={ref} style={{ position: "relative", flex: "1 1 340px", minWidth: 260 }}>
-      <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 5 }}>
-        Entreprise
-      </label>
-      <div
-        onClick={() => setOpen(true)}
-        style={{
-          display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", padding: "5px 8px",
-          border: `1px solid ${open ? ACCENT : BORDER}`, borderRadius: 8, background: "#fff", cursor: "text",
-        }}
-      >
-        {[...selected].map(code => {
-          const s = societes.find(x => x.code === code);
-          const logo = getLogoSrc(code);
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
+        <label style={{ fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px" }}>
+          Entreprise
+        </label>
+        {selected.size > 0 && (
+          <button onClick={onReset} style={{ border: "none", background: "none", color: ACCENT, fontWeight: 700, fontSize: 11, cursor: "pointer", padding: 0 }}>
+            Tout désélectionner
+          </button>
+        )}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 6 }}>
+        {societes.map(s => {
+          const active = selected.has(s.code);
+          const disabled = disabledSet?.has(s.code);
+          const logo = getLogoSrc(s.code);
           return (
-            <span key={code} style={{
-              display: "flex", alignItems: "center", gap: 7, background: ACCENT_BG, color: ACCENT,
-              fontSize: 12, fontWeight: 700, padding: "3px 6px 3px 3px", borderRadius: 20,
-            }}>
-              <span style={{
-                width: 26, height: 26, borderRadius: 7, background: "#fff", flexShrink: 0,
-                display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-              }}>
-                {logo ? <img src={logo} alt="" style={{ maxWidth: 22, maxHeight: 22, objectFit: "contain" }} /> : null}
-              </span>
-              {s?.nom ?? code}
-              <button onClick={e => { e.stopPropagation(); onRemove(code); }} style={{
-                border: "none", background: "rgba(0,0,0,.08)", color: "inherit", width: 15, height: 15,
-                borderRadius: "50%", fontSize: 9, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-              }}>×</button>
-            </span>
+            <button
+              key={s.code}
+              onClick={() => { if (!disabled) onToggle(s.code); }}
+              disabled={disabled}
+              title={disabled ? "Aucune donnée pour le(s) tableau(x) sélectionné(s)" : (active ? `Retirer ${s.nom ?? s.code}` : `Ajouter ${s.nom ?? s.code}`)}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 6px", height: 48,
+                background: active ? "#fff" : "transparent",
+                border: `1.5px solid ${active ? ACCENT : "transparent"}`,
+                borderRadius: 9, cursor: disabled ? "not-allowed" : "pointer",
+                opacity: disabled ? 0.28 : active ? 1 : 0.4,
+                filter: (active || disabled) ? "none" : "grayscale(65%)",
+                boxShadow: active ? "0 2px 8px rgba(15,110,86,0.12)" : "none",
+                transition: "all .15s",
+              }}
+            >
+              {logo
+                ? <img src={logo} alt={s.nom ?? s.code} style={{ maxWidth: 44, maxHeight: 32, objectFit: "contain", filter: disabled ? "grayscale(1)" : "none" }} />
+                : <span style={{ fontSize: 9, fontWeight: 800, color: MUTED }}>{s.code.slice(0, 2)}</span>}
+            </button>
           );
         })}
-        <input
-          value={query}
-          onChange={e => { setQuery(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          placeholder={selected.size ? "Ajouter…" : "Toutes les entreprises"}
-          style={{ flex: 1, minWidth: 100, border: "none", outline: "none", fontSize: 12.5, padding: "3px 4px", font: "inherit" }}
-        />
       </div>
-
-      {open && (
-        <div style={{
-          position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, zIndex: 30,
-          background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 10,
-          boxShadow: "0 8px 22px rgba(0,0,0,.1)", maxHeight: 240, overflowY: "auto", padding: 6,
-        }}>
-          {filteredOptions.length === 0 ? (
-            <div style={{ padding: "8px 8px", fontSize: 12, color: MUTED }}>Aucune correspondance.</div>
-          ) : filteredOptions.map(s => {
-            const logo = getLogoSrc(s.code);
-            const isSel = selected.has(s.code);
-            const isDisabled = disabledSet?.has(s.code);
-            return (
-              <button
-                key={s.code} disabled={isDisabled}
-                title={isDisabled ? "Aucune donnée pour le(s) tableau(x) sélectionné(s)" : undefined}
-                onClick={() => { if (isDisabled) return; onToggle(s.code); setQuery(""); }}
-                style={{
-                  display: "flex", alignItems: "center", width: "100%", gap: 12, padding: "8px",
-                  border: "none", background: isSel ? ACCENT_BG : "transparent", borderRadius: 10,
-                  cursor: isDisabled ? "not-allowed" : "pointer", textAlign: "left", opacity: isDisabled ? .45 : 1,
-                }}
-                onMouseEnter={e => { if (!isSel && !isDisabled) e.currentTarget.style.background = "#F8F9FC"; }}
-                onMouseLeave={e => { if (!isSel && !isDisabled) e.currentTarget.style.background = "transparent"; }}>
-                <span style={{
-                  width: 34, height: 34, borderRadius: 9, background: "#fff", flexShrink: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-                  border: `1px solid ${BORDER}`, boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-                }}>
-                  {logo
-                    ? <img src={logo} alt="" style={{ maxWidth: 28, maxHeight: 28, objectFit: "contain", filter: isDisabled ? "grayscale(1)" : "none" }} />
-                    : <span style={{ fontSize: 9, fontWeight: 800, color: MUTED }}>{s.code.slice(0, 2)}</span>}
-                </span>
-                <span style={{ fontSize: 13, fontWeight: isSel ? 700 : 500, color: isDisabled ? MUTED : DARK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {s.nom || s.code}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -578,28 +520,30 @@ function DocumentsConsole({ docs, opts, source }) {
     <Card style={{ padding: 0 }}>
       {/* Année : même section qu'Entreprise/Tableau, mais jamais masquée par
           source — CGA/FTUSA ont aussi des années, même sans société. */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start", padding: "18px 24px" }}>
-        <div style={{ flex: "1 1 100%" }}>
-          <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 7 }}>
-            Année
-          </label>
-          <YearGrid options={anneesDisponibles} selected={annees} onToggle={a => { toggleAnnee(a); setPage(1); }} />
-        </div>
-
-        {isCmf ? (
-          <>
-            <EntrepriseCombo
-              societes={opts?.societes ?? []}
-              selected={entreprises}
-              onToggle={code => { toggleEntreprise(code); setPage(1); }}
-              onRemove={code => { removeEntreprise(code); setPage(1); }}
-              disabledSet={entreprisesDisabled}
-            />
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "18px 24px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start" }}>
+          <div style={{ flex: "1 1 auto" }}>
+            <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 7 }}>
+              Année
+            </label>
+            <YearGrid options={anneesDisponibles} selected={annees} onToggle={a => { toggleAnnee(a); setPage(1); }} />
+          </div>
+          {isCmf && (
             <TableauChips
               options={tableauOptions.map(t => ({ value: t.key, label: t.label.split(" — ")[0] }))}
               selected={tableaux} onToggle={t => { toggleTableau(t); setPage(1); }}
             />
-          </>
+          )}
+        </div>
+
+        {isCmf ? (
+          <EntrepriseLogoGrid
+            societes={opts?.societes ?? []}
+            selected={entreprises}
+            onToggle={code => { toggleEntreprise(code); setPage(1); }}
+            onReset={() => { setEntreprises(new Set()); setPage(1); }}
+            disabledSet={entreprisesDisabled}
+          />
         ) : (
           <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>
             Source sectorielle : sans société ni tableau associé — seule l'année filtre les documents.
