@@ -226,31 +226,44 @@ function FiabiliteBar() {
    Logos seuls (agrandis, sans nom — les fichiers LogoCMF/LogoCGA/LogoFTUSA
    sont déjà auto-porteurs) ; positionné avant Collecte/Fiabilité, comme un
    filtre global de la page plutôt qu'un contrôle interne à la console. */
+// Chaque tuile imite une petite fenêtre web (barre de titre à puces, comme
+// un onglet de navigateur) — retour utilisateur : la version précédente
+// prenait trop de hauteur pour ce que c'est (un simple filtre). Le logo
+// reste zoomé (peu de marge interne) dans un format compact.
 function SourceFilterBar({ counts, active, onChange }) {
   return (
-    <Card style={{ padding: "18px 22px", display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}>
+    <Card style={{ padding: "10px 18px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
       <span style={{ fontSize: 10, fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".5px" }}>Source</span>
-      <div style={{ display: "flex", gap: 16 }}>
+      <div style={{ display: "flex", gap: 10 }}>
         {SOURCES.map(s => {
           const isActive = s.key === active;
           return (
             <button key={s.key} onClick={() => onChange(s.key)} title={s.label} style={{
-              position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
-              width: 96, height: 96, padding: 14, border: `2px solid ${isActive ? ACCENT : "#F0F1F5"}`,
-              borderRadius: 20, cursor: "pointer", background: "#fff",
-              boxShadow: isActive ? "0 6px 18px rgba(15,110,86,0.18)" : "0 2px 8px rgba(20,22,28,0.06)",
-              transition: "box-shadow .15s, border-color .15s, transform .15s",
-              transform: isActive ? "translateY(-1px)" : "none",
+              position: "relative", width: 62, height: 62, padding: 0, overflow: "hidden",
+              border: `1.5px solid ${isActive ? ACCENT : "#EDEFF4"}`, borderRadius: 12, cursor: "pointer",
+              background: "#fff", boxShadow: isActive ? "0 4px 12px rgba(15,110,86,0.16)" : "0 1px 4px rgba(20,22,28,0.06)",
+              transition: "box-shadow .15s, border-color .15s",
             }}
-              onMouseEnter={e => { if (!isActive) e.currentTarget.style.boxShadow = "0 4px 14px rgba(20,22,28,0.1)"; }}
-              onMouseLeave={e => { if (!isActive) e.currentTarget.style.boxShadow = "0 2px 8px rgba(20,22,28,0.06)"; }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.boxShadow = "0 3px 10px rgba(20,22,28,0.1)"; }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.boxShadow = "0 1px 4px rgba(20,22,28,0.06)"; }}
             >
-              <img src={s.logo} alt={s.label} style={{ maxWidth: 66, maxHeight: 66, objectFit: "contain" }} />
+              {/* barre de titre façon onglet navigateur */}
               <span style={{
-                position: "absolute", top: -9, right: -9, minWidth: 24, height: 24, padding: "0 6px",
+                display: "flex", alignItems: "center", gap: 3, height: 12, padding: "0 6px",
+                background: isActive ? ACCENT_BG : "#F8F9FC", borderBottom: `1px solid ${isActive ? "#CDEBE1" : "#EDEFF4"}`,
+              }}>
+                {["#F59E0B", "#EAB308", "#22C55E"].map(c => (
+                  <span key={c} style={{ width: 4, height: 4, borderRadius: "50%", background: c, opacity: .7 }} />
+                ))}
+              </span>
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 50, padding: 4 }}>
+                <img src={s.logo} alt={s.label} style={{ maxWidth: 44, maxHeight: 44, objectFit: "contain" }} />
+              </span>
+              <span style={{
+                position: "absolute", top: 8, right: -6, minWidth: 18, height: 18, padding: "0 4px",
                 borderRadius: 20, background: isActive ? ACCENT : "#9CA3AF", color: "#fff",
-                fontSize: 11.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
-                border: "2.5px solid #fff", fontVariantNumeric: "tabular-nums", boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+                fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
+                border: "2px solid #fff", fontVariantNumeric: "tabular-nums", boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
               }}>{counts?.[s.key] ?? 0}</span>
             </button>
           );
