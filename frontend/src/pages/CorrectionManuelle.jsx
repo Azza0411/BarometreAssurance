@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { getLogoSrc } from "../utils/logos";
 
@@ -12,7 +12,6 @@ const ACCENT    = "#0F6E56";
 const ACCENT_BG = "#E1F5EE";
 const VIEWER_BG = "#1E293B";
 const BAD       = "#C8102E";
-const BAD_BG    = "rgba(200,16,46,.18)";
 
 // Charte visuelle du VRAI fichier Excel généré (voir api/services/
 // data_management.py::_write_full_grid_block / _REF_HEADER / _thin_border)
@@ -22,6 +21,9 @@ const EXCEL_HEADER = "#5B6472";
 const EXCEL_ZEBRA  = "#F3F4F6";
 const EXCEL_TEXT   = "#2E2E38";
 const EXCEL_BORDER = "1px solid #DDDDE3";
+
+const ZOOM_MIN = 0.3;
+const ZOOM_MAX = 3.0;
 
 // Même format que la cellule Excel réelle (number_format "#,##0" — entier,
 // séparateur de milliers, jamais de décimales).
@@ -42,15 +44,77 @@ function correctionKey(sel) {
   return `valeur::${sel.ligne}|||${sel.colonne}`;
 }
 
-const gridLabel = { display: "block", fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: ".3px" };
+/* ═══════════════════════════ Menu déroulant de noms canoniques ═══════════════════════════
+   Remplace le <select> natif (rendu par le navigateur, pas stylable, liste
+   brute sans recherche) par un panneau cohérent avec le reste de l'appli —
+   recherche + liste défilante, comme le sélecteur d'entreprise de Gestion
+   de données. */
+function NameSelect({ value, onChange, options, placeholder = "Choisir un nom…" }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onDocClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase();
+    return q ? options.filter(o => o.toLowerCase().includes(q)) : options;
+  }, [options, query]);
+
+  return (
+    <div ref={ref} style={{ position: "relative", flex: 1, minWidth: 0 }}>
+      <button type="button" onClick={() => setOpen(o => !o)} style={{
+        width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+        padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${ACCENT}`, background: "#fff",
+        fontSize: 12.5, color: value ? DARK : MUTED, cursor: "pointer", font: "inherit", textAlign: "left",
+      }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value || placeholder}</span>
+        <span style={{ fontSize: 9, color: MUTED, transform: open ? "rotate(180deg)" : "none", flexShrink: 0 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 40,
+          background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 10,
+          boxShadow: "0 10px 26px rgba(0,0,0,.14)", display: "flex", flexDirection: "column",
+        }}>
+          <input
+            autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher…"
+            style={{ margin: 6, padding: "7px 9px", border: `1px solid ${BORDER}`, borderRadius: 7, fontSize: 12.5, font: "inherit" }}
+          />
+          <div style={{ maxHeight: 220, overflowY: "auto", padding: "0 6px 6px" }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: 8, fontSize: 12, color: MUTED }}>Aucune correspondance.</div>
+            ) : filtered.map(o => (
+              <button
+                key={o} type="button" onClick={() => { onChange(o); setOpen(false); setQuery(""); }}
+                style={{
+                  display: "block", width: "100%", textAlign: "left", padding: "7px 9px", borderRadius: 7,
+                  border: "none", background: o === value ? ACCENT_BG : "transparent", color: DARK, fontSize: 12.5,
+                  cursor: "pointer", font: "inherit",
+                }}
+                onMouseEnter={e => { if (o !== value) e.currentTarget.style.background = "#F8F9FC"; }}
+                onMouseLeave={e => { if (o !== value) e.currentTarget.style.background = "transparent"; }}
+              >
+                {o}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ═══════════════════════════ Page ═══════════════════════════
    Consultation (et bientôt correction) d'un document CMF déjà en base,
    accessible directement depuis Gestion de données — même grammaire
-   visuelle que KpiDetail (repère, grille Tableau/Ligne/Colonne, visualiseur
-   sombre). `Enregistrer tout` reste un espace réservé pour l'instant :
-   l'écriture réelle en base est la prochaine étape, une fois ce contenu de
-   gauche validé. */
+   visuelle que KpiDetail (repère, visualiseur sombre). `Enregistrer tout`
+   reste un espace réservé pour l'instant : l'écriture réelle en base est la
+   prochaine étape. */
 export default function CorrectionManuelle() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -68,10 +132,18 @@ export default function CorrectionManuelle() {
   // { kind: 'valeur'|'ligne'|'colonne', ligne, colonne, actuelle }
   const [selected, setSelected] = useState(null);
   const [nouvelleValeur, setNouvelleValeur] = useState("");
-  const [motif, setMotif] = useState("");
-  const [corrections, setCorrections] = useState(new Map()); // key -> { kind, ligne, colonne, actuelle, nouvelle, motif }
+  const [corrections, setCorrections] = useState(new Map()); // key -> { kind, ligne, colonne, actuelle, nouvelle }
   const [saveNote, setSaveNote] = useState(null);
+
+  // Zoom : `fitZoom` est calculé pour que le tableau tienne ENTIER dans le
+  // visualiseur (ni trop petit pour être lisible, ni trop grand pour tenir
+  // sans défiler) — c'est le niveau que "Réinitialiser" restaure, pas 100 %
+  // fixe qui n'a pas de raison de convenir à un tableau à 2 colonnes comme à
+  // un tableau à 10 branches.
   const [zoom, setZoom] = useState(1.0);
+  const [fitZoom, setFitZoom] = useState(1.0);
+  const viewerScrollRef = useRef(null);
+  const tableCardRef = useRef(null);
 
   useEffect(() => {
     fetch(`${API}/api/gestion-donnees/documents`).then(r => r.json()).then(setDocs).catch(() => setDocs([]));
@@ -84,7 +156,6 @@ export default function CorrectionManuelle() {
     setGridErreur(null);
     setSelected(null);
     setCorrections(new Map());
-    setZoom(1.0);
     const p = new URLSearchParams({ societe: code, annee: String(annee), tableau });
     fetch(`${API}/api/gestion-donnees/cellules?${p.toString()}`)
       .then(async r => { if (!r.ok) throw new Error("echec"); return r.json(); })
@@ -94,6 +165,26 @@ export default function CorrectionManuelle() {
     fetch(`${API}/api/gestion-donnees/referentiel?tableau=${tableau}`)
       .then(r => r.json()).then(setReferentiel).catch(() => setReferentiel({ lignes: [], colonnes: [] }));
   }, [code, annee, tableau]);
+
+  // Recalcule le zoom "ajusté" à chaque nouveau tableau chargé, pendant que
+  // `zoom` vaut encore 1 (mesure de la taille NATURELLE de la carte, avant
+  // toute mise à l'échelle) — comparée à la place réellement disponible
+  // dans le visualiseur.
+  useEffect(() => {
+    if (!grid || grid.lignes.length === 0) return;
+    const raf = requestAnimationFrame(() => {
+      const card = tableCardRef.current;
+      const scroller = viewerScrollRef.current;
+      if (!card || !scroller || !card.offsetWidth || !card.offsetHeight) return;
+      const availW = scroller.clientWidth - 52;
+      const availH = scroller.clientHeight - 52;
+      const fit = Math.min(availW / card.offsetWidth, availH / card.offsetHeight, 1);
+      const clamped = Math.max(ZOOM_MIN, Math.min(1, +fit.toFixed(2)));
+      setFitZoom(clamped);
+      setZoom(clamped);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [grid]);
 
   const societe = useMemo(() => opts?.societes?.find(s => s.code === code), [opts, code]);
   const logo = code ? getLogoSrc(code) : null;
@@ -128,15 +219,15 @@ export default function CorrectionManuelle() {
 
   const selectValeur = (ligne, colonne, actuelle) => {
     setSelected({ kind: "valeur", ligne, colonne, actuelle });
-    setNouvelleValeur(""); setMotif("");
+    setNouvelleValeur("");
   };
   const selectLigne = (ligne) => {
     setSelected({ kind: "ligne", ligne, colonne: null, actuelle: displayLigne(ligne) });
-    setNouvelleValeur(corrections.get(`ligne::${ligne}`)?.nouvelle ?? ""); setMotif("");
+    setNouvelleValeur(corrections.get(`ligne::${ligne}`)?.nouvelle ?? "");
   };
   const selectColonne = (colonne) => {
     setSelected({ kind: "colonne", ligne: null, colonne, actuelle: displayColonne(colonne) });
-    setNouvelleValeur(corrections.get(`colonne::${colonne}`)?.nouvelle ?? ""); setMotif("");
+    setNouvelleValeur(corrections.get(`colonne::${colonne}`)?.nouvelle ?? "");
   };
 
   const ajouterCorrection = () => {
@@ -144,10 +235,10 @@ export default function CorrectionManuelle() {
     const key = correctionKey(selected);
     setCorrections(prev => {
       const next = new Map(prev);
-      next.set(key, { ...selected, nouvelle: nouvelleValeur.trim(), motif: motif.trim() });
+      next.set(key, { ...selected, nouvelle: nouvelleValeur.trim() });
       return next;
     });
-    setNouvelleValeur(""); setMotif(""); setSelected(null);
+    setNouvelleValeur(""); setSelected(null);
   };
   const retirerCorrection = (key) => setCorrections(prev => { const n = new Map(prev); n.delete(key); return n; });
 
@@ -211,14 +302,26 @@ export default function CorrectionManuelle() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 4, background: "#F3F4F8", borderRadius: 10, padding: 3 }}>
-          {anneesDisponibles.map(a => (
-            <button key={a} onClick={() => goAnnee(a)} style={{
-              border: "none", background: a === annee ? DARK : "transparent", color: a === annee ? "#fff" : MUTED,
-              padding: "6px 11px", borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: "pointer",
-              fontVariantNumeric: "tabular-nums", font: "inherit",
-            }}>{a}</button>
-          ))}
+        {/* Localisation — repositionnée ici (sans titre de carte à part) pour
+            libérer toute la hauteur du panneau gauche pour la correction
+            elle-même ; juste à côté des onglets d'année, comme demandé. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11.5, color: MUTED, whiteSpace: "nowrap" }}>
+            {selected ? (
+              selected.kind === "valeur"
+                ? <>« {selected.ligne} » · « {selected.colonne} »</>
+                : <>« {selected.kind === "ligne" ? selected.ligne : selected.colonne} » <span style={{ color: "#B0B6C2" }}>({selected.kind === "ligne" ? "ligne" : "colonne"})</span></>
+            ) : "Aucune sélection"}
+          </span>
+          <div style={{ display: "flex", gap: 4, background: "#F3F4F8", borderRadius: 10, padding: 3 }}>
+            {anneesDisponibles.map(a => (
+              <button key={a} onClick={() => goAnnee(a)} style={{
+                border: "none", background: a === annee ? DARK : "transparent", color: a === annee ? "#fff" : MUTED,
+                padding: "6px 11px", borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                fontVariantNumeric: "tabular-nums", font: "inherit",
+              }}>{a}</button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -230,9 +333,7 @@ export default function CorrectionManuelle() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", height: "calc(100vh - 92px - 58px)", overflow: "hidden" }}>
         {/* Gauche */}
         <div style={{ overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-          {/* Résumé du document — une seule ligne compacte, l'essentiel déjà
-              visible dans le repère du haut n'a pas besoin d'être répété
-              dans une carte entière. */}
+          {/* Résumé du document — une seule ligne compacte. */}
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
             padding: "8px 12px", background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 9, fontSize: 11,
@@ -252,39 +353,15 @@ export default function CorrectionManuelle() {
             </span>
           </div>
 
-          {/* Localisation — même grille (label 72px / valeur) que la carte
-              "Source dans le PDF" de KpiDetail. */}
-          <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "14px 16px" }}>
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: DARK }}>Localisation</h3>
-            {!selected ? (
-              <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>Cliquez une valeur, un nom de ligne ou de colonne dans le tableau à droite.</p>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: "5px 10px", fontSize: 11.5 }}>
-                <span style={{ color: MUTED, fontWeight: 600 }}>Tableau</span>
-                <span style={{ color: DARK }}>{tableauLabel}</span>
-                <span style={{ color: MUTED, fontWeight: 600 }}>Ligne</span>
-                <span style={{ color: DARK, fontFamily: "ui-monospace, monospace" }}>
-                  {selected.kind === "colonne" ? <span style={{ color: "#B0B6C2" }}>— (colonne)</span> : `« ${selected.ligne} »`}
-                </span>
-                <span style={{ color: MUTED, fontWeight: 600 }}>Colonne</span>
-                <span style={{ color: DARK, fontFamily: "ui-monospace, monospace" }}>
-                  {selected.kind === "ligne" ? <span style={{ color: "#B0B6C2" }}>— (ligne)</span> : `« ${selected.colonne} »`}
-                </span>
-                <span style={{ color: MUTED, fontWeight: 600 }}>Type</span>
-                <span style={{ color: DARK }}>{selected.kind === "valeur" ? "Valeur de cellule" : selected.kind === "ligne" ? "Nom de ligne" : "Nom de colonne"}</span>
-              </div>
-            )}
-          </div>
-
           {/* Correction — valeur (ancienne → saisie libre) ou nom (ancien →
               menu déroulant des noms déjà normalisés dans le code). */}
-          <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "14px 16px" }}>
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: DARK }}>Corriger</h3>
+          <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "16px 18px" }}>
+            <h3 style={{ margin: "0 0 10px", fontSize: 13.5, fontWeight: 800, color: DARK }}>Corriger</h3>
             {!selected ? (
-              <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>Aucune sélection.</p>
+              <p style={{ fontSize: 12.5, color: MUTED, margin: 0 }}>Cliquez une valeur, un nom de ligne ou de colonne dans le tableau à droite.</p>
             ) : (
               <>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{
                     flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: 8, background: "#F8F9FC",
                     fontSize: 12.5, fontWeight: 700, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -300,13 +377,7 @@ export default function CorrectionManuelle() {
                       style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "8px 10px", border: `1.5px solid ${ACCENT}`, borderRadius: 8, font: "inherit", fontVariantNumeric: "tabular-nums" }}
                     />
                   ) : options.length > 0 ? (
-                    <select
-                      value={nouvelleValeur} onChange={e => setNouvelleValeur(e.target.value)}
-                      style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "8px 10px", border: `1.5px solid ${ACCENT}`, borderRadius: 8, font: "inherit", background: "#fff" }}
-                    >
-                      <option value="">Choisir un nom…</option>
-                      {options.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
+                    <NameSelect value={nouvelleValeur} onChange={setNouvelleValeur} options={options} />
                   ) : (
                     <input
                       value={nouvelleValeur} onChange={e => setNouvelleValeur(e.target.value)}
@@ -315,18 +386,13 @@ export default function CorrectionManuelle() {
                     />
                   )}
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
-                  <label style={gridLabel}>Motif (optionnel)</label>
-                  <textarea value={motif} onChange={e => setMotif(e.target.value)} placeholder="Ex. coquille de saisie, erreur d'OCR…"
-                    style={{ fontSize: 12.5, padding: "8px 10px", border: `1px solid ${BORDER}`, borderRadius: 8, minHeight: 48, font: "inherit", resize: "vertical" }} />
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                   <button onClick={() => setSelected(null)} style={{
-                    flex: 1, padding: "8px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                    flex: 1, padding: "9px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
                     border: `1.5px solid ${BORDER}`, background: "#fff", color: MUTED, font: "inherit",
                   }}>Annuler</button>
                   <button onClick={ajouterCorrection} disabled={!nouvelleValeur.trim()} style={{
-                    flex: 1, padding: "8px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
+                    flex: 1, padding: "9px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
                     cursor: nouvelleValeur.trim() ? "pointer" : "not-allowed",
                     border: `1.5px solid ${ACCENT}`, background: ACCENT, color: "#fff", opacity: nouvelleValeur.trim() ? 1 : .5, font: "inherit",
                   }}>Ajouter à la liste</button>
@@ -335,14 +401,14 @@ export default function CorrectionManuelle() {
             )}
           </div>
 
-          <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "14px 16px", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: DARK }}>Corrections en attente</h3>
+          <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "16px 18px", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+            <h3 style={{ margin: "0 0 10px", fontSize: 13.5, fontWeight: 800, color: DARK }}>Corrections en attente</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
               {corrections.size === 0 ? (
                 <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "12px 0" }}>Aucune correction en attente.</div>
               ) : [...corrections.entries()].map(([key, c]) => (
                 <div key={key} onClick={() => (c.kind === "valeur" ? selectValeur(c.ligne, c.colonne, c.actuelle) : c.kind === "ligne" ? selectLigne(c.ligne) : selectColonne(c.colonne))} style={{
-                  display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: `1px solid ${BORDER}`,
+                  display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", border: `1px solid ${BORDER}`,
                   borderRadius: 9, cursor: "pointer",
                 }}>
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#B45309", flexShrink: 0 }} />
@@ -350,7 +416,7 @@ export default function CorrectionManuelle() {
                     <div style={{ fontSize: 10.5, color: MUTED }}>
                       {c.kind === "valeur" ? `${c.ligne} · ${c.colonne}` : c.kind === "ligne" ? "Nom de ligne" : "Nom de colonne"}
                     </div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: DARK, fontVariantNumeric: c.kind === "valeur" ? "tabular-nums" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: DARK, fontVariantNumeric: c.kind === "valeur" ? "tabular-nums" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       <s style={{ color: MUTED, fontWeight: 500, marginRight: 4 }}>{c.kind === "valeur" ? fmt(c.actuelle) : c.actuelle}</s>→ {c.nouvelle}
                     </div>
                   </div>
@@ -364,7 +430,7 @@ export default function CorrectionManuelle() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12 }}>
               <span style={{ fontSize: 11.5, color: MUTED }}>{corrections.size} en attente</span>
               <button onClick={enregistrerTout} disabled={corrections.size === 0} style={{
-                padding: "8px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
+                padding: "9px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
                 cursor: corrections.size ? "pointer" : "not-allowed",
                 border: `1.5px solid ${ACCENT}`, background: ACCENT, color: "#fff", opacity: corrections.size ? 1 : .5, font: "inherit",
               }}>Enregistrer tout</button>
@@ -387,12 +453,6 @@ export default function CorrectionManuelle() {
               <span style={{ background: "rgba(255,255,255,.08)", color: "#E5E7EB", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>
                 Feuille : {tableauLabel}
               </span>
-              {selected && (
-                <span style={{ display: "flex", alignItems: "center", gap: 6, background: BAD_BG, color: "#FCA5A5", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FCA5A5", flexShrink: 0 }} />
-                  {selected.kind === "ligne" ? selected.ligne : selected.kind === "colonne" ? selected.colonne : `${selected.ligne} · ${selected.colonne}`}
-                </span>
-              )}
               {pdfHref && (
                 <a href={pdfHref} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 5, color: "#93C5FD", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>
                   Voir le PDF source ↗
@@ -403,29 +463,30 @@ export default function CorrectionManuelle() {
 
           {/* Barre de contrôles zoom — identique à celle du visualiseur PDF
               de KpiDetail (Qualité des données) : mêmes boutons, mêmes
-              couleurs, même plage 50 %–300 %. Pas de rotation ici (propre
-              aux PDF sectoriels tournés à 90°, sans objet pour un tableau). */}
+              couleurs. "Réinitialiser" restaure le zoom AJUSTÉ (tableau
+              entier visible), pas 100 % fixe. */}
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             gap: 8, padding: "6px 10px",
             background: "#1E293B", borderBottom: "1px solid #334155",
           }}>
-            <button onClick={() => setZoom(z => Math.max(0.5, +(z - 0.25).toFixed(2)))}
+            <button onClick={() => setZoom(z => Math.max(ZOOM_MIN, +(z - 0.1).toFixed(2)))}
               style={{ background: "#334155", border: "none", borderRadius: 6, color: "#CBD5E1",
                 width: 28, height: 28, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>−</button>
             <span style={{ fontSize: 12, color: "#94A3B8", minWidth: 44, textAlign: "center" }}>
               {Math.round(zoom * 100)} %
             </span>
-            <button onClick={() => setZoom(z => Math.min(3.0, +(z + 0.25).toFixed(2)))}
+            <button onClick={() => setZoom(z => Math.min(ZOOM_MAX, +(z + 0.1).toFixed(2)))}
               style={{ background: "#334155", border: "none", borderRadius: 6, color: "#CBD5E1",
                 width: 28, height: 28, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>+</button>
             <span style={{ width: 1, alignSelf: "stretch", background: "#334155", margin: "0 2px" }} />
-            <button onClick={() => setZoom(1.0)}
+            <button onClick={() => setZoom(fitZoom)}
+              title="Revenir au zoom ajusté (tableau entier visible)"
               style={{ background: "none", border: "1px solid #334155", borderRadius: 6,
                 color: "#64748B", fontSize: 10, padding: "3px 8px", cursor: "pointer" }}>Réinitialiser</button>
           </div>
 
-          <div style={{ flex: 1, overflow: "auto", padding: 26, display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
+          <div ref={viewerScrollRef} style={{ flex: 1, overflow: "auto", padding: 26, display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
             {gridLoading ? (
               <p style={{ color: "#94A3B8", textAlign: "center", marginTop: 40 }}>Chargement…</p>
             ) : gridErreur ? (
@@ -433,18 +494,15 @@ export default function CorrectionManuelle() {
             ) : !grid || grid.lignes.length === 0 ? (
               <p style={{ color: "#94A3B8", textAlign: "center", marginTop: 40 }}>Aucune cellule stockée pour cette combinaison.</p>
             ) : (
-              // Pas de largeur figée : un tableau à beaucoup de colonnes doit
-              // pousser cette carte plus large que l'écran et laisser le
-              // conteneur parent défiler horizontalement plutôt que de
-              // comprimer/couper les dernières colonnes.
               // Même charte que le vrai fichier généré par
               // build_flexible_export_xlsx::_write_full_grid_block (en-tête
               // gris #5B6472/texte blanc, libellés en MAJUSCULES, police
               // Arial, lignes zébrées blanc/#F3F4F6, valeurs centrées) —
-              // sans le titre au-dessus, uniquement le tableau, comme
-              // demandé : c'est un aperçu fidèle de ce qui sera téléchargé,
-              // pas une mise en page propre à cette page.
-              <div style={{ background: "#fff", borderRadius: 4, boxShadow: "0 8px 30px rgba(0,0,0,.35)", padding: "30px 34px", flexShrink: 0, zoom }}>
+              // sans le titre au-dessus, uniquement le tableau. `zoom` est
+              // appliqué en CSS `zoom` (pas `transform`) pour que la mesure
+              // de taille naturelle (voir l'effet ci-dessus) et le calcul du
+              // zoom ajusté restent cohérents avec le flux normal du DOM.
+              <div ref={tableCardRef} style={{ background: "#fff", borderRadius: 4, boxShadow: "0 8px 30px rgba(0,0,0,.35)", padding: "30px 34px", flexShrink: 0, zoom }}>
                 <table style={{ borderCollapse: "collapse", fontSize: 12.5, fontFamily: "Arial, sans-serif" }}>
                   <thead>
                     <tr>
