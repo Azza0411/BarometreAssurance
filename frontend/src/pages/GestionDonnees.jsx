@@ -8,8 +8,12 @@ const DARK    = "#2E2E38";
 const BG      = "#F2F5FB";
 const BORDER  = "#DDE2EC";
 const MUTED   = "#6B7280";
-const ACCENT  = "#0F6E56";
-const ACCENT_BG = "#E1F5EE";
+// Même jaune que le bandeau EY de la navbar (au lieu du vert/teal
+// précédent) — utilisé pour les bordures, fonds actifs et anneaux ; jamais
+// comme couleur de TEXTE sur fond clair (jaune sur blanc n'est pas lisible),
+// le texte reste DARK y compris sur un fond ACCENT_BG/ACCENT.
+const ACCENT  = "#FFE600";
+const ACCENT_BG = "#FFF7CC";
 
 const GROUP_PAGE_SIZE = 8;
 
@@ -61,13 +65,14 @@ if (typeof document !== "undefined" && !document.getElementById("gd-spin-kf")) {
 
 // Style de bouton commun aux actions principales (Collecte…) — retour
 // utilisateur : le bloc plein DARK/YELLOW était jugé trop sombre / pas
-// assez minimaliste. Contour clair + accent teal au lieu d'un pavé sombre.
+// assez minimaliste. Contour clair (même jaune que la navbar) au lieu d'un
+// pavé sombre — texte DARK, pas jaune, pour rester lisible sur fond blanc.
 function actionBtnStyle(disabled) {
   return {
     padding: "9px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
     cursor: disabled ? "not-allowed" : "pointer",
     border: `1.5px solid ${disabled ? BORDER : ACCENT}`,
-    background: "#fff", color: disabled ? "#9CA3AF" : ACCENT,
+    background: "#fff", color: disabled ? "#9CA3AF" : DARK,
     display: "flex", alignItems: "center", justifyContent: "center", gap: 7, whiteSpace: "nowrap",
     transition: "background .12s",
   };
@@ -248,7 +253,7 @@ function HeaderSourceSwitch({ counts, active, onChange }) {
             <img src={s.logo} alt={s.label} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
             <span style={{
               position: "absolute", top: -6, right: -6, minWidth: 18, height: 18, padding: "0 4px",
-              borderRadius: 20, background: isActive ? ACCENT : "#fff", color: isActive ? "#fff" : DARK,
+              borderRadius: 20, background: isActive ? ACCENT : "#fff", color: DARK,
               fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
               border: `2px solid ${DARK}`, fontVariantNumeric: "tabular-nums",
             }}>{counts?.[s.key] ?? 0}</span>
@@ -271,7 +276,7 @@ function YearGrid({ options, selected, onToggle }) {
           <button key={a} onClick={() => onToggle(a)} style={{
             padding: "6px 13px", borderRadius: 20, fontSize: 12, fontWeight: 700,
             cursor: "pointer", border: `1.5px solid ${isSel ? ACCENT : BORDER}`,
-            background: isSel ? ACCENT_BG : "#fff", color: isSel ? ACCENT : DARK,
+            background: isSel ? ACCENT_BG : "#fff", color: DARK,
             fontVariantNumeric: "tabular-nums", transition: "background .12s, border-color .12s",
           }}>
             {a}
@@ -289,7 +294,8 @@ function YearGrid({ options, selected, onToggle }) {
    un nom dans une liste. Grille à colonnes égales (comme là-bas) plutôt que
    flex-wrap : les logos ont des largeurs très variables et un flex-wrap
    produirait des lignes en escalier au retour à la ligne. */
-function EntrepriseLogoGrid({ societes, selected, onToggle, disabledSet, onReset, hasExclusions }) {
+function EntrepriseLogoGrid({ societes, selected, onToggle, onOnly, disabledSet, onReset, hasExclusions }) {
+  const [hovered, setHovered] = useState(null);
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
@@ -297,36 +303,57 @@ function EntrepriseLogoGrid({ societes, selected, onToggle, disabledSet, onReset
           Entreprise
         </label>
         {hasExclusions && (
-          <button onClick={onReset} style={{ border: "none", background: "none", color: ACCENT, fontWeight: 700, fontSize: 11, cursor: "pointer", padding: 0 }}>
+          <button onClick={onReset} style={{ border: "none", background: "none", color: DARK, fontWeight: 700, fontSize: 11, cursor: "pointer", padding: 0, textDecoration: "underline", textDecorationColor: ACCENT, textUnderlineOffset: 2 }}>
             Tout resélectionner
           </button>
         )}
       </div>
+      {/* Retour utilisateur : choisir seulement 2-3 sociétés obligeait à
+          désélectionner toutes les autres une par une. Un bouton "Seulement"
+          au survol isole cette société en un clic (comme "Solo" sur un calque
+          Figma) — clic normal sur le logo pour ajouter/retirer, ce petit
+          bouton pour "juste celle-ci". */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 6 }}>
         {societes.map(s => {
           const active = selected.has(s.code);
           const disabled = disabledSet?.has(s.code);
           const logo = getLogoSrc(s.code);
+          const showOnly = hovered === s.code && !disabled;
           return (
             <button
               key={s.code}
               onClick={() => { if (!disabled) onToggle(s.code); }}
+              onMouseEnter={() => setHovered(s.code)}
+              onMouseLeave={() => setHovered(null)}
               disabled={disabled}
               title={disabled ? "Aucune donnée pour le(s) tableau(x) sélectionné(s)" : (active ? `Retirer ${s.nom ?? s.code}` : `Ajouter ${s.nom ?? s.code}`)}
               style={{
-                display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 6px", height: 48,
+                position: "relative", display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 6px", height: 48,
                 background: active ? "#fff" : "transparent",
                 border: `1.5px solid ${active ? ACCENT : "transparent"}`,
                 borderRadius: 9, cursor: disabled ? "not-allowed" : "pointer",
                 opacity: disabled ? 0.28 : active ? 1 : 0.4,
                 filter: (active || disabled) ? "none" : "grayscale(65%)",
-                boxShadow: active ? "0 2px 8px rgba(15,110,86,0.12)" : "none",
+                boxShadow: active ? "0 2px 8px rgba(230,183,0,0.25)" : "none",
                 transition: "all .15s",
               }}
             >
               {logo
                 ? <img src={logo} alt={s.nom ?? s.code} style={{ maxWidth: 44, maxHeight: 32, objectFit: "contain", filter: disabled ? "grayscale(1)" : "none" }} />
                 : <span style={{ fontSize: 9, fontWeight: 800, color: MUTED }}>{s.code.slice(0, 2)}</span>}
+              {showOnly && (
+                <span
+                  onClick={e => { e.stopPropagation(); onOnly(s.code); }}
+                  title={`Sélectionner seulement ${s.nom ?? s.code}`}
+                  style={{
+                    position: "absolute", bottom: -3, left: "50%", transform: "translateX(-50%)",
+                    background: DARK, color: ACCENT, fontSize: 9, fontWeight: 800, padding: "2px 8px",
+                    borderRadius: 20, whiteSpace: "nowrap", boxShadow: "0 2px 6px rgba(0,0,0,.25)",
+                  }}
+                >
+                  Seulement
+                </span>
+              )}
             </button>
           );
         })}
@@ -349,7 +376,7 @@ function TableauChips({ options, selected, onToggle }) {
             <button key={o.value} onClick={() => onToggle(o.value)} style={{
               padding: "6px 13px", borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: "pointer",
               border: `1.5px solid ${isSel ? ACCENT : BORDER}`,
-              background: isSel ? ACCENT_BG : "#fff", color: isSel ? ACCENT : DARK,
+              background: isSel ? ACCENT_BG : "#fff", color: DARK,
               transition: "background .12s",
             }}>
               {o.label}
@@ -561,6 +588,10 @@ function DocumentsConsole({ docs, opts, source }) {
             societes={opts?.societes ?? []}
             selected={new Set(societesSelectionnees)}
             onToggle={code => { toggleEntreprise(code); setPage(1); }}
+            onOnly={code => {
+              setEntreprisesExclues(new Set((opts?.societes ?? []).map(s => s.code).filter(c => c !== code)));
+              setPage(1);
+            }}
             onReset={() => { setEntreprisesExclues(new Set()); setPage(1); }}
             hasExclusions={entreprisesExclues.size > 0}
             disabledSet={entreprisesDisabled}
@@ -581,7 +612,7 @@ function DocumentsConsole({ docs, opts, source }) {
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {tags.map(t => (
                 <span key={t.key} style={{
-                  display: "flex", alignItems: "center", gap: 6, background: ACCENT_BG, color: ACCENT,
+                  display: "flex", alignItems: "center", gap: 6, background: ACCENT_BG, color: DARK,
                   fontSize: 11.5, fontWeight: 700, padding: "4px 6px 4px 10px", borderRadius: 20, whiteSpace: "nowrap",
                 }}>
                   {t.label}
@@ -658,7 +689,7 @@ function DocumentsConsole({ docs, opts, source }) {
                   const href = d.fichier_local ? `${API}/api/gestion-donnees/documents/${d.id}/pdf` : d.lien;
                   return href ? (
                     <a key={d.id} href={href} target="_blank" rel="noreferrer" title={d.nom_pdf} style={{
-                      display: "flex", alignItems: "center", gap: 5, color: ACCENT, background: ACCENT_BG,
+                      display: "flex", alignItems: "center", gap: 5, color: DARK, background: ACCENT_BG,
                       fontWeight: 700, fontSize: 11.5, padding: "5px 10px", borderRadius: 7,
                       textDecoration: "none", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums",
                     }}>
