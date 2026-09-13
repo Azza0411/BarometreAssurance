@@ -249,16 +249,18 @@ function SourceFilterBar({ counts, active, onChange }) {
               border: "none", background: "none", cursor: "pointer", padding: 0,
             }}>
               <span style={{
-                position: "relative", width: 56, height: 56, borderRadius: "50%", background: "#fff",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                boxShadow: isActive ? `0 0 0 3px ${ACCENT_BG}, 0 0 0 1px ${ACCENT}` : `0 0 0 1px #EEF0F5`,
-                transition: "box-shadow .15s, transform .15s", transform: isActive ? "scale(1.06)" : "scale(1)",
+                position: "relative", width: 92, height: 92, borderRadius: 16, background: "#fff",
+                display: "flex", alignItems: "center", justifyContent: "center", padding: 6,
+                boxShadow: isActive ? `0 0 0 2.5px ${ACCENT_BG}, 0 0 0 1px ${ACCENT}` : `0 0 0 1px #EEF0F5`,
+                transition: "box-shadow .15s, transform .15s", transform: isActive ? "scale(1.04)" : "scale(1)",
               }}>
-                <img src={s.logo} alt={s.label} style={{ maxWidth: 42, maxHeight: 42, objectFit: "contain" }} />
+                {/* Logo affiché en entier, sans recadrage — la clarté (icône +
+                    nom + sous-titre lisibles) passe avant la compacité. */}
+                <img src={s.logo} alt={s.label} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
                 <span style={{
-                  position: "absolute", bottom: -3, right: -3, minWidth: 18, height: 18, padding: "0 4px",
+                  position: "absolute", bottom: -6, right: -6, minWidth: 20, height: 20, padding: "0 5px",
                   borderRadius: 20, background: isActive ? ACCENT : "#9CA3AF", color: "#fff",
-                  fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
                   border: "2px solid #fff", fontVariantNumeric: "tabular-nums",
                 }}>{counts?.[s.key] ?? 0}</span>
               </span>
