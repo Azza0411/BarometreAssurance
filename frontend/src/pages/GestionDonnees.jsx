@@ -479,6 +479,22 @@ function DocumentsConsole({ docs, opts, source }) {
   // document (voir database/repository.py::list_all_documents).
   const isCmf = source === "CMF";
 
+  // Cible de "Corriger les données Excel" dans la barre résumé — n'a de sens
+  // que pour UNE société précise (Correction manuelle prend un document, pas
+  // une sélection multiple) : actif seulement quand le filtre Entreprise en
+  // isole exactement une. Année/tableau retenus = ceux du filtre s'il n'y en
+  // a qu'un sélectionné, sinon un choix par défaut raisonnable (le plus
+  // récent disponible / le premier tableau où la société a des données).
+  const correctionCible = useMemo(() => {
+    if (!isCmf || entreprises.size !== 1) return null;
+    const code = [...entreprises][0];
+    const anneesCode = sourceDocs.filter(d => d.code === code).map(d => d.annee).sort((a, b) => b - a);
+    const annee = annees.size === 1 ? [...annees][0] : anneesCode[0];
+    if (!annee) return null;
+    const tableauCible = tableaux.size === 1 ? [...tableaux][0] : defaultTableauFor(code);
+    return { code, annee, tableau: tableauCible };
+  }, [isCmf, entreprises, annees, tableaux, sourceDocs, tableauOptions, opts]);
+
   useEffect(() => { setEntreprises(new Set()); setTableaux(new Set()); setAnnees(new Set()); setPage(1); }, [source]);
 
   const toggleIn = (setter) => (value) => setter(prev => {
@@ -621,6 +637,18 @@ function DocumentsConsole({ docs, opts, source }) {
           <span style={{ fontSize: 11, color: MUTED }}>
             {isCmf ? "Une feuille par société, un tableau par annexe sélectionnée" : "Consultation PDF uniquement pour cette source"}
           </span>
+          <button
+            onClick={() => correctionCible && navigate(`/correction-manuelle?code=${correctionCible.code}&annee=${correctionCible.annee}&tableau=${correctionCible.tableau}`)}
+            disabled={!correctionCible}
+            title={correctionCible ? undefined : "Sélectionnez une seule entreprise pour corriger ses données"}
+            style={actionBtnStyle(!correctionCible)}
+            onMouseEnter={e => correctionCible && (e.currentTarget.style.background = ACCENT_BG)}
+            onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
+            <svg viewBox="0 0 14 14" fill="none" width="12" height="12">
+              <path d="M9.5 1.5l3 3-7.5 7.5-3.5.5.5-3.5 7.5-7.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+            </svg>
+            Corriger les données Excel
+          </button>
           <button onClick={genererExport} disabled={!isCmf || exportLoading} style={actionBtnStyle(!isCmf || exportLoading)}
             onMouseEnter={e => isCmf && !exportLoading && (e.currentTarget.style.background = ACCENT_BG)}
             onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
@@ -660,47 +688,26 @@ function DocumentsConsole({ docs, opts, source }) {
                   <div style={{ fontSize: 10.5, color: MUTED }}>{g.items.length} document(s)</div>
                 </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, paddingTop: 2, minWidth: 0 }}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {g.items.map(d => {
-                    const href = d.fichier_local ? `${API}/api/gestion-donnees/documents/${d.id}/pdf` : d.lien;
-                    return href ? (
-                      <a key={d.id} href={href} target="_blank" rel="noreferrer" title={d.nom_pdf} style={{
-                        display: "flex", alignItems: "center", gap: 5, color: ACCENT, background: ACCENT_BG,
-                        fontWeight: 700, fontSize: 11.5, padding: "5px 10px", borderRadius: 7,
-                        textDecoration: "none", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums",
-                      }}>
-                        {d.annee} ↗
-                      </a>
-                    ) : (
-                      <span key={d.id} style={{
-                        fontSize: 11.5, fontWeight: 700, color: MUTED, background: "#F3F4F6",
-                        padding: "5px 10px", borderRadius: 7, fontVariantNumeric: "tabular-nums",
-                      }}>
-                        {d.annee}
-                      </span>
-                    );
-                  })}
-                </div>
-                {/* Correction manuelle : sous les PDF plutôt que collée à
-                    chacun — en pratique on corrige l'export Excel (qui peut
-                    couvrir plusieurs tableaux à la fois), pas un PDF précis ;
-                    une seule entrée par société, pas une par document. */}
-                {g.code && (
-                  <button
-                    onClick={() => navigate(`/correction-manuelle?code=${g.code}&annee=${g.items[0].annee}&tableau=${defaultTableauFor(g.code)}`)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 6, alignSelf: "flex-start",
-                      border: `1px solid ${BORDER}`, cursor: "pointer", color: MUTED, background: "#fff",
-                      padding: "5px 10px", borderRadius: 7, fontSize: 11.5, fontWeight: 700,
-                    }}
-                  >
-                    <svg viewBox="0 0 14 14" fill="none" width="11" height="11">
-                      <path d="M9.5 1.5l3 3-7.5 7.5-3.5.5.5-3.5 7.5-7.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
-                    </svg>
-                    Corriger les données Excel
-                  </button>
-                )}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, flex: 1, paddingTop: 2 }}>
+                {g.items.map(d => {
+                  const href = d.fichier_local ? `${API}/api/gestion-donnees/documents/${d.id}/pdf` : d.lien;
+                  return href ? (
+                    <a key={d.id} href={href} target="_blank" rel="noreferrer" title={d.nom_pdf} style={{
+                      display: "flex", alignItems: "center", gap: 5, color: ACCENT, background: ACCENT_BG,
+                      fontWeight: 700, fontSize: 11.5, padding: "5px 10px", borderRadius: 7,
+                      textDecoration: "none", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums",
+                    }}>
+                      {d.annee} ↗
+                    </a>
+                  ) : (
+                    <span key={d.id} style={{
+                      fontSize: 11.5, fontWeight: 700, color: MUTED, background: "#F3F4F6",
+                      padding: "5px 10px", borderRadius: 7, fontVariantNumeric: "tabular-nums",
+                    }}>
+                      {d.annee}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           );
