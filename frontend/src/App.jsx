@@ -16,6 +16,7 @@ import KpiDetail              from "./pages/KpiDetail";
 import RapportPipeline        from "./pages/RapportPipeline";
 import AnomaliesSysteme       from "./pages/AnomaliesSysteme";
 import GestionDonnees         from "./pages/GestionDonnees";
+import CorrectionManuelle     from "./pages/CorrectionManuelle";
 
 /* ─── palette tokens ─── */
 const C = {
@@ -955,6 +956,7 @@ function AppShell() {
             <Route path="/rapport-pipeline"      element={<RapportPipeline/>}/>
             <Route path="/anomalies-systeme"     element={<AnomaliesSysteme/>}/>
             <Route path="/gestion-donnees"       element={<GestionDonnees/>}/>
+            <Route path="/correction-manuelle"   element={<CorrectionManuelle/>}/>
           </Routes>
         </PageTransition>
       </main>

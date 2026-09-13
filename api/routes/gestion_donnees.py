@@ -19,6 +19,7 @@ from database.repository import get_connection
 from api.services.data_management import (
     list_documents_for_ui, get_local_pdf_path_for_document,
     get_filter_options, build_flexible_export_xlsx, get_reliability_stats,
+    get_document_grid,
 )
 from api.services import tableau_pipeline_service
 
@@ -230,3 +231,30 @@ def export_xlsx():
         buffer, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True, download_name="Export_donnees.xlsx",
     )
+
+
+@bp.route("/api/gestion-donnees/cellules")
+def cellules():
+    """Grille de cellules déjà stockée pour UN document CMF (société +
+    année + tableau) — sert la page de correction manuelle, qui permet de
+    consulter (et bientôt corriger) les données avant de générer l'Excel,
+    sans avoir à le télécharger d'abord. Pure lecture de `tableau_cellules`,
+    aucune ré-extraction déclenchée ici."""
+    code = request.args.get("societe")
+    annee_raw = request.args.get("annee")
+    tableau = request.args.get("tableau")
+    if not code or not annee_raw or not tableau:
+        return jsonify({"error": "Paramètres 'societe', 'annee' et 'tableau' requis"}), 400
+    try:
+        annee = int(annee_raw)
+    except ValueError:
+        return jsonify({"error": "Paramètre 'annee' invalide"}), 400
+
+    conn = get_connection()
+    try:
+        grille = get_document_grid(conn, code, annee, tableau)
+    finally:
+        conn.close()
+    if grille is None:
+        return jsonify({"error": "Aucun document CMF pour cette société/année"}), 404
+    return jsonify(grille)

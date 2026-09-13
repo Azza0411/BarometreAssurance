@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { getLogoSrc } from "../utils/logos";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
@@ -417,6 +418,7 @@ function TableauChips({ options, selected, onToggle }) {
    `source` vient du filtre de page (SourceFilterBar, au-dessus de Collecte/
    Fiabilité) — cette console n'en garde plus l'état, elle le reçoit. */
 function DocumentsConsole({ docs, opts, source }) {
+  const navigate = useNavigate();
   const [entreprises, setEntreprises] = useState(new Set());
   const [annees, setAnnees] = useState(new Set());
   const [tableaux, setTableaux] = useState(new Set());
@@ -430,6 +432,15 @@ function DocumentsConsole({ docs, opts, source }) {
     [sourceDocs],
   );
   const tableauOptions = useMemo(() => opts?.tableaux ?? [], [opts]);
+
+  // Tableau de départ raisonnable pour la correction manuelle d'une société
+  // donnée — le premier groupe (dans l'ordre Annexe12/Annexe13/Bilan) pour
+  // lequel elle a effectivement des cellules stockées ; l'utilisateur peut
+  // ensuite changer de tableau directement sur la page de correction.
+  const defaultTableauFor = (code) => {
+    const match = tableauOptions.find(t => (opts?.societes_par_tableau?.[t.key] ?? []).includes(code));
+    return match?.key ?? "annexe12";
+  };
 
   // Les filtres Entreprise/Tableau — et l'export Excel, qui s'appuie sur les
   // mêmes groupes de tableaux CMF (voir api/services/data_management.py::
@@ -621,20 +632,35 @@ function DocumentsConsole({ docs, opts, source }) {
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, flex: 1, paddingTop: 2 }}>
                 {g.items.map(d => {
                   const href = d.fichier_local ? `${API}/api/gestion-donnees/documents/${d.id}/pdf` : d.lien;
-                  return href ? (
-                    <a key={d.id} href={href} target="_blank" rel="noreferrer" title={d.nom_pdf} style={{
-                      display: "flex", alignItems: "center", gap: 5, color: ACCENT, background: ACCENT_BG,
-                      fontWeight: 700, fontSize: 11.5, padding: "5px 10px", borderRadius: 7,
-                      textDecoration: "none", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums",
-                    }}>
-                      {d.annee} ↗
-                    </a>
-                  ) : (
-                    <span key={d.id} style={{
-                      fontSize: 11.5, fontWeight: 700, color: MUTED, background: "#F3F4F6",
-                      padding: "5px 10px", borderRadius: 7, fontVariantNumeric: "tabular-nums",
-                    }}>
-                      {d.annee}
+                  return (
+                    <span key={d.id} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                      {href ? (
+                        <a href={href} target="_blank" rel="noreferrer" title={d.nom_pdf} style={{
+                          display: "flex", alignItems: "center", gap: 5, color: ACCENT, background: ACCENT_BG,
+                          fontWeight: 700, fontSize: 11.5, padding: "5px 10px", borderRadius: d.code ? "7px 0 0 7px" : 7,
+                          textDecoration: "none", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums",
+                        }}>
+                          {d.annee} ↗
+                        </a>
+                      ) : (
+                        <span style={{
+                          fontSize: 11.5, fontWeight: 700, color: MUTED, background: "#F3F4F6",
+                          padding: "5px 10px", borderRadius: d.code ? "7px 0 0 7px" : 7, fontVariantNumeric: "tabular-nums",
+                        }}>
+                          {d.annee}
+                        </span>
+                      )}
+                      {d.code && (
+                        <button
+                          title="Corriger manuellement ce document"
+                          onClick={() => navigate(`/correction-manuelle?code=${d.code}&annee=${d.annee}&tableau=${defaultTableauFor(d.code)}`)}
+                          style={{
+                            border: "none", cursor: "pointer", fontSize: 11.5, fontWeight: 700,
+                            color: MUTED, background: "#F3F4F6", padding: "5px 9px", borderRadius: "0 7px 7px 0",
+                            borderLeft: `1px solid ${href ? ACCENT_BG : "#E5E7EB"}`,
+                          }}
+                        >✎</button>
+                      )}
                     </span>
                   );
                 })}

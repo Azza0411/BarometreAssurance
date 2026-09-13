@@ -19,7 +19,7 @@ from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
 from openpyxl.drawing.xdr import XDRPositiveSize2D
 import io
 
-from database.repository import get_connection, list_all_documents, get_tableau_cellules
+from database.repository import get_connection, list_all_documents, get_tableau_cellules, get_document_id
 from extraction.annexe13_kpi_extractor import (
     _is_target_page as _is_annexe13_page,
     RACCORDEMENT_RE as _ANNEXE13_RACCORDEMENT_RE,
@@ -388,6 +388,37 @@ def get_reliability_stats(conn):
             "pct": fiabilite_pct, "reussis": reussis, "total": total_eligibles,
             "tableau": "Annexe 13",
         },
+    }
+
+
+def get_document_grid(conn, code, annee, tableau):
+    """Grille de cellules déjà stockée (`tableau_cellules`) pour UN document
+    CMF (société + année), pour la page de correction manuelle — un pur
+    aperçu en lecture de ce qui est déjà en base, aucune ré-extraction. Les
+    lignes sont ordonnées selon l'ordre canonique métier (même référentiel
+    que l'export Excel) quand il existe pour ce tableau, sinon dans l'ordre
+    où `tableau_cellules` les restitue. Renvoie None si aucun document
+    CMF (code, annee) n'existe encore en base."""
+    doc_id = get_document_id(conn, code, annee)
+    if not doc_id:
+        return None
+    rows = get_tableau_cellules(conn, [doc_id], tableau)
+    colonnes = []
+    lignes_map = {}
+    for _doc_id, ligne, colonne, valeur in rows:
+        if colonne not in colonnes:
+            colonnes.append(colonne)
+        lignes_map.setdefault(ligne, {})[colonne] = valeur
+    if tableau == "annexe13":
+        ordered = _sorted_grid_rows(lignes_map, _ROW_DISPLAY_ORDER, len(CANONICAL_ROWS))
+    elif tableau == "annexe12":
+        ordered = _sorted_grid_rows(lignes_map, _ROW_DISPLAY_ORDER_VIE, len(CANONICAL_ROWS_VIE))
+    else:
+        ordered = list(lignes_map.items())
+    return {
+        "document_id": doc_id,
+        "colonnes": colonnes,
+        "lignes": [{"ligne": ligne, "valeurs": valeurs} for ligne, valeurs in ordered],
     }
 
 
