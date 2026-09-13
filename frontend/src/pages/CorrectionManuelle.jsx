@@ -33,6 +33,22 @@ const ZOOM_MAX = 3.0;
 // (ZOOM_MIN) si l'utilisateur veut vraiment une vue d'ensemble.
 const ZOOM_LEGIBLE_FLOOR = 0.72;
 
+// Barre de défilement visible sur le visualiseur sombre — le défilement
+// horizontal ET vertical fonctionne, mais sur fond sombre la barre par
+// défaut du système peut être trop discrète pour qu'on remarque qu'il y a
+// davantage de tableau en dessous/à côté.
+if (typeof document !== "undefined" && !document.getElementById("cm-scroll-style")) {
+  const style = document.createElement("style");
+  style.id = "cm-scroll-style";
+  style.textContent = `
+    .cm-viewer-scroll::-webkit-scrollbar { width: 11px; height: 11px; }
+    .cm-viewer-scroll::-webkit-scrollbar-track { background: #111827; }
+    .cm-viewer-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 6px; border: 2px solid #111827; }
+    .cm-viewer-scroll::-webkit-scrollbar-thumb:hover { background: #64748B; }
+  `;
+  document.head.appendChild(style);
+}
+
 // Même format que la cellule Excel réelle (number_format "#,##0" — entier,
 // séparateur de milliers, jamais de décimales).
 function fmt(v) {
@@ -300,11 +316,19 @@ export default function CorrectionManuelle() {
   const options = selected?.kind === "ligne" ? referentiel.lignes : selected?.kind === "colonne" ? referentiel.colonnes : [];
 
   return (
-    <div style={{ minHeight: "calc(100vh - 92px)", background: BG, fontFamily: "'Inter', system-ui, sans-serif" }}>
+    // `height` fixe + colonne flex (au lieu de deviner la hauteur du
+    // bandeau du haut en pixels, comme avant) : ce bandeau contient beaucoup
+    // de badges et peut retomber sur 2 lignes selon la société — un calc()
+    // codé en dur s'en trouvait faux et poussait le bas du tableau hors de
+    // l'écran, sans qu'on puisse y accéder par défilement. `flex:1` sur le
+    // corps prend toujours EXACTEMENT la hauteur restante, quelle que soit
+    // la hauteur réelle du bandeau.
+    <div style={{ height: "calc(100vh - 92px)", background: BG, fontFamily: "'Inter', system-ui, sans-serif", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* ── Repère ──────────────────────────────────────────────────────── */}
       <div style={{
         background: "#fff", borderBottom: `1px solid ${BORDER}`, padding: "11px 22px",
         display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap",
+        flexShrink: 0,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <button onClick={() => navigate("/gestion-donnees")} style={{
@@ -368,9 +392,9 @@ export default function CorrectionManuelle() {
           des données) — le visualiseur Excel occupe la même place que le
           visualiseur PDF là-bas, pas une colonne étroite à côté d'un
           panneau large. */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", height: "calc(100vh - 92px - 58px)", overflow: "hidden" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", flex: 1, minHeight: 0, overflow: "hidden" }}>
         {/* Gauche */}
-        <div style={{ overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}>
           {/* Résumé du document — une seule ligne compacte. */}
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
@@ -478,7 +502,13 @@ export default function CorrectionManuelle() {
         </div>
 
         {/* Droite : visualiseur */}
-        <div style={{ background: VIEWER_BG, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* minHeight:0 indispensable : sans lui, un item de grille dont le
+            contenu interne est en colonne flex reprend par défaut la
+            hauteur de SON contenu (min-height:auto) au lieu de rester borné
+            à la hauteur de la ligne de grille — c'est ce qui laissait le
+            visualiseur grandir au-delà de l'écran plutôt que de faire
+            défiler, quel que soit le calcul de hauteur du bandeau au-dessus. */}
+        <div style={{ background: VIEWER_BG, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: "1px solid rgba(255,255,255,.08)", flexWrap: "wrap" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 7, color: "#E5E7EB", fontSize: 12.5, fontWeight: 700 }}>
               <svg viewBox="0 0 16 16" fill="none" width="13" height="13">
@@ -546,7 +576,7 @@ export default function CorrectionManuelle() {
               marge auto sur la carte (voir plus bas) la centre quand elle
               est plus étroite que l'écran, sans casser le défilement quand
               elle déborde. */}
-          <div ref={viewerScrollRef} style={{ flex: 1, overflow: "auto", padding: 26, display: "flex", justifyContent: "flex-start", alignItems: "flex-start" }}>
+          <div ref={viewerScrollRef} className="cm-viewer-scroll" style={{ flex: 1, overflow: "auto", padding: 26, display: "flex", justifyContent: "flex-start", alignItems: "flex-start" }}>
             {gridLoading ? (
               <p style={{ color: "#94A3B8", textAlign: "center", marginTop: 40 }}>Chargement…</p>
             ) : gridErreur ? (
