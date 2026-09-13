@@ -8,12 +8,14 @@ const DARK    = "#2E2E38";
 const BG      = "#F2F5FB";
 const BORDER  = "#DDE2EC";
 const MUTED   = "#6B7280";
-// Même jaune que le bandeau EY de la navbar (au lieu du vert/teal
-// précédent) — utilisé pour les bordures, fonds actifs et anneaux ; jamais
-// comme couleur de TEXTE sur fond clair (jaune sur blanc n'est pas lisible),
-// le texte reste DARK y compris sur un fond ACCENT_BG/ACCENT.
-const ACCENT  = "#FFE600";
-const ACCENT_BG = "#FFF7CC";
+// Jaune (famille navbar) mais volontairement plus foncé et plus discret que
+// le jaune vif d'origine — retour utilisateur : appliqué en pleine
+// saturation sur toutes les bordures/tuiles actives à la fois (24 sociétés
+// sélectionnées par défaut), le jaune vif devenait criard. Un ton plus
+// sourd (moutarde) reste identifiable comme "jaune" sans agresser l'œil
+// quand il est répété partout. Texte toujours en DARK, jamais en jaune.
+const ACCENT  = "#C9A227";
+const ACCENT_BG = "#F6EFD8";
 
 const GROUP_PAGE_SIZE = 8;
 
@@ -328,13 +330,18 @@ function EntrepriseLogoGrid({ societes, selected, onToggle, onOnly, disabledSet,
               disabled={disabled}
               title={disabled ? "Aucune donnée pour le(s) tableau(x) sélectionné(s)" : (active ? `Retirer ${s.nom ?? s.code}` : `Ajouter ${s.nom ?? s.code}`)}
               style={{
+                // Bordure fine, pas d'ombre portée : avec la sélection
+                // "tout par défaut", une trentaine de tuiles actives en même
+                // temps ne doivent pas toutes s'allumer/briller à la fois —
+                // seul le fond blanc + un liseré discret marquent l'état
+                // sélectionné, le vrai contraste vient du gris des exclues.
                 position: "relative", display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 6px", height: 48,
                 background: active ? "#fff" : "transparent",
-                border: `1.5px solid ${active ? ACCENT : "transparent"}`,
+                border: `1px solid ${active ? "#E9DCAE" : "transparent"}`,
                 borderRadius: 9, cursor: disabled ? "not-allowed" : "pointer",
                 opacity: disabled ? 0.28 : active ? 1 : 0.4,
                 filter: (active || disabled) ? "none" : "grayscale(65%)",
-                boxShadow: active ? "0 2px 8px rgba(230,183,0,0.25)" : "none",
+                boxShadow: active ? "0 1px 3px rgba(20,22,28,.06)" : "none",
                 transition: "all .15s",
               }}
             >
