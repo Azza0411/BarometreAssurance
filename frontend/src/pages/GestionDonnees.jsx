@@ -228,24 +228,29 @@ function FiabiliteBar() {
    filtre global de la page plutôt qu'un contrôle interne à la console. */
 function SourceFilterBar({ counts, active, onChange }) {
   return (
-    <Card style={{ padding: "14px 20px", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+    <Card style={{ padding: "18px 22px", display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}>
       <span style={{ fontSize: 10, fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".5px" }}>Source</span>
-      <div style={{ display: "flex", gap: 10 }}>
+      <div style={{ display: "flex", gap: 16 }}>
         {SOURCES.map(s => {
           const isActive = s.key === active;
           return (
             <button key={s.key} onClick={() => onChange(s.key)} title={s.label} style={{
               position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
-              width: 60, height: 60, padding: 8, border: `2px solid ${isActive ? ACCENT : BORDER}`,
-              borderRadius: 14, cursor: "pointer", background: isActive ? ACCENT_BG : "#fff",
-              boxShadow: isActive ? "0 2px 8px rgba(15,110,86,0.12)" : "none", transition: "background .12s, border-color .12s",
-            }}>
-              <img src={s.logo} alt={s.label} style={{ maxWidth: 38, maxHeight: 38, objectFit: "contain" }} />
+              width: 96, height: 96, padding: 14, border: `2px solid ${isActive ? ACCENT : "#F0F1F5"}`,
+              borderRadius: 20, cursor: "pointer", background: "#fff",
+              boxShadow: isActive ? "0 6px 18px rgba(15,110,86,0.18)" : "0 2px 8px rgba(20,22,28,0.06)",
+              transition: "box-shadow .15s, border-color .15s, transform .15s",
+              transform: isActive ? "translateY(-1px)" : "none",
+            }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.boxShadow = "0 4px 14px rgba(20,22,28,0.1)"; }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.boxShadow = "0 2px 8px rgba(20,22,28,0.06)"; }}
+            >
+              <img src={s.logo} alt={s.label} style={{ maxWidth: 66, maxHeight: 66, objectFit: "contain" }} />
               <span style={{
-                position: "absolute", top: -7, right: -7, minWidth: 18, height: 18, padding: "0 4px",
+                position: "absolute", top: -9, right: -9, minWidth: 24, height: 24, padding: "0 6px",
                 borderRadius: 20, background: isActive ? ACCENT : "#9CA3AF", color: "#fff",
-                fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
-                border: "2px solid #fff", fontVariantNumeric: "tabular-nums",
+                fontSize: 11.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
+                border: "2.5px solid #fff", fontVariantNumeric: "tabular-nums", boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
               }}>{counts?.[s.key] ?? 0}</span>
             </button>
           );
