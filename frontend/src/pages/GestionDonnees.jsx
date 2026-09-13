@@ -524,14 +524,19 @@ function DocumentsConsole({ docs, opts, source }) {
 
   const tags = useMemo(() => {
     const t = [];
-    // Une puce par société EXCLUE (pas sélectionnée) — cohérent avec "tout
-    // le monde est sélectionné par défaut, on retire au clic" : la retirer
-    // ici revient à réintégrer cette société dans la sélection.
-    entreprisesExclues.forEach(code => t.push({ key: `e-${code}`, label: `Sans ${opts?.societes?.find(s => s.code === code)?.nom ?? code}`, clear: () => toggleEntreprise(code) }));
+    // Une puce par société SÉLECTIONNÉE — mais seulement quand la sélection
+    // a été restreinte (pas "toutes"), sinon on afficherait une puce par
+    // société par défaut (aucun intérêt, et bien plus encombrant que le
+    // problème qu'on corrige). Cliquer la croix retire cette société de la
+    // sélection (= l'exclut).
+    const total = opts?.societes?.length ?? 0;
+    if (entreprisesExclues.size > 0 && entreprisesExclues.size < total) {
+      societesSelectionnees.forEach(code => t.push({ key: `s-${code}`, label: opts?.societes?.find(s => s.code === code)?.nom ?? code, clear: () => toggleEntreprise(code) }));
+    }
     tableaux.forEach(k => t.push({ key: `t-${k}`, label: tableauOptions.find(o => o.key === k)?.label.split(" — ")[0] ?? k, clear: () => toggleTableau(k) }));
     annees.forEach(a => t.push({ key: `a-${a}`, label: String(a), clear: () => toggleAnnee(a) }));
     return t;
-  }, [entreprisesExclues, tableaux, annees, opts, tableauOptions]);
+  }, [entreprisesExclues, societesSelectionnees, tableaux, annees, opts, tableauOptions]);
 
   // Génère l'export via fetch (au lieu d'un <a href> nu) pour pouvoir
   // afficher un indicateur de chargement — une génération large peut
