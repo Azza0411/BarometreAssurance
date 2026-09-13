@@ -414,14 +414,21 @@ export default function CorrectionManuelle() {
         </div>
       </div>
 
-      {/* ── Corps : formulaire à gauche, Excel puis PDF source à droite ──── */}
-      {/* Le formulaire de correction n'a pas besoin de toute une colonne
-          1fr (ses champs restent compacts) — lui laisser une largeur fixe
-          donne le maximum de place aux deux visualiseurs, Excel et PDF côte
-          à côte, pour que l'utilisateur puisse comparer visuellement et
-          repérer une faute d'extraction sans naviguer entre deux onglets. */}
-      <div style={{ display: "grid", gridTemplateColumns: showPdf ? "336px 1fr 1fr" : "336px 1fr", flex: 1, minHeight: 0, overflow: "hidden" }}>
-        {/* Gauche */}
+      {/* ── Corps ──────────────────────────────────────────────────────── */}
+      {/* Le PDF source est une OPTION (voir showPdf) : tant qu'il est
+          masqué, l'Excel garde exactement la même place qu'avant (formulaire
+          à largeur fixe + Excel sur tout le reste). Dès qu'on l'affiche,
+          l'Excel ne doit PAS rétrécir pour lui faire de la place — c'est le
+          formulaire de correction qui descend sous les deux visualiseurs
+          (Excel | PDF, chacun sur la moitié de la LARGEUR TOTALE, comme si
+          le formulaire n'était plus dans cette rangée), retour utilisateur
+          explicite : "l'espace consacré à l'Excel doit être comme tout à
+          l'heure". */}
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: showPdf ? "1fr 1fr" : "336px 1fr", flex: 1, minHeight: 0, overflow: "hidden" }}>
+        {/* Formulaire de correction — colonne de gauche quand le PDF est
+            masqué ; descend sous les visualiseurs sinon (voir plus bas). */}
+        {!showPdf && (
         <div style={{ overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}>
           {/* Résumé du document — une seule ligne compacte. */}
           <div style={{
@@ -528,6 +535,7 @@ export default function CorrectionManuelle() {
             {saveNote && <p style={{ margin: "10px 0 0", fontSize: 11, color: "#B45309", fontWeight: 600 }}>{saveNote}</p>}
           </div>
         </div>
+        )}
 
         {/* Droite : visualiseur */}
         {/* minHeight:0 indispensable : sans lui, un item de grille dont le
@@ -760,6 +768,104 @@ export default function CorrectionManuelle() {
           ) : (
             <PdfCanvas pdfUrl={pdfEmbedUrl} pageNum={pdfPage} highlight={null} />
           )}
+        </div>
+        )}
+        </div>
+
+        {/* Formulaire de correction — descend ici, sous Excel/PDF, quand le
+            PDF est affiché (voir le commentaire plus haut) : trois blocs
+            côte à côte plutôt qu'empilés, pour rester compact en hauteur. */}
+        {showPdf && (
+        <div style={{
+          display: "flex", gap: 12, padding: "14px 18px", background: BG,
+          borderTop: `1px solid ${BORDER}`, flexShrink: 0, maxHeight: 260, overflow: "auto",
+        }}>
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 10, flexShrink: 0,
+            padding: "8px 14px", background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 9, fontSize: 11,
+          }}>
+            <span style={{ color: MUTED, whiteSpace: "nowrap" }}>
+              {grid ? <><b style={{ color: DARK }}>{grid.lignes.length}</b> lignes × <b style={{ color: DARK }}>{grid.colonnes.length}</b> colonnes</> : "—"}
+            </span>
+          </div>
+
+          <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "14px 16px", flex: 1, minWidth: 260 }}>
+            <h3 style={{ margin: "0 0 10px", fontSize: 13.5, fontWeight: 800, color: DARK }}>Corriger</h3>
+            {!selected ? (
+              <p style={{ fontSize: 12.5, color: MUTED, margin: 0 }}>Cliquez une valeur, un nom de ligne ou de colonne dans un des tableaux ci-dessus.</p>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div style={{
+                  flex: 1, minWidth: 120, padding: "8px 10px", borderRadius: 8, background: "#F8F9FC",
+                  fontSize: 12.5, fontWeight: 700, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  fontVariantNumeric: selected.kind === "valeur" ? "tabular-nums" : "normal",
+                }}>
+                  {selected.kind === "valeur" ? fmt(selected.actuelle) : selected.actuelle}
+                </div>
+                <span style={{ color: MUTED, fontSize: 14, flexShrink: 0 }}>→</span>
+                {selected.kind === "valeur" ? (
+                  <input
+                    value={nouvelleValeur} onChange={e => setNouvelleValeur(e.target.value)}
+                    placeholder="Nouvelle valeur…" autoFocus
+                    style={{ flex: 1, minWidth: 120, fontSize: 12.5, padding: "8px 10px", border: `1.5px solid ${ACCENT}`, borderRadius: 8, font: "inherit", fontVariantNumeric: "tabular-nums" }}
+                  />
+                ) : options.length > 0 ? (
+                  <NameSelect value={nouvelleValeur} onChange={setNouvelleValeur} options={options} />
+                ) : (
+                  <input
+                    value={nouvelleValeur} onChange={e => setNouvelleValeur(e.target.value)}
+                    placeholder="Nouveau nom…" autoFocus
+                    style={{ flex: 1, minWidth: 120, fontSize: 12.5, padding: "8px 10px", border: `1.5px solid ${ACCENT}`, borderRadius: 8, font: "inherit" }}
+                  />
+                )}
+                <button onClick={() => setSelected(null)} style={{
+                  padding: "9px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                  border: `1.5px solid ${BORDER}`, background: "#fff", color: MUTED, font: "inherit", flexShrink: 0,
+                }}>Annuler</button>
+                <button onClick={ajouterCorrection} disabled={!nouvelleValeur.trim()} style={{
+                  padding: "9px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, flexShrink: 0,
+                  cursor: nouvelleValeur.trim() ? "pointer" : "not-allowed",
+                  border: `1.5px solid ${ACCENT}`, background: ACCENT, color: "#fff", opacity: nouvelleValeur.trim() ? 1 : .5, font: "inherit",
+                }}>Ajouter à la liste</button>
+              </div>
+            )}
+          </div>
+
+          <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "14px 16px", flex: 1, minWidth: 260, display: "flex", flexDirection: "column", minHeight: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+              <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 800, color: DARK }}>Corrections en attente</h3>
+              <button onClick={enregistrerTout} disabled={corrections.size === 0} style={{
+                padding: "6px 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 700, flexShrink: 0,
+                cursor: corrections.size ? "pointer" : "not-allowed",
+                border: `1.5px solid ${ACCENT}`, background: ACCENT, color: "#fff", opacity: corrections.size ? 1 : .5, font: "inherit",
+              }}>Enregistrer tout ({corrections.size})</button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
+              {corrections.size === 0 ? (
+                <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "8px 0" }}>Aucune correction en attente.</div>
+              ) : [...corrections.entries()].map(([key, c]) => (
+                <div key={key} onClick={() => (c.kind === "valeur" ? selectValeur(c.ligne, c.colonne, c.actuelle) : c.kind === "ligne" ? selectLigne(c.ligne) : selectColonne(c.colonne))} style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", border: `1px solid ${BORDER}`,
+                  borderRadius: 9, cursor: "pointer",
+                }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#B45309", flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 10.5, color: MUTED }}>
+                      {c.kind === "valeur" ? `${c.ligne} · ${c.colonne}` : c.kind === "ligne" ? "Nom de ligne" : "Nom de colonne"}
+                    </div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: DARK, fontVariantNumeric: c.kind === "valeur" ? "tabular-nums" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <s style={{ color: MUTED, fontWeight: 500, marginRight: 4 }}>{c.kind === "valeur" ? fmt(c.actuelle) : c.actuelle}</s>→ {c.nouvelle}
+                    </div>
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); retirerCorrection(key); }} style={{
+                    border: "none", background: "rgba(200,16,46,.08)", color: BAD, width: 22, height: 22,
+                    borderRadius: "50%", cursor: "pointer", fontSize: 12, flexShrink: 0,
+                  }}>×</button>
+                </div>
+              ))}
+            </div>
+            {saveNote && <p style={{ margin: "8px 0 0", fontSize: 11, color: "#B45309", fontWeight: 600 }}>{saveNote}</p>}
+          </div>
         </div>
         )}
       </div>
