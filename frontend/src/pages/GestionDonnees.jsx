@@ -287,7 +287,7 @@ function YearGrid({ options, selected, onToggle }) {
    export), les sociétés choisies apparaissent en puces avec leur logo à
    l'intérieur du champ — une seule ligne compacte plutôt qu'une liste
    verticale qui pousserait le reste de la page vers le bas. */
-function EntrepriseCombo({ societes, selected, onToggle, onRemove }) {
+function EntrepriseCombo({ societes, selected, onToggle, onRemove, disabledSet }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const ref = useRef(null);
@@ -359,24 +359,29 @@ function EntrepriseCombo({ societes, selected, onToggle, onRemove }) {
           ) : filteredOptions.map(s => {
             const logo = getLogoSrc(s.code);
             const isSel = selected.has(s.code);
+            const isDisabled = disabledSet?.has(s.code);
             return (
-              <button key={s.code} onClick={() => { onToggle(s.code); setQuery(""); }} style={{
-                display: "flex", alignItems: "center", width: "100%", gap: 12, padding: "8px",
-                border: "none", background: isSel ? ACCENT_BG : "transparent", borderRadius: 10,
-                cursor: "pointer", textAlign: "left",
-              }}
-                onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = "#F8F9FC"; }}
-                onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = "transparent"; }}>
+              <button
+                key={s.code} disabled={isDisabled}
+                title={isDisabled ? "Aucune donnée pour le(s) tableau(x) sélectionné(s)" : undefined}
+                onClick={() => { if (isDisabled) return; onToggle(s.code); setQuery(""); }}
+                style={{
+                  display: "flex", alignItems: "center", width: "100%", gap: 12, padding: "8px",
+                  border: "none", background: isSel ? ACCENT_BG : "transparent", borderRadius: 10,
+                  cursor: isDisabled ? "not-allowed" : "pointer", textAlign: "left", opacity: isDisabled ? .45 : 1,
+                }}
+                onMouseEnter={e => { if (!isSel && !isDisabled) e.currentTarget.style.background = "#F8F9FC"; }}
+                onMouseLeave={e => { if (!isSel && !isDisabled) e.currentTarget.style.background = "transparent"; }}>
                 <span style={{
                   width: 34, height: 34, borderRadius: 9, background: "#fff", flexShrink: 0,
                   display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
                   border: `1px solid ${BORDER}`, boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
                 }}>
                   {logo
-                    ? <img src={logo} alt="" style={{ maxWidth: 28, maxHeight: 28, objectFit: "contain" }} />
+                    ? <img src={logo} alt="" style={{ maxWidth: 28, maxHeight: 28, objectFit: "contain", filter: isDisabled ? "grayscale(1)" : "none" }} />
                     : <span style={{ fontSize: 9, fontWeight: 800, color: MUTED }}>{s.code.slice(0, 2)}</span>}
                 </span>
-                <span style={{ fontSize: 13, fontWeight: isSel ? 700 : 500, color: DARK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: 13, fontWeight: isSel ? 700 : 500, color: isDisabled ? MUTED : DARK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {s.nom || s.code}
                 </span>
               </button>
@@ -432,6 +437,31 @@ function DocumentsConsole({ docs, opts, source }) {
     [sourceDocs],
   );
   const tableauOptions = useMemo(() => opts?.tableaux ?? [], [opts]);
+
+  // Sociétés à désactiver dans le sélecteur Entreprise : celles qui n'ont
+  // structurellement AUCUNE donnée pour AUCUN des tableaux actuellement
+  // sélectionnés (ex. ATTIJARI/UIB pour Annexe 13 — sociétés Vie only). Sans
+  // tableau sélectionné, personne n'est désactivé (pas de filtre). Plusieurs
+  // tableaux sélectionnés = éligible si la société a AU MOINS UN d'entre eux
+  // (union, pas intersection) — même règle que l'ancien export flexible.
+  const entreprisesDisabled = useMemo(() => {
+    if (!opts?.societes_par_tableau || tableaux.size === 0) return new Set();
+    const eligible = new Set();
+    tableaux.forEach(t => (opts.societes_par_tableau[t] || []).forEach(c => eligible.add(c)));
+    if (eligible.size === 0) return new Set();
+    return new Set((opts.societes ?? []).map(s => s.code).filter(c => !eligible.has(c)));
+  }, [opts, tableaux]);
+
+  // Une société déjà sélectionnée qui devient inéligible (l'utilisateur
+  // change le tableau après coup) est retirée automatiquement de la
+  // sélection plutôt que laissée cochée mais grisée.
+  useEffect(() => {
+    if (entreprisesDisabled.size === 0) return;
+    setEntreprises(prev => {
+      const next = new Set([...prev].filter(c => !entreprisesDisabled.has(c)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [entreprisesDisabled]);
 
   // Tableau de départ raisonnable pour la correction manuelle d'une société
   // donnée — le premier groupe (dans l'ordre Annexe12/Annexe13/Bilan) pour
@@ -547,6 +577,7 @@ function DocumentsConsole({ docs, opts, source }) {
               selected={entreprises}
               onToggle={code => { toggleEntreprise(code); setPage(1); }}
               onRemove={code => { removeEntreprise(code); setPage(1); }}
+              disabledSet={entreprisesDisabled}
             />
             <TableauChips
               options={tableauOptions.map(t => ({ value: t.key, label: t.label.split(" — ")[0] }))}
