@@ -540,7 +540,13 @@ export default function CorrectionManuelle() {
                 color: "#64748B", fontSize: 10, padding: "3px 8px", cursor: "pointer" }}>Réinitialiser</button>
           </div>
 
-          <div ref={viewerScrollRef} style={{ flex: 1, overflow: "auto", padding: 26, display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
+          {/* justifyContent PAS "center" : un flex centré sur un contenu qui
+              déborde rend sa partie gauche inaccessible au défilement (bug
+              CSS classique) — c'est ce qui coupait la colonne LIBELLÉ. La
+              marge auto sur la carte (voir plus bas) la centre quand elle
+              est plus étroite que l'écran, sans casser le défilement quand
+              elle déborde. */}
+          <div ref={viewerScrollRef} style={{ flex: 1, overflow: "auto", padding: 26, display: "flex", justifyContent: "flex-start", alignItems: "flex-start" }}>
             {gridLoading ? (
               <p style={{ color: "#94A3B8", textAlign: "center", marginTop: 40 }}>Chargement…</p>
             ) : gridErreur ? (
@@ -563,7 +569,7 @@ export default function CorrectionManuelle() {
               // perd jamais de vue "quelle colonne" en défilant verticalement.
               // Retour utilisateur : geler aussi la colonne LIBELLÉ était
               // inutile — défiler horizontalement suffit.
-              <div ref={tableCardRef} style={{ background: "#fff", borderRadius: 4, boxShadow: "0 8px 30px rgba(0,0,0,.35)", padding: "30px 34px", flexShrink: 0, zoom }}>
+              <div ref={tableCardRef} style={{ background: "#fff", borderRadius: 4, boxShadow: "0 8px 30px rgba(0,0,0,.35)", padding: "30px 34px", flexShrink: 0, margin: "0 auto", zoom }}>
                 <table style={{ borderCollapse: "collapse", fontSize: 12.5, fontFamily: "Arial, sans-serif" }}>
                   <thead>
                     <tr>
