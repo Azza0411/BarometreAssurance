@@ -10,7 +10,7 @@ const MUTED   = "#6B7280";
 const ACCENT  = "#0F6E56";
 const ACCENT_BG = "#E1F5EE";
 
-const PAGE_SIZE = 10;
+const GROUP_PAGE_SIZE = 8;
 
 // Sources dont les documents correspondent réellement à des PDF individuels
 // scrapés (voir api/services/data_management.py::local_pdf_path) — les
@@ -222,57 +222,39 @@ function FiabiliteBar() {
   );
 }
 
-/* ═══════════════════════════ Source : filtre de toute la page ═══════════════════════════
-   Logos seuls (agrandis, sans nom — les fichiers LogoCMF/LogoCGA/LogoFTUSA
-   sont déjà auto-porteurs) ; positionné avant Collecte/Fiabilité, comme un
-   filtre global de la page plutôt qu'un contrôle interne à la console. */
-// Chaque tuile imite une petite fenêtre web (barre de titre à puces, comme
-// un onglet de navigateur) — retour utilisateur : la version précédente
-// prenait trop de hauteur pour ce que c'est (un simple filtre). Le logo
-// reste zoomé (peu de marge interne) dans un format compact.
-// Rangée d'avatars ronds sans encadré ni ombre de bloc — le logo lui-même
-// est le bouton, l'état actif se lit par un simple trait d'accent sous
-// l'avatar (comme un onglet), pas par une boîte. Volontairement à l'opposé
-// des deux versions précédentes (tuile carrée à ombre, puis onglet façon
-// navigateur) : ici rien n'encadre le logo, il flotte simplement, plus
-// grand, sur le fond de la barre.
-function SourceFilterBar({ counts, active, onChange }) {
+/* ═══════════════════════════ Source : dans le bandeau d'en-tête ═══════════════════════════
+   Retour utilisateur : ni une section à part sur la page, ni une carte
+   isolée — la source doit vivre dans le bandeau EY sombre, à côté du titre,
+   comme un vrai réglage global de la page plutôt qu'un bloc de contenu.
+   Tuiles claires sur fond sombre : le contraste porte lui-même l'idée que
+   c'est un contrôle de premier niveau, pas un widget parmi d'autres. */
+function HeaderSourceSwitch({ counts, active, onChange }) {
   return (
-    <Card style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-      <span style={{ fontSize: 10, fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".5px" }}>Source</span>
-      <div style={{ display: "flex", gap: 12, justifyContent: "space-between" }}>
-        {SOURCES.map(s => {
-          const isActive = s.key === active;
-          return (
-            <button key={s.key} onClick={() => onChange(s.key)} title={s.label} style={{
-              position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 7,
-              border: "none", background: "none", cursor: "pointer", padding: 0,
-            }}>
-              <span style={{
-                position: "relative", width: 76, height: 76, borderRadius: 14, background: "#fff",
-                display: "flex", alignItems: "center", justifyContent: "center", padding: 5,
-                boxShadow: isActive ? `0 0 0 2.5px ${ACCENT_BG}, 0 0 0 1px ${ACCENT}` : `0 0 0 1px #EEF0F5`,
-                transition: "box-shadow .15s, transform .15s", transform: isActive ? "scale(1.04)" : "scale(1)",
-              }}>
-                {/* Logo affiché en entier, sans recadrage — la clarté (icône +
-                    nom + sous-titre lisibles) passe avant la compacité. */}
-                <img src={s.logo} alt={s.label} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
-                <span style={{
-                  position: "absolute", bottom: -6, right: -6, minWidth: 20, height: 20, padding: "0 5px",
-                  borderRadius: 20, background: isActive ? ACCENT : "#9CA3AF", color: "#fff",
-                  fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
-                  border: "2px solid #fff", fontVariantNumeric: "tabular-nums",
-                }}>{counts?.[s.key] ?? 0}</span>
-              </span>
-              <span style={{
-                width: 18, height: 3, borderRadius: 2, background: isActive ? ACCENT : "transparent",
-                transition: "background .15s",
-              }} />
-            </button>
-          );
-        })}
-      </div>
-    </Card>
+    <div style={{ display: "flex", gap: 10 }}>
+      {SOURCES.map(s => {
+        const isActive = s.key === active;
+        return (
+          <button key={s.key} onClick={() => onChange(s.key)} title={s.label} style={{
+            position: "relative", width: 54, height: 54, padding: 6, border: "none", borderRadius: 12,
+            cursor: "pointer", background: "#fff", opacity: isActive ? 1 : .55,
+            boxShadow: isActive ? "0 4px 14px rgba(0,0,0,.28)" : "0 1px 4px rgba(0,0,0,.15)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "opacity .15s, box-shadow .15s",
+          }}
+            onMouseEnter={e => { if (!isActive) e.currentTarget.style.opacity = .85; }}
+            onMouseLeave={e => { if (!isActive) e.currentTarget.style.opacity = .55; }}
+          >
+            <img src={s.logo} alt={s.label} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+            <span style={{
+              position: "absolute", top: -6, right: -6, minWidth: 18, height: 18, padding: "0 4px",
+              borderRadius: 20, background: isActive ? ACCENT : "#fff", color: isActive ? "#fff" : DARK,
+              fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
+              border: `2px solid ${DARK}`, fontVariantNumeric: "tabular-nums",
+            }}>{counts?.[s.key] ?? 0}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -475,9 +457,27 @@ function DocumentsConsole({ docs, opts, source }) {
     .sort((a, b) => b.annee - a.annee),
   [sourceDocs, entreprises, annees, tableaux, opts]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Regroupé par société — retour utilisateur : une ligne par document
+  // noyait les 10 dernières années d'une même compagnie dans une longue
+  // liste plate. Un bloc par société avec toutes ses années côte à côte se
+  // parcourt d'un coup d'œil. Les documents sans société (CGA/FTUSA
+  // sectorielles) restent chacun leur propre bloc.
+  const grouped = useMemo(() => {
+    const map = new Map();
+    filtered.forEach(d => {
+      const key = d.code ?? `__doc_${d.id}`;
+      if (!map.has(key)) map.set(key, { code: d.code, nom: d.nom_entreprise, items: [] });
+      map.get(key).items.push(d);
+    });
+    const groups = [...map.values()];
+    groups.forEach(g => g.items.sort((a, b) => b.annee - a.annee));
+    groups.sort((a, b) => (a.nom ?? a.code ?? "").localeCompare(b.nom ?? b.code ?? "", "fr"));
+    return groups;
+  }, [filtered]);
+
+  const totalPages = Math.max(1, Math.ceil(grouped.length / GROUP_PAGE_SIZE));
   const pageSafe = Math.min(page, totalPages);
-  const pageRows = filtered.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE);
+  const pageGroups = grouped.slice((pageSafe - 1) * GROUP_PAGE_SIZE, pageSafe * GROUP_PAGE_SIZE);
 
   const tags = useMemo(() => {
     const t = [];
@@ -588,64 +588,64 @@ function DocumentsConsole({ docs, opts, source }) {
         </div>
       </div>
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-          <thead>
-            <tr style={{ background: "#F8F9FC" }}>
-              {["Société", "Fichier", "Année", ""].map((h, i) => (
-                <th key={i} style={{ textAlign: "left", padding: "9px 12px", fontWeight: 700, color: MUTED, fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".3px", borderBottom: `1px solid ${BORDER}` }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {!docs ? (
-              <tr><td colSpan={4} style={{ padding: 28, textAlign: "center", color: MUTED }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Spinner color={MUTED} /> Chargement…</span>
-              </td></tr>
-            ) : pageRows.length === 0 ? (
-              <tr><td colSpan={4} style={{ padding: 28, textAlign: "center", color: MUTED }}>Aucun document pour cette sélection.</td></tr>
-            ) : pageRows.map(d => {
-              const logo = d.code ? getLogoSrc(d.code) : null;
-              const href = d.fichier_local ? `${API}/api/gestion-donnees/documents/${d.id}/pdf` : d.lien;
-              return (
-                <tr key={d.id} style={{ borderBottom: "1px solid #F0F1F5" }}>
-                  <td style={{ padding: "8px 12px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                      <span style={{
-                        width: 38, height: 38, borderRadius: 9, background: "#fff", flexShrink: 0,
-                        display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-                        border: `1px solid ${BORDER}`, boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-                      }}>
-                        {logo
-                          ? <img src={logo} alt="" style={{ maxWidth: 32, maxHeight: 32, objectFit: "contain" }} />
-                          : <span style={{ fontSize: 10, fontWeight: 800, color: MUTED }}>{(d.code ?? d.source).slice(0, 2)}</span>}
-                      </span>
-                      <span>{d.nom_entreprise ?? d.code ?? "—"}</span>
-                    </div>
-                  </td>
-                  <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 11.5, color: "#4B5563" }}>{d.nom_pdf}</td>
-                  <td style={{ padding: "8px 12px" }}>{d.annee}</td>
-                  <td style={{ padding: "8px 12px", textAlign: "right" }}>
-                    {href && (
-                      <a
-                        href={href} target="_blank" rel="noreferrer"
-                        style={{
-                          color: ACCENT, background: ACCENT_BG, fontWeight: 700, fontSize: 11.5,
-                          padding: "5px 10px", borderRadius: 6, textDecoration: "none", whiteSpace: "nowrap",
-                        }}>
-                        Voir le PDF ↗
-                      </a>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div>
+        {!docs ? (
+          <div style={{ padding: 28, textAlign: "center", color: MUTED }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Spinner color={MUTED} /> Chargement…</span>
+          </div>
+        ) : pageGroups.length === 0 ? (
+          <div style={{ padding: 28, textAlign: "center", color: MUTED }}>Aucun document pour cette sélection.</div>
+        ) : pageGroups.map(g => {
+          const logo = g.code ? getLogoSrc(g.code) : null;
+          const titre = g.nom ?? g.code ?? (g.items[0]?.source ?? "Document");
+          return (
+            <div key={g.code ?? g.items[0].id} style={{
+              display: "flex", alignItems: "flex-start", gap: 16, padding: "14px 24px",
+              borderBottom: `1px solid #F0F1F5`,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 11, flex: "0 0 260px", minWidth: 0 }}>
+                <span style={{
+                  width: 40, height: 40, borderRadius: 10, background: "#fff", flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+                  border: `1px solid ${BORDER}`, boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+                }}>
+                  {logo
+                    ? <img src={logo} alt="" style={{ maxWidth: 33, maxHeight: 33, objectFit: "contain" }} />
+                    : <span style={{ fontSize: 10, fontWeight: 800, color: MUTED }}>{(g.code ?? g.items[0].source).slice(0, 2)}</span>}
+                </span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: DARK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titre}</div>
+                  <div style={{ fontSize: 10.5, color: MUTED }}>{g.items.length} document(s)</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, flex: 1, paddingTop: 2 }}>
+                {g.items.map(d => {
+                  const href = d.fichier_local ? `${API}/api/gestion-donnees/documents/${d.id}/pdf` : d.lien;
+                  return href ? (
+                    <a key={d.id} href={href} target="_blank" rel="noreferrer" title={d.nom_pdf} style={{
+                      display: "flex", alignItems: "center", gap: 5, color: ACCENT, background: ACCENT_BG,
+                      fontWeight: 700, fontSize: 11.5, padding: "5px 10px", borderRadius: 7,
+                      textDecoration: "none", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums",
+                    }}>
+                      {d.annee} ↗
+                    </a>
+                  ) : (
+                    <span key={d.id} style={{
+                      fontSize: 11.5, fontWeight: 700, color: MUTED, background: "#F3F4F6",
+                      padding: "5px 10px", borderRadius: 7, fontVariantNumeric: "tabular-nums",
+                    }}>
+                      {d.annee}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 24px 18px", fontSize: 12, color: MUTED }}>
-        <span>page {pageSafe}/{totalPages}</span>
+        <span>{grouped.length} société(s)/document(s) · page {pageSafe}/{totalPages}</span>
         <span style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pageSafe <= 1}
             style={{ border: `1px solid ${BORDER}`, background: "#fff", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: pageSafe <= 1 ? "not-allowed" : "pointer", opacity: pageSafe <= 1 ? .5 : 1 }}>
@@ -681,26 +681,24 @@ export default function GestionDonnees() {
   return (
     <div style={{ minHeight: "100vh", background: BG, fontFamily: "'Inter', system-ui, sans-serif" }}>
       <div style={{ background: DARK, padding: "20px 32px" }}>
-        <div style={{ maxWidth: 1220, margin: "0 auto" }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,230,0,.7)", letterSpacing: "2px", textTransform: "uppercase", marginBottom: 4 }}>
-            Data Management · EY
+        <div style={{ maxWidth: 1220, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,230,0,.7)", letterSpacing: "2px", textTransform: "uppercase", marginBottom: 4 }}>
+              Data Management · EY
+            </div>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "white" }}>Gestion de base de données</h1>
+            <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "rgba(255,255,255,.45)" }}>
+              La source filtre toute la page ; les filtres plus étroits et l'export Excel juste au-dessus des documents qu'ils affectent.
+            </p>
           </div>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "white" }}>Gestion de base de données</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "rgba(255,255,255,.45)" }}>
-            La source filtre toute la page ; les filtres plus étroits et l'export Excel juste au-dessus des documents qu'ils affectent.
-          </p>
+          <HeaderSourceSwitch counts={counts} active={source} onChange={setSource} />
         </div>
       </div>
 
-      <div style={{ maxWidth: 1220, margin: "0 auto", padding: "24px 32px", display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, width: 300, flexShrink: 0 }}>
-          <SourceFilterBar counts={counts} active={source} onChange={setSource} />
-          <CollecteBar />
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, flex: 1, minWidth: 320 }}>
-          <FiabiliteBar />
-          <DocumentsConsole docs={docs} opts={opts} source={source} />
-        </div>
+      <div style={{ maxWidth: 1220, margin: "0 auto", padding: "24px 32px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <CollecteBar />
+        <FiabiliteBar />
+        <DocumentsConsole docs={docs} opts={opts} source={source} />
       </div>
     </div>
   );
