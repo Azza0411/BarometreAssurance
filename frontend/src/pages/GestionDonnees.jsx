@@ -182,17 +182,22 @@ function CollecteBar() {
 }
 
 /* ═══════════════════════════ Fiabilité (indicateurs réels) ═══════════════════════════ */
+// Chiffre + fine barre de progression plutôt qu'un bloc label/nombre/détail
+// chargé — retour utilisateur : affichage jugé trop lourd pour une simple
+// donnée en un coup d'œil. La barre porte visuellement la même information
+// que le "detail" textuel (part du total), en plus discret.
 function StatChip({ label, pct, detail }) {
   const color = pct == null ? MUTED : pct >= 90 ? "#16A34A" : pct >= 70 ? "#B45309" : "#C8102E";
   return (
-    <div style={{ flex: 1, minWidth: 200 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 3 }}>
-        {label}
+    <div style={{ flex: 1, minWidth: 190 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: 10.5, fontWeight: 600, color: MUTED }}>{label}</span>
+        <span style={{ fontSize: 17, fontWeight: 800, color, fontVariantNumeric: "tabular-nums" }}>{pct == null ? "—" : `${pct}%`}</span>
       </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-        <span style={{ fontSize: 20, fontWeight: 800, color }}>{pct == null ? "—" : `${pct}%`}</span>
-        <span style={{ fontSize: 11.5, color: MUTED }}>{detail}</span>
+      <div style={{ height: 4, borderRadius: 4, background: "#EEF1F7", overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct ?? 0}%`, background: color, borderRadius: 4, transition: "width .3s" }} />
       </div>
+      <div style={{ fontSize: 10.5, color: "#9CA3AF", marginTop: 4 }}>{detail}</div>
     </div>
   );
 }
@@ -209,68 +214,58 @@ function FiabiliteBar() {
 
   return (
     <Card style={{ padding: "14px 20px" }}>
-      <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-        <StatChip
-          label="PDF collectés"
-          pct={collecte.pct}
-          detail={`${collecte.collectes} / ${collecte.total} attendus`}
-        />
-        <StatChip
-          label={`Fiabilité de l'extraction (${fe.tableau})`}
-          pct={fe.pct}
-          detail={`${fe.reussis} / ${fe.total} documents extraits avec succès`}
-        />
+      <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
+        <StatChip label="PDF collectés" pct={collecte.pct} detail={`${collecte.collectes} / ${collecte.total} attendus`} />
+        <StatChip label={`Fiabilité extraction (${fe.tableau})`} pct={fe.pct} detail={`${fe.reussis} / ${fe.total} réussis`} />
       </div>
-      <p style={{ fontSize: 10.5, color: "#9CA3AF", margin: "10px 0 0" }}>
-        Collecte : PDF présents sur les exercices attendus pour chaque société. Fiabilité : documents dont l'extraction
-        complète a abouti, parmi les sociétés éligibles à l'Annexe 13 Non-Vie (hors sociétés Vie/Takaful).
-      </p>
     </Card>
   );
 }
 
-/* ═══════════════════════════ Portée : Source + Année, en tête de la console ═══════════════════════════
-   Les deux axes qui s'appliquent presque toujours et changent rarement en
-   cours de session (quelle source, quelle période) vivent dans une barre
-   fixe tout en haut — avant les filtres plus étroits (Entreprise, Tableau)
-   qui n'existent que pour une source donnée et vivent juste au-dessus des
-   résultats qu'ils affectent (divulgation progressive : on ne montre que ce
-   qui est pertinent maintenant). */
-function SourceSwitch({ counts, active, onChange }) {
+/* ═══════════════════════════ Source : filtre de toute la page ═══════════════════════════
+   Logos seuls (agrandis, sans nom — les fichiers LogoCMF/LogoCGA/LogoFTUSA
+   sont déjà auto-porteurs) ; positionné avant Collecte/Fiabilité, comme un
+   filtre global de la page plutôt qu'un contrôle interne à la console. */
+function SourceFilterBar({ counts, active, onChange }) {
   return (
-    <div style={{ display: "flex", gap: 4, background: "#F3F4F8", borderRadius: 12, padding: 4 }}>
-      {SOURCES.map(s => {
-        const isActive = s.key === active;
-        return (
-          <button key={s.key} onClick={() => onChange(s.key)} style={{
-            display: "flex", alignItems: "center", gap: 8, padding: "7px 14px 7px 8px",
-            border: "none", borderRadius: 9, cursor: "pointer", background: isActive ? "#fff" : "transparent",
-            boxShadow: isActive ? "0 2px 8px rgba(0,0,0,0.06)" : "none", transition: "background .12s",
-          }}>
-            <span style={{
-              width: 22, height: 22, borderRadius: 6, background: "#fff",
-              border: `1px solid ${BORDER}`, display: "flex", alignItems: "center",
-              justifyContent: "center", flexShrink: 0, overflow: "hidden",
+    <Card style={{ padding: "14px 20px", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+      <span style={{ fontSize: 10, fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".5px" }}>Source</span>
+      <div style={{ display: "flex", gap: 10 }}>
+        {SOURCES.map(s => {
+          const isActive = s.key === active;
+          return (
+            <button key={s.key} onClick={() => onChange(s.key)} title={s.label} style={{
+              position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
+              width: 60, height: 60, padding: 8, border: `2px solid ${isActive ? ACCENT : BORDER}`,
+              borderRadius: 14, cursor: "pointer", background: isActive ? ACCENT_BG : "#fff",
+              boxShadow: isActive ? "0 2px 8px rgba(15,110,86,0.12)" : "none", transition: "background .12s, border-color .12s",
             }}>
-              <img src={s.logo} alt="" style={{ maxWidth: 17, maxHeight: 17, objectFit: "contain" }} />
-            </span>
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: DARK }}>{s.label}</span>
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: isActive ? ACCENT : MUTED }}>{counts?.[s.key] ?? 0}</span>
-          </button>
-        );
-      })}
-    </div>
+              <img src={s.logo} alt={s.label} style={{ maxWidth: 38, maxHeight: 38, objectFit: "contain" }} />
+              <span style={{
+                position: "absolute", top: -7, right: -7, minWidth: 18, height: 18, padding: "0 4px",
+                borderRadius: 20, background: isActive ? ACCENT : "#9CA3AF", color: "#fff",
+                fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
+                border: "2px solid #fff", fontVariantNumeric: "tabular-nums",
+              }}>{counts?.[s.key] ?? 0}</span>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
   );
 }
 
-function YearScroll({ options, selected, onToggle }) {
+/* ═══════════════════════════ Année — toujours visible, jamais à défiler ═══════════════════════════
+   Retour d'affichage : voir toutes les années d'un coup, sans faire défiler
+   une rangée horizontale — passe donc en grille qui retombe à la ligne. */
+function YearGrid({ options, selected, onToggle }) {
   return (
-    <div style={{ display: "flex", gap: 6, overflowX: "auto", flex: 1, minWidth: 0, paddingBottom: 2 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
       {options.map(a => {
         const isSel = selected.has(a);
         return (
           <button key={a} onClick={() => onToggle(a)} style={{
-            flexShrink: 0, padding: "6px 13px", borderRadius: 20, fontSize: 12, fontWeight: 700,
+            padding: "6px 13px", borderRadius: 20, fontSize: 12, fontWeight: 700,
             cursor: "pointer", border: `1.5px solid ${isSel ? ACCENT : BORDER}`,
             background: isSel ? ACCENT_BG : "#fff", color: isSel ? ACCENT : DARK,
             fontVariantNumeric: "tabular-nums", transition: "background .12s, border-color .12s",
@@ -322,18 +317,19 @@ function EntrepriseCombo({ societes, selected, onToggle, onRemove }) {
           const logo = getLogoSrc(code);
           return (
             <span key={code} style={{
-              display: "flex", alignItems: "center", gap: 6, background: ACCENT_BG, color: ACCENT,
-              fontSize: 11.5, fontWeight: 700, padding: "3px 5px 3px 6px", borderRadius: 20,
+              display: "flex", alignItems: "center", gap: 7, background: ACCENT_BG, color: ACCENT,
+              fontSize: 12, fontWeight: 700, padding: "3px 6px 3px 3px", borderRadius: 20,
             }}>
               <span style={{
-                width: 16, height: 16, borderRadius: 4, background: "#fff", flexShrink: 0,
+                width: 26, height: 26, borderRadius: 7, background: "#fff", flexShrink: 0,
                 display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
               }}>
-                {logo ? <img src={logo} alt="" style={{ maxWidth: 13, maxHeight: 13, objectFit: "contain" }} /> : null}
+                {logo ? <img src={logo} alt="" style={{ maxWidth: 22, maxHeight: 22, objectFit: "contain" }} /> : null}
               </span>
               {s?.nom ?? code}
               <button onClick={e => { e.stopPropagation(); onRemove(code); }} style={{
-                border: "none", background: "rgba(0,0,0,.08)", color: "inherit", width: 14, height: 14,
+                border: "none", background: "rgba(0,0,0,.08)", color: "inherit", width: 15, height: 15,
                 borderRadius: "50%", fontSize: 9, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
               }}>×</button>
             </span>
@@ -361,22 +357,22 @@ function EntrepriseCombo({ societes, selected, onToggle, onRemove }) {
             const isSel = selected.has(s.code);
             return (
               <button key={s.code} onClick={() => { onToggle(s.code); setQuery(""); }} style={{
-                display: "flex", alignItems: "center", width: "100%", gap: 10, padding: "7px 8px",
-                border: "none", background: isSel ? ACCENT_BG : "transparent", borderRadius: 8,
+                display: "flex", alignItems: "center", width: "100%", gap: 12, padding: "8px",
+                border: "none", background: isSel ? ACCENT_BG : "transparent", borderRadius: 10,
                 cursor: "pointer", textAlign: "left",
               }}
                 onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = "#F8F9FC"; }}
                 onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = "transparent"; }}>
                 <span style={{
-                  width: 22, height: 22, borderRadius: 6, background: "#fff", flexShrink: 0,
+                  width: 34, height: 34, borderRadius: 9, background: "#fff", flexShrink: 0,
                   display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-                  border: `1px solid ${BORDER}`,
+                  border: `1px solid ${BORDER}`, boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
                 }}>
                   {logo
-                    ? <img src={logo} alt="" style={{ maxWidth: 17, maxHeight: 17, objectFit: "contain" }} />
-                    : <span style={{ fontSize: 8, fontWeight: 800, color: MUTED }}>{s.code.slice(0, 2)}</span>}
+                    ? <img src={logo} alt="" style={{ maxWidth: 28, maxHeight: 28, objectFit: "contain" }} />
+                    : <span style={{ fontSize: 9, fontWeight: 800, color: MUTED }}>{s.code.slice(0, 2)}</span>}
                 </span>
-                <span style={{ fontSize: 12.5, fontWeight: isSel ? 700 : 500, color: DARK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: 13, fontWeight: isSel ? 700 : 500, color: DARK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {s.nom || s.code}
                 </span>
               </button>
@@ -414,28 +410,16 @@ function TableauChips({ options, selected, onToggle }) {
   );
 }
 
-/* ═══════════════════════════ Documents & extraction (une seule console) ═══════════════════════════ */
-function DocumentsConsole() {
-  const [docs, setDocs] = useState(null);
-  const [opts, setOpts] = useState(null);
-  const [source, setSource] = useState("CMF");
+/* ═══════════════════════════ Documents & extraction (une seule console) ═══════════════════════════
+   `source` vient du filtre de page (SourceFilterBar, au-dessus de Collecte/
+   Fiabilité) — cette console n'en garde plus l'état, elle le reçoit. */
+function DocumentsConsole({ docs, opts, source }) {
   const [entreprises, setEntreprises] = useState(new Set());
   const [annees, setAnnees] = useState(new Set());
   const [tableaux, setTableaux] = useState(new Set());
   const [page, setPage] = useState(1);
   const [exportLoading, setExportLoading] = useState(false);
   const [exportErreur, setExportErreur] = useState(null);
-
-  useEffect(() => {
-    fetch(`${API}/api/gestion-donnees/documents`).then(r => r.json()).then(setDocs).catch(() => setDocs([]));
-    fetch(`${API}/api/gestion-donnees/filtres`).then(r => r.json()).then(setOpts).catch(() => {});
-  }, []);
-
-  const counts = useMemo(() => {
-    const c = { CMF: 0, CGA: 0, FTUSA: 0 };
-    (docs ?? []).forEach(d => { if (c[d.source] != null) c[d.source] += 1; });
-    return c;
-  }, [docs]);
 
   const sourceDocs = useMemo(() => (docs ?? []).filter(d => d.source === source), [docs, source]);
   const anneesDisponibles = useMemo(
@@ -514,35 +498,35 @@ function DocumentsConsole() {
 
   return (
     <Card style={{ padding: 0 }}>
-      <div style={{ padding: "18px 24px", display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 10, fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".5px", flexShrink: 0 }}>Source</span>
-          <SourceSwitch counts={counts} active={source} onChange={setSource} />
+      {/* Année : même section qu'Entreprise/Tableau, mais jamais masquée par
+          source — CGA/FTUSA ont aussi des années, même sans société. */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start", padding: "18px 24px" }}>
+        <div style={{ flex: "1 1 100%" }}>
+          <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 7 }}>
+            Année
+          </label>
+          <YearGrid options={anneesDisponibles} selected={annees} onToggle={a => { toggleAnnee(a); setPage(1); }} />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 220 }}>
-          <span style={{ fontSize: 10, fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".5px", flexShrink: 0 }}>Année</span>
-          <YearScroll options={anneesDisponibles} selected={annees} onToggle={a => { toggleAnnee(a); setPage(1); }} />
-        </div>
-      </div>
 
-      {isCmf ? (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start", padding: "16px 24px", borderTop: `1px solid ${BORDER}` }}>
-          <EntrepriseCombo
-            societes={opts?.societes ?? []}
-            selected={entreprises}
-            onToggle={code => { toggleEntreprise(code); setPage(1); }}
-            onRemove={code => { removeEntreprise(code); setPage(1); }}
-          />
-          <TableauChips
-            options={tableauOptions.map(t => ({ value: t.key, label: t.label.split(" — ")[0] }))}
-            selected={tableaux} onToggle={t => { toggleTableau(t); setPage(1); }}
-          />
-        </div>
-      ) : (
-        <p style={{ margin: 0, padding: "12px 24px", fontSize: 11.5, color: MUTED, borderTop: `1px solid ${BORDER}` }}>
-          Source sectorielle : sans société ni tableau associé — seule l'année filtre les documents.
-        </p>
-      )}
+        {isCmf ? (
+          <>
+            <EntrepriseCombo
+              societes={opts?.societes ?? []}
+              selected={entreprises}
+              onToggle={code => { toggleEntreprise(code); setPage(1); }}
+              onRemove={code => { removeEntreprise(code); setPage(1); }}
+            />
+            <TableauChips
+              options={tableauOptions.map(t => ({ value: t.key, label: t.label.split(" — ")[0] }))}
+              selected={tableaux} onToggle={t => { toggleTableau(t); setPage(1); }}
+            />
+          </>
+        ) : (
+          <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>
+            Source sectorielle : sans société ni tableau associé — seule l'année filtre les documents.
+          </p>
+        )}
+      </div>
 
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap",
@@ -605,15 +589,15 @@ function DocumentsConsole() {
               return (
                 <tr key={d.id} style={{ borderBottom: "1px solid #F0F1F5" }}>
                   <td style={{ padding: "8px 12px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
                       <span style={{
-                        width: 26, height: 26, borderRadius: 6, background: "#F8F9FC", flexShrink: 0,
+                        width: 38, height: 38, borderRadius: 9, background: "#fff", flexShrink: 0,
                         display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-                        border: `1px solid ${BORDER}`,
+                        border: `1px solid ${BORDER}`, boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
                       }}>
                         {logo
-                          ? <img src={logo} alt="" style={{ maxWidth: 21, maxHeight: 21, objectFit: "contain" }} />
-                          : <span style={{ fontSize: 9, fontWeight: 800, color: MUTED }}>{(d.code ?? d.source).slice(0, 2)}</span>}
+                          ? <img src={logo} alt="" style={{ maxWidth: 32, maxHeight: 32, objectFit: "contain" }} />
+                          : <span style={{ fontSize: 10, fontWeight: 800, color: MUTED }}>{(d.code ?? d.source).slice(0, 2)}</span>}
                       </span>
                       <span>{d.nom_entreprise ?? d.code ?? "—"}</span>
                     </div>
@@ -658,6 +642,21 @@ function DocumentsConsole() {
 
 /* ═══════════════════════════ Page ═══════════════════════════ */
 export default function GestionDonnees() {
+  const [docs, setDocs] = useState(null);
+  const [opts, setOpts] = useState(null);
+  const [source, setSource] = useState("CMF");
+
+  useEffect(() => {
+    fetch(`${API}/api/gestion-donnees/documents`).then(r => r.json()).then(setDocs).catch(() => setDocs([]));
+    fetch(`${API}/api/gestion-donnees/filtres`).then(r => r.json()).then(setOpts).catch(() => {});
+  }, []);
+
+  const counts = useMemo(() => {
+    const c = { CMF: 0, CGA: 0, FTUSA: 0 };
+    (docs ?? []).forEach(d => { if (c[d.source] != null) c[d.source] += 1; });
+    return c;
+  }, [docs]);
+
   return (
     <div style={{ minHeight: "100vh", background: BG, fontFamily: "'Inter', system-ui, sans-serif" }}>
       <div style={{ background: DARK, padding: "20px 32px" }}>
@@ -667,15 +666,16 @@ export default function GestionDonnees() {
           </div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "white" }}>Gestion de base de données</h1>
           <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "rgba(255,255,255,.45)" }}>
-            La portée (source, période) en tête ; les filtres plus étroits et l'export Excel juste au-dessus des documents qu'ils affectent.
+            La source filtre toute la page ; les filtres plus étroits et l'export Excel juste au-dessus des documents qu'ils affectent.
           </p>
         </div>
       </div>
 
       <div style={{ maxWidth: 1220, margin: "0 auto", padding: "24px 32px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <SourceFilterBar counts={counts} active={source} onChange={setSource} />
         <CollecteBar />
         <FiabiliteBar />
-        <DocumentsConsole />
+        <DocumentsConsole docs={docs} opts={opts} source={source} />
       </div>
     </div>
   );
