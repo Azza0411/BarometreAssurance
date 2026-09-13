@@ -230,41 +230,42 @@ function FiabiliteBar() {
 // un onglet de navigateur) — retour utilisateur : la version précédente
 // prenait trop de hauteur pour ce que c'est (un simple filtre). Le logo
 // reste zoomé (peu de marge interne) dans un format compact.
+// Rangée d'avatars ronds sans encadré ni ombre de bloc — le logo lui-même
+// est le bouton, l'état actif se lit par un simple trait d'accent sous
+// l'avatar (comme un onglet), pas par une boîte. Volontairement à l'opposé
+// des deux versions précédentes (tuile carrée à ombre, puis onglet façon
+// navigateur) : ici rien n'encadre le logo, il flotte simplement, plus
+// grand, sur le fond de la barre.
 function SourceFilterBar({ counts, active, onChange }) {
   return (
-    <Card style={{ padding: "10px 18px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+    <Card style={{ padding: "12px 22px", display: "flex", alignItems: "center", gap: 26, flexWrap: "wrap" }}>
       <span style={{ fontSize: 10, fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".5px" }}>Source</span>
-      <div style={{ display: "flex", gap: 10 }}>
+      <div style={{ display: "flex", gap: 28 }}>
         {SOURCES.map(s => {
           const isActive = s.key === active;
           return (
             <button key={s.key} onClick={() => onChange(s.key)} title={s.label} style={{
-              position: "relative", width: 62, height: 62, padding: 0, overflow: "hidden",
-              border: `1.5px solid ${isActive ? ACCENT : "#EDEFF4"}`, borderRadius: 12, cursor: "pointer",
-              background: "#fff", boxShadow: isActive ? "0 4px 12px rgba(15,110,86,0.16)" : "0 1px 4px rgba(20,22,28,0.06)",
-              transition: "box-shadow .15s, border-color .15s",
-            }}
-              onMouseEnter={e => { if (!isActive) e.currentTarget.style.boxShadow = "0 3px 10px rgba(20,22,28,0.1)"; }}
-              onMouseLeave={e => { if (!isActive) e.currentTarget.style.boxShadow = "0 1px 4px rgba(20,22,28,0.06)"; }}
-            >
-              {/* barre de titre façon onglet navigateur */}
+              position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 7,
+              border: "none", background: "none", cursor: "pointer", padding: 0,
+            }}>
               <span style={{
-                display: "flex", alignItems: "center", gap: 3, height: 12, padding: "0 6px",
-                background: isActive ? ACCENT_BG : "#F8F9FC", borderBottom: `1px solid ${isActive ? "#CDEBE1" : "#EDEFF4"}`,
+                position: "relative", width: 56, height: 56, borderRadius: "50%", background: "#fff",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: isActive ? `0 0 0 3px ${ACCENT_BG}, 0 0 0 1px ${ACCENT}` : `0 0 0 1px #EEF0F5`,
+                transition: "box-shadow .15s, transform .15s", transform: isActive ? "scale(1.06)" : "scale(1)",
               }}>
-                {["#F59E0B", "#EAB308", "#22C55E"].map(c => (
-                  <span key={c} style={{ width: 4, height: 4, borderRadius: "50%", background: c, opacity: .7 }} />
-                ))}
-              </span>
-              <span style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 50, padding: 4 }}>
-                <img src={s.logo} alt={s.label} style={{ maxWidth: 44, maxHeight: 44, objectFit: "contain" }} />
+                <img src={s.logo} alt={s.label} style={{ maxWidth: 42, maxHeight: 42, objectFit: "contain" }} />
+                <span style={{
+                  position: "absolute", bottom: -3, right: -3, minWidth: 18, height: 18, padding: "0 4px",
+                  borderRadius: 20, background: isActive ? ACCENT : "#9CA3AF", color: "#fff",
+                  fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
+                  border: "2px solid #fff", fontVariantNumeric: "tabular-nums",
+                }}>{counts?.[s.key] ?? 0}</span>
               </span>
               <span style={{
-                position: "absolute", top: 8, right: -6, minWidth: 18, height: 18, padding: "0 4px",
-                borderRadius: 20, background: isActive ? ACCENT : "#9CA3AF", color: "#fff",
-                fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
-                border: "2px solid #fff", fontVariantNumeric: "tabular-nums", boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-              }}>{counts?.[s.key] ?? 0}</span>
+                width: 18, height: 3, borderRadius: 2, background: isActive ? ACCENT : "transparent",
+                transition: "background .15s",
+              }} />
             </button>
           );
         })}
