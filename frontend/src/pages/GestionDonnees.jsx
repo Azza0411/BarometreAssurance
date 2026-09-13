@@ -298,6 +298,27 @@ function YearGrid({ options, selected, onToggle }) {
    produirait des lignes en escalier au retour à la ligne. */
 function EntrepriseLogoGrid({ societes, selected, onToggle, onOnly, disabledSet, onReset, hasExclusions }) {
   const [hovered, setHovered] = useState(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addQuery, setAddQuery] = useState("");
+  const addRef = useRef(null);
+
+  useEffect(() => {
+    function onDocClick(e) { if (addRef.current && !addRef.current.contains(e.target)) setAddOpen(false); }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  // Retour utilisateur : la grille ne doit montrer QUE les sociétés
+  // sélectionnées, pas les exclues grisées à côté — celles-ci disparaissent
+  // entièrement plutôt que de rester visibles-mais-estompées.
+  const visibles = societes.filter(s => selected.has(s.code));
+  const excludedOptions = useMemo(() => {
+    const q = addQuery.toLowerCase();
+    return societes
+      .filter(s => !selected.has(s.code) && !disabledSet?.has(s.code))
+      .filter(s => !q || (s.nom ?? "").toLowerCase().includes(q) || s.code.toLowerCase().includes(q));
+  }, [societes, selected, disabledSet, addQuery]);
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
@@ -313,11 +334,10 @@ function EntrepriseLogoGrid({ societes, selected, onToggle, onOnly, disabledSet,
       {/* Retour utilisateur : choisir seulement 2-3 sociétés obligeait à
           désélectionner toutes les autres une par une. Un bouton "Seulement"
           au survol isole cette société en un clic (comme "Solo" sur un calque
-          Figma) — clic normal sur le logo pour ajouter/retirer, ce petit
-          bouton pour "juste celle-ci". */}
+          Figma) — clic normal sur le logo pour retirer, la tuile "+" pour
+          réintégrer une société précédemment exclue sans tout réinitialiser. */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 6 }}>
-        {societes.map(s => {
-          const active = selected.has(s.code);
+        {visibles.map(s => {
           const disabled = disabledSet?.has(s.code);
           const logo = getLogoSrc(s.code);
           const showOnly = hovered === s.code && !disabled;
@@ -328,20 +348,14 @@ function EntrepriseLogoGrid({ societes, selected, onToggle, onOnly, disabledSet,
               onMouseEnter={() => setHovered(s.code)}
               onMouseLeave={() => setHovered(null)}
               disabled={disabled}
-              title={disabled ? "Aucune donnée pour le(s) tableau(x) sélectionné(s)" : (active ? `Retirer ${s.nom ?? s.code}` : `Ajouter ${s.nom ?? s.code}`)}
+              title={disabled ? "Aucune donnée pour le(s) tableau(x) sélectionné(s)" : `Retirer ${s.nom ?? s.code}`}
               style={{
-                // Bordure fine, pas d'ombre portée : avec la sélection
-                // "tout par défaut", une trentaine de tuiles actives en même
-                // temps ne doivent pas toutes s'allumer/briller à la fois —
-                // seul le fond blanc + un liseré discret marquent l'état
-                // sélectionné, le vrai contraste vient du gris des exclues.
                 position: "relative", display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 6px", height: 48,
-                background: active ? "#fff" : "transparent",
-                border: `1px solid ${active ? "#E9DCAE" : "transparent"}`,
+                background: "#fff",
+                border: "1px solid #E9DCAE",
                 borderRadius: 9, cursor: disabled ? "not-allowed" : "pointer",
-                opacity: disabled ? 0.28 : active ? 1 : 0.4,
-                filter: (active || disabled) ? "none" : "grayscale(65%)",
-                boxShadow: active ? "0 1px 3px rgba(20,22,28,.06)" : "none",
+                opacity: disabled ? 0.28 : 1,
+                boxShadow: "0 1px 3px rgba(20,22,28,.06)",
                 transition: "all .15s",
               }}
             >
@@ -364,6 +378,63 @@ function EntrepriseLogoGrid({ societes, selected, onToggle, onOnly, disabledSet,
             </button>
           );
         })}
+
+        {/* Tuile "+" — seule façon de réintégrer une société précise sans
+            tout réinitialiser, puisque les exclues ne sont plus visibles. */}
+        {excludedOptions.length > 0 || hasExclusions ? (
+          <div ref={addRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setAddOpen(o => !o)}
+              title="Ajouter une entreprise"
+              style={{
+                width: "100%", display: "flex", alignItems: "center", justifyContent: "center", height: 48,
+                background: "transparent", border: `1.5px dashed ${BORDER}`, borderRadius: 9, cursor: "pointer",
+                color: MUTED, fontSize: 20, fontWeight: 400, lineHeight: 1,
+              }}
+            >
+              +
+            </button>
+            {addOpen && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 30, width: 220,
+                background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 10,
+                boxShadow: "0 8px 22px rgba(0,0,0,.12)", padding: 6,
+              }}>
+                <input
+                  autoFocus value={addQuery} onChange={e => setAddQuery(e.target.value)}
+                  placeholder="Rechercher…"
+                  style={{ width: "100%", padding: "6px 9px", border: `1px solid ${BORDER}`, borderRadius: 7, fontSize: 12.5, font: "inherit", marginBottom: 4 }}
+                />
+                <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                  {excludedOptions.length === 0 ? (
+                    <div style={{ padding: "8px 6px", fontSize: 12, color: MUTED }}>
+                      {societes.filter(s => !selected.has(s.code)).length === 0 ? "Toutes les entreprises sont déjà sélectionnées." : "Aucune correspondance."}
+                    </div>
+                  ) : excludedOptions.map(s => {
+                    const logo = getLogoSrc(s.code);
+                    return (
+                      <button
+                        key={s.code}
+                        onClick={() => { onToggle(s.code); setAddQuery(""); }}
+                        style={{
+                          display: "flex", alignItems: "center", width: "100%", gap: 10, padding: "6px 8px",
+                          border: "none", background: "transparent", borderRadius: 8, cursor: "pointer", textAlign: "left",
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "#F8F9FC"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <span style={{ width: 24, height: 24, borderRadius: 6, background: "#fff", border: `1px solid ${BORDER}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                          {logo ? <img src={logo} alt="" style={{ maxWidth: 20, maxHeight: 20, objectFit: "contain" }} /> : <span style={{ fontSize: 8, fontWeight: 800, color: MUTED }}>{s.code.slice(0, 2)}</span>}
+                        </span>
+                        <span style={{ fontSize: 12.5, color: DARK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.nom || s.code}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
