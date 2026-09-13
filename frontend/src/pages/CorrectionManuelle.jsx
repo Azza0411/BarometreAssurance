@@ -14,11 +14,22 @@ const VIEWER_BG = "#1E293B";
 const BAD       = "#C8102E";
 const BAD_BG    = "rgba(200,16,46,.18)";
 
+// Charte visuelle du VRAI fichier Excel généré (voir api/services/
+// data_management.py::_write_full_grid_block / _REF_HEADER / _thin_border)
+// — l'aperçu doit reproduire exactement ce à quoi ressemblera le fichier
+// téléchargé, pas une mise en page propre à cette page.
+const EXCEL_HEADER = "#5B6472";
+const EXCEL_ZEBRA  = "#F3F4F6";
+const EXCEL_TEXT   = "#2E2E38";
+const EXCEL_BORDER = "1px solid #DDDDE3";
+
+// Même format que la cellule Excel réelle (number_format "#,##0" — entier,
+// séparateur de milliers, jamais de décimales).
 function fmt(v) {
   if (v === null || v === undefined) return "—";
   const n = Number(v);
   if (Number.isNaN(n)) return String(v);
-  return n.toLocaleString("fr-TN", { maximumFractionDigits: 2 });
+  return Math.round(n).toLocaleString("fr-TN", { maximumFractionDigits: 0 });
 }
 
 // Clé de correction — une par ligne (nom), une par colonne (nom), une par
@@ -396,11 +407,18 @@ export default function CorrectionManuelle() {
               // pousser cette carte plus large que l'écran et laisser le
               // conteneur parent défiler horizontalement plutôt que de
               // comprimer/couper les dernières colonnes.
+              // Même charte que le vrai fichier généré par
+              // build_flexible_export_xlsx::_write_full_grid_block (en-tête
+              // gris #5B6472/texte blanc, libellés en MAJUSCULES, police
+              // Arial, lignes zébrées blanc/#F3F4F6, valeurs centrées) —
+              // sans le titre au-dessus, uniquement le tableau, comme
+              // demandé : c'est un aperçu fidèle de ce qui sera téléchargé,
+              // pas une mise en page propre à cette page.
               <div style={{ background: "#fff", borderRadius: 4, boxShadow: "0 8px 30px rgba(0,0,0,.35)", padding: "30px 34px", flexShrink: 0 }}>
-                <table style={{ borderCollapse: "collapse", fontSize: 12.5 }}>
+                <table style={{ borderCollapse: "collapse", fontSize: 12.5, fontFamily: "Arial, sans-serif" }}>
                   <thead>
                     <tr>
-                      <th style={{ background: "#1D4E89", border: "1px solid #16406F" }} />
+                      <th style={{ background: EXCEL_HEADER, color: "#fff", padding: "8px 14px", border: EXCEL_BORDER, fontWeight: 700 }}>LIBELLÉ</th>
                       {grid.colonnes.map(col => {
                         const isSel = selected?.kind === "colonne" && selected.colonne === col;
                         const isCorr = corrections.has(`colonne::${col}`);
@@ -410,19 +428,20 @@ export default function CorrectionManuelle() {
                             onClick={() => selectColonne(col)}
                             title="Corriger le nom de cette colonne"
                             style={{
-                              background: isCorr ? ACCENT : "#1D4E89", color: "#fff", padding: "8px 14px",
-                              border: "1px solid #16406F", fontWeight: 700, whiteSpace: "nowrap", cursor: "pointer",
+                              background: isCorr ? ACCENT : EXCEL_HEADER, color: "#fff", padding: "8px 14px",
+                              border: EXCEL_BORDER, fontWeight: 700, whiteSpace: "nowrap", cursor: "pointer", textAlign: "center",
                               outline: isSel ? `2px solid ${BAD}` : "none", outlineOffset: -2,
                             }}
                           >
-                            {displayColonne(col)}
+                            {displayColonne(col).toUpperCase()}
                           </th>
                         );
                       })}
                     </tr>
                   </thead>
                   <tbody>
-                    {grid.lignes.map(row => {
+                    {grid.lignes.map((row, i) => {
+                      const zebra = i % 2 === 1;
                       const isLigneSel = selected?.kind === "ligne" && selected.ligne === row.ligne;
                       const isLigneCorr = corrections.has(`ligne::${row.ligne}`);
                       return (
@@ -431,12 +450,12 @@ export default function CorrectionManuelle() {
                             onClick={() => selectLigne(row.ligne)}
                             title="Corriger le nom de cette ligne"
                             style={{
-                              padding: "7px 14px", border: "1px solid #E2E5EA", fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer",
-                              background: isLigneSel ? "#FDE8E8" : isLigneCorr ? ACCENT_BG : "#fff",
+                              padding: "7px 14px", border: EXCEL_BORDER, color: EXCEL_TEXT, whiteSpace: "nowrap", cursor: "pointer", textAlign: "left",
+                              background: isLigneSel ? "#FDE8E8" : isLigneCorr ? ACCENT_BG : zebra ? EXCEL_ZEBRA : "#fff",
                               outline: isLigneSel ? `2px solid ${BAD}` : "none", outlineOffset: -2,
                             }}
                           >
-                            {displayLigne(row.ligne)}
+                            {displayLigne(row.ligne).toUpperCase()}
                           </td>
                           {grid.colonnes.map(col => {
                             const val = row.valeurs[col];
@@ -448,9 +467,9 @@ export default function CorrectionManuelle() {
                                 key={col}
                                 onClick={() => selectValeur(row.ligne, col, val)}
                                 style={{
-                                  padding: "7px 14px", border: "1px solid #E2E5EA", textAlign: "right", whiteSpace: "nowrap",
-                                  fontVariantNumeric: "tabular-nums", cursor: "pointer",
-                                  background: isSelected ? "#FDE8E8" : isCorrected ? ACCENT_BG : "#fff",
+                                  padding: "7px 14px", border: EXCEL_BORDER, textAlign: "center", whiteSpace: "nowrap",
+                                  color: EXCEL_TEXT, cursor: "pointer",
+                                  background: isSelected ? "#FDE8E8" : isCorrected ? ACCENT_BG : zebra ? EXCEL_ZEBRA : "#fff",
                                   outline: isSelected ? `2px solid ${BAD}` : "none", outlineOffset: -2,
                                 }}
                               >
