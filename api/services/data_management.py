@@ -28,7 +28,7 @@ from extraction.annexe13_kpi_extractor import (
 from extraction.full_table_extractor import (
     locate_and_extract_full_table, relaxed_is_annexe13_page, relaxed_is_annexe12_page,
 )
-from extraction.annexe13_pipeline import normalize_table, CANONICAL_ROWS, derive_column_groups
+from extraction.annexe13_pipeline import normalize_table, CANONICAL_ROWS, CANONICAL_COLUMNS, derive_column_groups
 from extraction.annexe12_kpi_extractor import (
     _is_target_page as _is_annexe12_page,
     _RACCORDEMENT_RE as _ANNEXE12_RACCORDEMENT_RE,
@@ -420,6 +420,24 @@ def get_document_grid(conn, code, annee, tableau):
         "colonnes": colonnes,
         "lignes": [{"ligne": ligne, "valeurs": valeurs} for ligne, valeurs in ordered],
     }
+
+
+def get_referentiel(tableau):
+    """Noms canoniques de ligne/colonne déjà définis pour la normalisation
+    (voir extraction/annexe13_pipeline.py, annexe12_pipeline.py) — sert à
+    peupler le menu déroulant de la page de correction manuelle quand
+    l'utilisateur corrige un NOM de ligne/colonne plutôt qu'une valeur : on
+    ne laisse choisir que des libellés déjà reconnus par le pipeline, jamais
+    une saisie libre qui échapperait à la normalisation. `colonnes` est
+    volontairement le même référentiel partagé pour les deux annexes (Non-Vie
+    et Vie, voir le commentaire sur CANONICAL_COLUMNS) — seules les lignes
+    diffèrent par tableau. Aucun référentiel pour 'bilan' : structure encore
+    hors normalisation (retourne des listes vides)."""
+    if tableau == "annexe13":
+        return {"lignes": CANONICAL_ROWS, "colonnes": CANONICAL_COLUMNS}
+    if tableau == "annexe12":
+        return {"lignes": CANONICAL_ROWS_VIE, "colonnes": CANONICAL_COLUMNS}
+    return {"lignes": [], "colonnes": []}
 
 
 def _raw_tableaux_for_groups(group_keys):

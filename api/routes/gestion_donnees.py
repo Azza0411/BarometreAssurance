@@ -19,7 +19,7 @@ from database.repository import get_connection
 from api.services.data_management import (
     list_documents_for_ui, get_local_pdf_path_for_document,
     get_filter_options, build_flexible_export_xlsx, get_reliability_stats,
-    get_document_grid,
+    get_document_grid, get_referentiel,
 )
 from api.services import tableau_pipeline_service
 
@@ -258,3 +258,14 @@ def cellules():
     if grille is None:
         return jsonify({"error": "Aucun document CMF pour cette société/année"}), 404
     return jsonify(grille)
+
+
+@bp.route("/api/gestion-donnees/referentiel")
+def referentiel():
+    """Noms de ligne/colonne canoniques pour un tableau — alimente le menu
+    déroulant de correction d'un NOM (par opposition à une valeur) sur la
+    page de correction manuelle."""
+    tableau = request.args.get("tableau")
+    if not tableau:
+        return jsonify({"error": "Paramètre 'tableau' requis"}), 400
+    return jsonify(get_referentiel(tableau))
