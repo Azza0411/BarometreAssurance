@@ -229,36 +229,33 @@ function FiabiliteBar() {
   );
 }
 
-/* ═══════════════════════════ Onglets de source (logos CMF / CGA / FTUSA) ═══════════════════════════ */
-function SourceTabs({ counts, active, onChange }) {
+/* ═══════════════════════════ Portée : Source + Année, en tête de la console ═══════════════════════════
+   Les deux axes qui s'appliquent presque toujours et changent rarement en
+   cours de session (quelle source, quelle période) vivent dans une barre
+   fixe tout en haut — avant les filtres plus étroits (Entreprise, Tableau)
+   qui n'existent que pour une source donnée et vivent juste au-dessus des
+   résultats qu'ils affectent (divulgation progressive : on ne montre que ce
+   qui est pertinent maintenant). */
+function SourceSwitch({ counts, active, onChange }) {
   return (
-    <div style={{ display: "flex", gap: 10 }}>
+    <div style={{ display: "flex", gap: 4, background: "#F3F4F8", borderRadius: 12, padding: 4 }}>
       {SOURCES.map(s => {
         const isActive = s.key === active;
         return (
-          <button
-            key={s.key}
-            onClick={() => onChange(s.key)}
-            style={{
-              display: "flex", alignItems: "center", gap: 10, padding: "10px 18px",
-              borderRadius: 12, cursor: "pointer", flex: 1, minWidth: 0,
-              border: `1.5px solid ${isActive ? ACCENT : BORDER}`,
-              background: isActive ? ACCENT_BG : "#fff",
-              boxShadow: isActive ? "0 2px 8px rgba(15,110,86,0.12)" : "none",
-              transition: "background .12s, border-color .12s",
-            }}
-          >
+          <button key={s.key} onClick={() => onChange(s.key)} style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "7px 14px 7px 8px",
+            border: "none", borderRadius: 9, cursor: "pointer", background: isActive ? "#fff" : "transparent",
+            boxShadow: isActive ? "0 2px 8px rgba(0,0,0,0.06)" : "none", transition: "background .12s",
+          }}>
             <span style={{
-              width: 34, height: 34, borderRadius: 8, background: "#fff",
+              width: 22, height: 22, borderRadius: 6, background: "#fff",
               border: `1px solid ${BORDER}`, display: "flex", alignItems: "center",
               justifyContent: "center", flexShrink: 0, overflow: "hidden",
             }}>
-              <img src={s.logo} alt={s.label} style={{ maxWidth: 26, maxHeight: 26, objectFit: "contain" }} />
+              <img src={s.logo} alt="" style={{ maxWidth: 17, maxHeight: 17, objectFit: "contain" }} />
             </span>
-            <span style={{ textAlign: "left", minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: isActive ? ACCENT : DARK }}>{s.label}</div>
-              <div style={{ fontSize: 10.5, color: MUTED }}>{counts?.[s.key] ?? 0} document(s)</div>
-            </span>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: DARK }}>{s.label}</span>
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: isActive ? ACCENT : MUTED }}>{counts?.[s.key] ?? 0}</span>
           </button>
         );
       })}
@@ -266,9 +263,34 @@ function SourceTabs({ counts, active, onChange }) {
   );
 }
 
-/* ═══════════════════════════ Filtre Entreprise (logos priorisés) ═══════════════════════════ */
-function EntrepriseSelect({ societes, selected, onSelect }) {
+function YearScroll({ options, selected, onToggle }) {
+  return (
+    <div style={{ display: "flex", gap: 6, overflowX: "auto", flex: 1, minWidth: 0, paddingBottom: 2 }}>
+      {options.map(a => {
+        const isSel = selected.has(a);
+        return (
+          <button key={a} onClick={() => onToggle(a)} style={{
+            flexShrink: 0, padding: "6px 13px", borderRadius: 20, fontSize: 12, fontWeight: 700,
+            cursor: "pointer", border: `1.5px solid ${isSel ? ACCENT : BORDER}`,
+            background: isSel ? ACCENT_BG : "#fff", color: isSel ? ACCENT : DARK,
+            fontVariantNumeric: "tabular-nums", transition: "background .12s, border-color .12s",
+          }}>
+            {a}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ═══════════════════════════ Filtre Entreprise — combo multi-sélection ═══════════════════════════
+   Recherche + sélection multiple (cumuler plusieurs sociétés dans un même
+   export), les sociétés choisies apparaissent en puces avec leur logo à
+   l'intérieur du champ — une seule ligne compacte plutôt qu'une liste
+   verticale qui pousserait le reste de la page vers le bas. */
+function EntrepriseCombo({ societes, selected, onToggle, onRemove }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const ref = useRef(null);
 
   useEffect(() => {
@@ -277,51 +299,68 @@ function EntrepriseSelect({ societes, selected, onSelect }) {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const selectedLogo = selected ? getLogoSrc(selected.code) : null;
+  const filteredOptions = useMemo(() => {
+    const q = query.toLowerCase();
+    if (!q) return societes;
+    return societes.filter(s => (s.nom ?? "").toLowerCase().includes(q) || s.code.toLowerCase().includes(q));
+  }, [societes, query]);
 
   return (
-    <div ref={ref} style={{ position: "relative", flex: "1 1 220px", minWidth: 200 }}>
+    <div ref={ref} style={{ position: "relative", flex: "1 1 340px", minWidth: 260 }}>
       <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 5 }}>
         Entreprise
       </label>
-      <button type="button" onClick={() => setOpen(o => !o)} style={{
-        width: "100%", display: "flex", alignItems: "center", gap: 8, textAlign: "left",
-        background: "#fff", border: `1px solid ${open ? ACCENT : BORDER}`, borderRadius: 8,
-        padding: "6px 10px", cursor: "pointer", font: "inherit",
-      }}>
-        <span style={{
-          width: 24, height: 24, borderRadius: 6, background: "#F8F9FC", flexShrink: 0,
-          display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-          border: `1px solid ${BORDER}`,
-        }}>
-          {selectedLogo
-            ? <img src={selectedLogo} alt="" style={{ maxWidth: 20, maxHeight: 20, objectFit: "contain" }} />
-            : <span style={{ fontSize: 9, fontWeight: 800, color: MUTED }}>TN</span>}
-        </span>
-        <span style={{ fontSize: 12.5, color: selected ? DARK : "#9CA3AF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-          {selected ? (selected.nom || selected.code) : "Toutes les entreprises"}
-        </span>
-        <span style={{ fontSize: 9, color: MUTED, transform: open ? "rotate(180deg)" : "none" }}>▾</span>
-      </button>
+      <div
+        onClick={() => setOpen(true)}
+        style={{
+          display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", padding: "5px 8px",
+          border: `1px solid ${open ? ACCENT : BORDER}`, borderRadius: 8, background: "#fff", cursor: "text",
+        }}
+      >
+        {[...selected].map(code => {
+          const s = societes.find(x => x.code === code);
+          const logo = getLogoSrc(code);
+          return (
+            <span key={code} style={{
+              display: "flex", alignItems: "center", gap: 6, background: ACCENT_BG, color: ACCENT,
+              fontSize: 11.5, fontWeight: 700, padding: "3px 5px 3px 6px", borderRadius: 20,
+            }}>
+              <span style={{
+                width: 16, height: 16, borderRadius: 4, background: "#fff", flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+              }}>
+                {logo ? <img src={logo} alt="" style={{ maxWidth: 13, maxHeight: 13, objectFit: "contain" }} /> : null}
+              </span>
+              {s?.nom ?? code}
+              <button onClick={e => { e.stopPropagation(); onRemove(code); }} style={{
+                border: "none", background: "rgba(0,0,0,.08)", color: "inherit", width: 14, height: 14,
+                borderRadius: "50%", fontSize: 9, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+              }}>×</button>
+            </span>
+          );
+        })}
+        <input
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder={selected.size ? "Ajouter…" : "Toutes les entreprises"}
+          style={{ flex: 1, minWidth: 100, border: "none", outline: "none", fontSize: 12.5, padding: "3px 4px", font: "inherit" }}
+        />
+      </div>
 
       {open && (
         <div style={{
           position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, zIndex: 30,
           background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 10,
-          boxShadow: "0 8px 22px rgba(0,0,0,.1)", maxHeight: 280, overflowY: "auto", padding: 6,
+          boxShadow: "0 8px 22px rgba(0,0,0,.1)", maxHeight: 240, overflowY: "auto", padding: 6,
         }}>
-          <button onClick={() => { onSelect(null); setOpen(false); }} style={{
-            display: "flex", alignItems: "center", width: "100%", gap: 8, padding: "7px 8px",
-            border: "none", background: !selected ? "#F8F9FC" : "transparent", borderRadius: 8,
-            cursor: "pointer", fontSize: 12.5, fontWeight: 700, color: DARK, textAlign: "left",
-          }}>
-            Toutes les entreprises
-          </button>
-          {societes.map(s => {
+          {filteredOptions.length === 0 ? (
+            <div style={{ padding: "8px 8px", fontSize: 12, color: MUTED }}>Aucune correspondance.</div>
+          ) : filteredOptions.map(s => {
             const logo = getLogoSrc(s.code);
-            const isSel = selected?.code === s.code;
+            const isSel = selected.has(s.code);
             return (
-              <button key={s.code} onClick={() => { onSelect(s); setOpen(false); }} style={{
+              <button key={s.code} onClick={() => { onToggle(s.code); setQuery(""); }} style={{
                 display: "flex", alignItems: "center", width: "100%", gap: 10, padding: "7px 8px",
                 border: "none", background: isSel ? ACCENT_BG : "transparent", borderRadius: 8,
                 cursor: "pointer", textAlign: "left",
@@ -329,13 +368,13 @@ function EntrepriseSelect({ societes, selected, onSelect }) {
                 onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = "#F8F9FC"; }}
                 onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = "transparent"; }}>
                 <span style={{
-                  width: 26, height: 26, borderRadius: 6, background: "#fff", flexShrink: 0,
+                  width: 22, height: 22, borderRadius: 6, background: "#fff", flexShrink: 0,
                   display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
                   border: `1px solid ${BORDER}`,
                 }}>
                   {logo
-                    ? <img src={logo} alt="" style={{ maxWidth: 21, maxHeight: 21, objectFit: "contain" }} />
-                    : <span style={{ fontSize: 9, fontWeight: 800, color: MUTED }}>{s.code.slice(0, 2)}</span>}
+                    ? <img src={logo} alt="" style={{ maxWidth: 17, maxHeight: 17, objectFit: "contain" }} />
+                    : <span style={{ fontSize: 8, fontWeight: 800, color: MUTED }}>{s.code.slice(0, 2)}</span>}
                 </span>
                 <span style={{ fontSize: 12.5, fontWeight: isSel ? 700 : 500, color: DARK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {s.nom || s.code}
@@ -349,21 +388,21 @@ function EntrepriseSelect({ societes, selected, onSelect }) {
   );
 }
 
-/* ═══════════════════════════ Filtres à puces (Année / Tableau) ═══════════════════════════ */
-function ChipToggleGroup({ label, options, selected, onToggle }) {
+/* ═══════════════════════════ Filtre Tableau — puces multi-sélection ═══════════════════════════ */
+function TableauChips({ options, selected, onToggle }) {
   return (
-    <div style={{ flex: "1 1 260px", minWidth: 220 }}>
+    <div style={{ flex: "0 0 auto" }}>
       <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 5 }}>
-        {label}
+        Tableau
       </label>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {options.map(o => {
           const isSel = selected.has(o.value);
           return (
             <button key={o.value} onClick={() => onToggle(o.value)} style={{
-              padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: "pointer",
+              padding: "6px 13px", borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: "pointer",
               border: `1.5px solid ${isSel ? ACCENT : BORDER}`,
-              background: isSel ? ACCENT : "#fff", color: isSel ? "#fff" : DARK,
+              background: isSel ? ACCENT_BG : "#fff", color: isSel ? ACCENT : DARK,
               transition: "background .12s",
             }}>
               {o.label}
@@ -375,16 +414,17 @@ function ChipToggleGroup({ label, options, selected, onToggle }) {
   );
 }
 
-/* ═══════════════════════════ Documents (traitement visuel, une seule page) ═══════════════════════════ */
-function DocumentsPanel() {
+/* ═══════════════════════════ Documents & extraction (une seule console) ═══════════════════════════ */
+function DocumentsConsole() {
   const [docs, setDocs] = useState(null);
   const [opts, setOpts] = useState(null);
   const [source, setSource] = useState("CMF");
-  const [entreprise, setEntreprise] = useState(null);
+  const [entreprises, setEntreprises] = useState(new Set());
   const [annees, setAnnees] = useState(new Set());
   const [tableaux, setTableaux] = useState(new Set());
-  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportErreur, setExportErreur] = useState(null);
 
   useEffect(() => {
     fetch(`${API}/api/gestion-donnees/documents`).then(r => r.json()).then(setDocs).catch(() => setDocs([]));
@@ -402,100 +442,148 @@ function DocumentsPanel() {
     () => [...new Set(sourceDocs.map(d => d.annee))].sort((a, b) => b - a),
     [sourceDocs],
   );
-  const tableauOptions = opts?.tableaux ?? [];
+  const tableauOptions = useMemo(() => opts?.tableaux ?? [], [opts]);
 
-  // Les filtres Entreprise/Tableau n'existent que pour CMF : CGA/FTUSA sont
-  // des sources sectorielles, sans société associée par document (voir
-  // database/repository.py::list_all_documents) — les cacher plutôt que de
-  // les afficher désactivés économise de l'espace pour rien d'utilisable.
-  const showEntrepriseFiltre = source === "CMF";
-  const showTableauFiltre = source === "CMF";
+  // Les filtres Entreprise/Tableau — et l'export Excel, qui s'appuie sur les
+  // mêmes groupes de tableaux CMF (voir api/services/data_management.py::
+  // TABLEAU_GROUPS, tous filtrés `WHERE s.nom = 'CMF'`) — n'existent que pour
+  // CMF : CGA/FTUSA sont des sources sectorielles, sans société associée par
+  // document (voir database/repository.py::list_all_documents).
+  const isCmf = source === "CMF";
 
-  useEffect(() => { setEntreprise(null); setTableaux(new Set()); setAnnees(new Set()); setSearch(""); setPage(1); }, [source]);
+  useEffect(() => { setEntreprises(new Set()); setTableaux(new Set()); setAnnees(new Set()); setPage(1); }, [source]);
 
-  const toggleAnnee = (a) => setAnnees(prev => {
+  const toggleIn = (setter) => (value) => setter(prev => {
     const next = new Set(prev);
-    next.has(a) ? next.delete(a) : next.add(a);
+    next.has(value) ? next.delete(value) : next.add(value);
     return next;
   });
-  const toggleTableau = (t) => setTableaux(prev => {
-    const next = new Set(prev);
-    next.has(t) ? next.delete(t) : next.add(t);
-    return next;
-  });
+  const toggleAnnee = toggleIn(setAnnees);
+  const toggleTableau = toggleIn(setTableaux);
+  const toggleEntreprise = toggleIn(setEntreprises);
+  const removeEntreprise = (code) => setEntreprises(prev => { const n = new Set(prev); n.delete(code); return n; });
 
   const filtered = useMemo(() => sourceDocs
-    .filter(d => !entreprise || d.code === entreprise.code)
+    .filter(d => entreprises.size === 0 || (d.code && entreprises.has(d.code)))
     .filter(d => annees.size === 0 || annees.has(d.annee))
     .filter(d => tableaux.size === 0 || (d.code && [...tableaux].some(t => (opts?.societes_par_tableau?.[t] ?? []).includes(d.code))))
-    .filter(d => !search || `${d.code ?? ""} ${d.nom_entreprise ?? ""} ${d.nom_pdf}`.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => b.annee - a.annee),
-  [sourceDocs, entreprise, annees, tableaux, opts, search]);
+  [sourceDocs, entreprises, annees, tableaux, opts]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageSafe = Math.min(page, totalPages);
   const pageRows = filtered.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE);
 
-  const filtresActifs = (entreprise ? 1 : 0) + annees.size + tableaux.size;
-  const reinitialiser = () => { setEntreprise(null); setAnnees(new Set()); setTableaux(new Set()); setSearch(""); setPage(1); };
+  const tags = useMemo(() => {
+    const t = [];
+    entreprises.forEach(code => t.push({ key: `e-${code}`, label: opts?.societes?.find(s => s.code === code)?.nom ?? code, clear: () => removeEntreprise(code) }));
+    tableaux.forEach(k => t.push({ key: `t-${k}`, label: tableauOptions.find(o => o.key === k)?.label.split(" — ")[0] ?? k, clear: () => toggleTableau(k) }));
+    annees.forEach(a => t.push({ key: `a-${a}`, label: String(a), clear: () => toggleAnnee(a) }));
+    return t;
+  }, [entreprises, tableaux, annees, opts, tableauOptions]);
+
+  // Génère l'export via fetch (au lieu d'un <a href> nu) pour pouvoir
+  // afficher un indicateur de chargement — une génération large peut
+  // prendre jusqu'à ~1-2 minutes (plafond d'extraction live côté serveur).
+  // Le téléchargement lui-même est déclenché en JS une fois le fichier reçu
+  // (lien blob synthétique, jamais visible de l'utilisateur).
+  const genererExport = () => {
+    if (!isCmf) return;
+    setExportErreur(null);
+    setExportLoading(true);
+    const p = new URLSearchParams();
+    tableaux.forEach(t => p.append("tableau", t));
+    entreprises.forEach(s => p.append("societe", s));
+    annees.forEach(a => p.append("annee", a));
+    fetch(`${API}/api/gestion-donnees/export.xlsx?${p.toString()}`)
+      .then(async r => {
+        if (!r.ok) throw new Error("echec");
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "Export_donnees.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      })
+      .catch(() => setExportErreur("Échec de la génération de l'export."))
+      .finally(() => setExportLoading(false));
+  };
 
   return (
-    <Card>
-      <div style={{ marginBottom: 18 }}>
-        <h2 style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 800, color: DARK }}>Documents collectés</h2>
-        <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>
-          Sélectionnez une source puis affinez par entreprise, année ou tableau.
-        </p>
+    <Card style={{ padding: 0 }}>
+      <div style={{ padding: "18px 24px", display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 10, fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".5px", flexShrink: 0 }}>Source</span>
+          <SourceSwitch counts={counts} active={source} onChange={setSource} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 220 }}>
+          <span style={{ fontSize: 10, fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".5px", flexShrink: 0 }}>Année</span>
+          <YearScroll options={anneesDisponibles} selected={annees} onToggle={a => { toggleAnnee(a); setPage(1); }} />
+        </div>
       </div>
 
-      <SourceTabs counts={counts} active={source} onChange={setSource} />
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-end", margin: "18px 0 6px" }}>
-        {showEntrepriseFiltre && (
-          <EntrepriseSelect
+      {isCmf ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start", padding: "16px 24px", borderTop: `1px solid ${BORDER}` }}>
+          <EntrepriseCombo
             societes={opts?.societes ?? []}
-            selected={entreprise}
-            onSelect={s => { setEntreprise(s); setPage(1); }}
+            selected={entreprises}
+            onToggle={code => { toggleEntreprise(code); setPage(1); }}
+            onRemove={code => { removeEntreprise(code); setPage(1); }}
           />
-        )}
-        <div onClick={() => setPage(1)}>
-          <ChipToggleGroup
-            label="Année"
-            options={anneesDisponibles.map(a => ({ value: a, label: String(a) }))}
-            selected={annees} onToggle={a => { toggleAnnee(a); setPage(1); }}
+          <TableauChips
+            options={tableauOptions.map(t => ({ value: t.key, label: t.label.split(" — ")[0] }))}
+            selected={tableaux} onToggle={t => { toggleTableau(t); setPage(1); }}
           />
         </div>
-        {showTableauFiltre && (
-          <div onClick={() => setPage(1)}>
-            <ChipToggleGroup
-              label="Tableau"
-              options={tableauOptions.map(t => ({ value: t.key, label: t.label.split(" — ")[0] }))}
-              selected={tableaux} onToggle={t => { toggleTableau(t); setPage(1); }}
-            />
-          </div>
-        )}
-        <div style={{ flex: "1 1 200px", minWidth: 180 }}>
-          <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 5 }}>
-            Recherche
-          </label>
-          <input
-            placeholder="Fichier, code…"
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 12, width: "100%" }}
-          />
+      ) : (
+        <p style={{ margin: 0, padding: "12px 24px", fontSize: 11.5, color: MUTED, borderTop: `1px solid ${BORDER}` }}>
+          Source sectorielle : sans société ni tableau associé — seule l'année filtre les documents.
+        </p>
+      )}
+
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap",
+        background: "#F8F9FC", padding: "11px 24px", borderTop: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
+          {tags.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {tags.map(t => (
+                <span key={t.key} style={{
+                  display: "flex", alignItems: "center", gap: 6, background: ACCENT_BG, color: ACCENT,
+                  fontSize: 11.5, fontWeight: 700, padding: "4px 6px 4px 10px", borderRadius: 20, whiteSpace: "nowrap",
+                }}>
+                  {t.label}
+                  <button onClick={t.clear} style={{
+                    border: "none", background: "rgba(0,0,0,.08)", color: "inherit", width: 15, height: 15,
+                    borderRadius: "50%", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
+            <b style={{ color: DARK, fontWeight: 800 }}>{filtered.length}</b> document(s) correspondent
+          </span>
         </div>
-        {filtresActifs > 0 && (
-          <button onClick={reinitialiser} style={{
-            border: "none", background: "none", color: ACCENT, fontWeight: 700, fontSize: 12,
-            cursor: "pointer", padding: "8px 4px",
-          }}>
-            Réinitialiser ({filtresActifs})
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+          {exportErreur && <span style={{ fontSize: 11.5, color: "#C8102E", fontWeight: 600 }}>{exportErreur}</span>}
+          <span style={{ fontSize: 11, color: MUTED }}>
+            {isCmf ? "Une feuille par société, un tableau par annexe sélectionnée" : "Consultation PDF uniquement pour cette source"}
+          </span>
+          <button onClick={genererExport} disabled={!isCmf || exportLoading} style={actionBtnStyle(!isCmf || exportLoading)}
+            onMouseEnter={e => isCmf && !exportLoading && (e.currentTarget.style.background = ACCENT_BG)}
+            onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
+            {exportLoading && <Spinner />}
+            {exportLoading ? "Génération…" : "Générer l'Excel"}
           </button>
-        )}
+        </div>
       </div>
 
-      <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden", marginTop: 12 }}>
+      <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
           <thead>
             <tr style={{ background: "#F8F9FC" }}>
@@ -551,8 +639,8 @@ function DocumentsPanel() {
         </table>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, fontSize: 12, color: MUTED }}>
-        <span>{filtered.length} document(s) · page {pageSafe}/{totalPages}</span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 24px 18px", fontSize: 12, color: MUTED }}>
+        <span>page {pageSafe}/{totalPages}</span>
         <span style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pageSafe <= 1}
             style={{ border: `1px solid ${BORDER}`, background: "#fff", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: pageSafe <= 1 ? "not-allowed" : "pointer", opacity: pageSafe <= 1 ? .5 : 1 }}>
@@ -579,7 +667,7 @@ export default function GestionDonnees() {
           </div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "white" }}>Gestion de base de données</h1>
           <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "rgba(255,255,255,.45)" }}>
-            Accès à toute la donnée collectée par source — CMF, CGA, FTUSA — filtrée par entreprise, année ou tableau.
+            La portée (source, période) en tête ; les filtres plus étroits et l'export Excel juste au-dessus des documents qu'ils affectent.
           </p>
         </div>
       </div>
@@ -587,7 +675,7 @@ export default function GestionDonnees() {
       <div style={{ maxWidth: 1220, margin: "0 auto", padding: "24px 32px", display: "flex", flexDirection: "column", gap: 16 }}>
         <CollecteBar />
         <FiabiliteBar />
-        <DocumentsPanel />
+        <DocumentsConsole />
       </div>
     </div>
   );
