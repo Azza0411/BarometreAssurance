@@ -289,16 +289,16 @@ function YearGrid({ options, selected, onToggle }) {
    un nom dans une liste. Grille à colonnes égales (comme là-bas) plutôt que
    flex-wrap : les logos ont des largeurs très variables et un flex-wrap
    produirait des lignes en escalier au retour à la ligne. */
-function EntrepriseLogoGrid({ societes, selected, onToggle, disabledSet, onReset }) {
+function EntrepriseLogoGrid({ societes, selected, onToggle, disabledSet, onReset, hasExclusions }) {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
         <label style={{ fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px" }}>
           Entreprise
         </label>
-        {selected.size > 0 && (
+        {hasExclusions && (
           <button onClick={onReset} style={{ border: "none", background: "none", color: ACCENT, fontWeight: 700, fontSize: 11, cursor: "pointer", padding: 0 }}>
-            Tout désélectionner
+            Tout resélectionner
           </button>
         )}
       </div>
@@ -366,7 +366,12 @@ function TableauChips({ options, selected, onToggle }) {
    Fiabilité) — cette console n'en garde plus l'état, elle le reçoit. */
 function DocumentsConsole({ docs, opts, source }) {
   const navigate = useNavigate();
-  const [entreprises, setEntreprises] = useState(new Set());
+  // Toutes les entreprises sont sélectionnées PAR DÉFAUT (retour utilisateur
+  // explicite) — on suit donc les EXCLUSIONS plutôt que les inclusions : un
+  // Set vide veut dire "personne d'exclu" = tout le monde sélectionné, sans
+  // avoir à peupler explicitement la liste complète (et sans dépendre du
+  // chargement asynchrone de `opts` pour connaître cette liste).
+  const [entreprisesExclues, setEntreprisesExclues] = useState(new Set());
   const [annees, setAnnees] = useState(new Set());
   const [tableaux, setTableaux] = useState(new Set());
   const [page, setPage] = useState(1);
@@ -394,14 +399,16 @@ function DocumentsConsole({ docs, opts, source }) {
     return new Set((opts.societes ?? []).map(s => s.code).filter(c => !eligible.has(c)));
   }, [opts, tableaux]);
 
-  // Une société déjà sélectionnée qui devient inéligible (l'utilisateur
-  // change le tableau après coup) est retirée automatiquement de la
-  // sélection plutôt que laissée cochée mais grisée.
+  // Une société sélectionnée qui devient inéligible (l'utilisateur change
+  // le tableau après coup) est exclue automatiquement plutôt que laissée
+  // visuellement active mais grisée.
   useEffect(() => {
     if (entreprisesDisabled.size === 0) return;
-    setEntreprises(prev => {
-      const next = new Set([...prev].filter(c => !entreprisesDisabled.has(c)));
-      return next.size === prev.size ? prev : next;
+    setEntreprisesExclues(prev => {
+      const next = new Set(prev);
+      let changed = false;
+      entreprisesDisabled.forEach(c => { if (!next.has(c)) { next.add(c); changed = true; } });
+      return changed ? next : prev;
     });
   }, [entreprisesDisabled]);
 
@@ -421,6 +428,14 @@ function DocumentsConsole({ docs, opts, source }) {
   // document (voir database/repository.py::list_all_documents).
   const isCmf = source === "CMF";
 
+  // Sociétés effectivement sélectionnées (= tout le monde moins les
+  // exclusions) — dérivé, jamais stocké séparément, pour ne pas avoir deux
+  // sources de vérité à synchroniser.
+  const societesSelectionnees = useMemo(
+    () => (opts?.societes ?? []).map(s => s.code).filter(c => !entreprisesExclues.has(c)),
+    [opts, entreprisesExclues],
+  );
+
   // Cible de "Corriger les données Excel" dans la barre résumé — n'a de sens
   // que pour UNE société précise (Correction manuelle prend un document, pas
   // une sélection multiple) : actif seulement quand le filtre Entreprise en
@@ -428,16 +443,16 @@ function DocumentsConsole({ docs, opts, source }) {
   // a qu'un sélectionné, sinon un choix par défaut raisonnable (le plus
   // récent disponible / le premier tableau où la société a des données).
   const correctionCible = useMemo(() => {
-    if (!isCmf || entreprises.size !== 1) return null;
-    const code = [...entreprises][0];
+    if (!isCmf || societesSelectionnees.length !== 1) return null;
+    const code = societesSelectionnees[0];
     const anneesCode = sourceDocs.filter(d => d.code === code).map(d => d.annee).sort((a, b) => b - a);
     const annee = annees.size === 1 ? [...annees][0] : anneesCode[0];
     if (!annee) return null;
     const tableauCible = tableaux.size === 1 ? [...tableaux][0] : defaultTableauFor(code);
     return { code, annee, tableau: tableauCible };
-  }, [isCmf, entreprises, annees, tableaux, sourceDocs, tableauOptions, opts]);
+  }, [isCmf, societesSelectionnees, annees, tableaux, sourceDocs, tableauOptions, opts]);
 
-  useEffect(() => { setEntreprises(new Set()); setTableaux(new Set()); setAnnees(new Set()); setPage(1); }, [source]);
+  useEffect(() => { setEntreprisesExclues(new Set()); setTableaux(new Set()); setAnnees(new Set()); setPage(1); }, [source]);
 
   const toggleIn = (setter) => (value) => setter(prev => {
     const next = new Set(prev);
@@ -446,15 +461,14 @@ function DocumentsConsole({ docs, opts, source }) {
   });
   const toggleAnnee = toggleIn(setAnnees);
   const toggleTableau = toggleIn(setTableaux);
-  const toggleEntreprise = toggleIn(setEntreprises);
-  const removeEntreprise = (code) => setEntreprises(prev => { const n = new Set(prev); n.delete(code); return n; });
+  const toggleEntreprise = toggleIn(setEntreprisesExclues);
 
   const filtered = useMemo(() => sourceDocs
-    .filter(d => entreprises.size === 0 || (d.code && entreprises.has(d.code)))
+    .filter(d => !d.code || !entreprisesExclues.has(d.code))
     .filter(d => annees.size === 0 || annees.has(d.annee))
     .filter(d => tableaux.size === 0 || (d.code && [...tableaux].some(t => (opts?.societes_par_tableau?.[t] ?? []).includes(d.code))))
     .sort((a, b) => b.annee - a.annee),
-  [sourceDocs, entreprises, annees, tableaux, opts]);
+  [sourceDocs, entreprisesExclues, annees, tableaux, opts]);
 
   // Regroupé par société — retour utilisateur : une ligne par document
   // noyait les 10 dernières années d'une même compagnie dans une longue
@@ -480,11 +494,14 @@ function DocumentsConsole({ docs, opts, source }) {
 
   const tags = useMemo(() => {
     const t = [];
-    entreprises.forEach(code => t.push({ key: `e-${code}`, label: opts?.societes?.find(s => s.code === code)?.nom ?? code, clear: () => removeEntreprise(code) }));
+    // Une puce par société EXCLUE (pas sélectionnée) — cohérent avec "tout
+    // le monde est sélectionné par défaut, on retire au clic" : la retirer
+    // ici revient à réintégrer cette société dans la sélection.
+    entreprisesExclues.forEach(code => t.push({ key: `e-${code}`, label: `Sans ${opts?.societes?.find(s => s.code === code)?.nom ?? code}`, clear: () => toggleEntreprise(code) }));
     tableaux.forEach(k => t.push({ key: `t-${k}`, label: tableauOptions.find(o => o.key === k)?.label.split(" — ")[0] ?? k, clear: () => toggleTableau(k) }));
     annees.forEach(a => t.push({ key: `a-${a}`, label: String(a), clear: () => toggleAnnee(a) }));
     return t;
-  }, [entreprises, tableaux, annees, opts, tableauOptions]);
+  }, [entreprisesExclues, tableaux, annees, opts, tableauOptions]);
 
   // Génère l'export via fetch (au lieu d'un <a href> nu) pour pouvoir
   // afficher un indicateur de chargement — une génération large peut
@@ -497,7 +514,10 @@ function DocumentsConsole({ docs, opts, source }) {
     setExportLoading(true);
     const p = new URLSearchParams();
     tableaux.forEach(t => p.append("tableau", t));
-    entreprises.forEach(s => p.append("societe", s));
+    // Rien n'est ajouté quand personne n'est exclu : le backend traite
+    // l'absence de paramètre "societe" comme "toutes", exactement le
+    // comportement par défaut voulu.
+    if (entreprisesExclues.size > 0) societesSelectionnees.forEach(s => p.append("societe", s));
     annees.forEach(a => p.append("annee", a));
     fetch(`${API}/api/gestion-donnees/export.xlsx?${p.toString()}`)
       .then(async r => {
@@ -539,9 +559,10 @@ function DocumentsConsole({ docs, opts, source }) {
         {isCmf ? (
           <EntrepriseLogoGrid
             societes={opts?.societes ?? []}
-            selected={entreprises}
+            selected={new Set(societesSelectionnees)}
             onToggle={code => { toggleEntreprise(code); setPage(1); }}
-            onReset={() => { setEntreprises(new Set()); setPage(1); }}
+            onReset={() => { setEntreprisesExclues(new Set()); setPage(1); }}
+            hasExclusions={entreprisesExclues.size > 0}
             disabledSet={entreprisesDisabled}
           />
         ) : (
