@@ -557,18 +557,19 @@ export default function CorrectionManuelle() {
               // de taille naturelle (voir l'effet ci-dessus) et le calcul du
               // zoom ajusté restent cohérents avec le flux normal du DOM.
               // Colonne LIBELLÉ et ligne d'en-tête "gelées" (position: sticky)
-              // — comme les volets figés d'Excel : sur un grand tableau
-              // (Annexe 13, 15 colonnes × 37 lignes...), impossible de tout
-              // afficher à une taille lisible, mais on ne perd jamais de vue
-              // "quelle ligne / quelle colonne" en défilant, ligne d'en-tête
-              // et libellés restant visibles en permanence.
+              // — ligne d'en-tête gelée (comme les volets figés d'Excel) :
+              // sur un grand tableau (Annexe 13, 15 colonnes × 37 lignes...),
+              // impossible de tout afficher à une taille lisible, mais on ne
+              // perd jamais de vue "quelle colonne" en défilant verticalement.
+              // Retour utilisateur : geler aussi la colonne LIBELLÉ était
+              // inutile — défiler horizontalement suffit.
               <div ref={tableCardRef} style={{ background: "#fff", borderRadius: 4, boxShadow: "0 8px 30px rgba(0,0,0,.35)", padding: "30px 34px", flexShrink: 0, zoom }}>
                 <table style={{ borderCollapse: "collapse", fontSize: 12.5, fontFamily: "Arial, sans-serif" }}>
                   <thead>
                     <tr>
                       <th style={{
                         background: EXCEL_HEADER, color: "#fff", padding: "8px 14px", border: EXCEL_BORDER, fontWeight: 700,
-                        position: "sticky", top: 0, left: 0, zIndex: 3,
+                        position: "sticky", top: 0, zIndex: 2,
                       }}>LIBELLÉ</th>
                       {grid.colonnes.map(col => {
                         const isSel = selected?.kind === "colonne" && selected.colonne === col;
@@ -605,7 +606,6 @@ export default function CorrectionManuelle() {
                               padding: "7px 14px", border: EXCEL_BORDER, color: EXCEL_TEXT, whiteSpace: "nowrap", cursor: "pointer", textAlign: "left",
                               background: isLigneSel ? "#FDE8E8" : isLigneCorr ? ACCENT_BG : zebra ? EXCEL_ZEBRA : "#fff",
                               outline: isLigneSel ? `2px solid ${BAD}` : "none", outlineOffset: -2,
-                              position: "sticky", left: 0, zIndex: 1,
                             }}
                           >
                             {displayLigne(row.ligne).toUpperCase()}
