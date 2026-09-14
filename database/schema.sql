@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS actualites_vues (
 CREATE TABLE IF NOT EXISTS tableau_cellules (
     id            INT AUTO_INCREMENT PRIMARY KEY,
     document_id   INT NOT NULL,
-    tableau       VARCHAR(50)  NOT NULL,   -- ex: 'annexe13', 'bilan_actif'/'bilan_passif', 'ftusa_branche' (document sans societe -- voir tableau_pipeline_service_ftusa.py)
+    tableau       VARCHAR(50)  NOT NULL,   -- ex: 'annexe13', 'bilan_actif'/'bilan_passif', 'ftusa_branche'/'cga_agences' (documents sans societe -- voir tableau_pipeline_service_ftusa.py/_cga.py)
     ligne         VARCHAR(255) NOT NULL,   -- libelle NORMALISE (poste comptable canonique)
     colonne       VARCHAR(255) NOT NULL,   -- branche/colonne telle qu'extraite (varie par societe)
     colonne_ordre INT NOT NULL DEFAULT 0,
