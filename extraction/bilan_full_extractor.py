@@ -30,6 +30,7 @@ from extraction.bilan_kpi_extractor import (
     _cluster_lines, _extract_numeric_clusters, _normalizer,
     _words_with_bracket_negatives_resolved,
     ACTIF_PAGE_TITLE_RE, PASSIF_PAGE_TITLE_RE, NUMERIC_TOKEN_RE,
+    _OcrFallbackPage,
 )
 
 _ROW_CODE_RE = re.compile(r"^(AC|PA|CP)\s?(\d+)(?:,\d+)*", re.IGNORECASE)
@@ -159,14 +160,23 @@ def extract_bilan_full_grid(page, side, min_rows=5):
         return None
     lines = _cluster_lines(words)
     colonnes, header_x = _header_columns(lines, side)
-    if not colonnes:
-        # Repli si aucun en-tête n'a pu être localisé (page non conforme au
-        # gabarit attendu) : nombre de colonnes générique, valeurs affectées
-        # par ordre d'apparition (voir `_assign_columns`, header_x vide).
+    if len(colonnes) < 2:
+        # Repli si l'en-tête n'a pas pu être localisé de façon fiable (page
+        # non conforme au gabarit attendu, OU en-tête bien présente mais mal
+        # lue par l'OCR sur une page scannée — un seul jeton reconnu,
+        # ex. "Amort" seul, sur les 3-4 attendus — constaté STAR 2025 :
+        # TOUTES les valeurs de la page se retrouvaient alors assignées à
+        # cette unique colonne, `_assign_columns` n'ayant qu'une position
+        # possible). Nombre de colonnes générique, valeurs affectées par
+        # ORDRE D'APPARITION plutôt que par proximité à un en-tête peu
+        # fiable (voir `_assign_columns`, header_x vide) — dépend de l'ordre
+        # X des cellules de la ligne de données elle-même, pas de la
+        # qualité de lecture de la ligne d'en-tête.
         colonnes = (
             ["Brut", "Amortissements et provisions", "Net", "Net (N-1)"] if side == "actif"
             else ["Net", "Net (N-1)"]
         )
+        header_x = []
     n_cols = len(colonnes)
 
     lignes = {}
@@ -389,14 +399,26 @@ def extract_bilan_full_grid(page, side, min_rows=5):
 def locate_and_extract_bilan(pdf_path, side, max_pages=15):
     """Parcourt les premières pages de `pdf_path` à la recherche de la page
     Bilan Actif/Passif (`side` = 'actif' ou 'passif') et en extrait la
-    grille complète. Renvoie (numero_page_1_indexe, grille) ou (None, None)."""
+    grille complète. Renvoie (numero_page_1_indexe, grille) ou (None, None).
+
+    Chaque page est enveloppée par `_OcrFallbackPage` (déjà construit et
+    éprouvé pour l'extracteur KPI narrow — voir bilan_kpi_extractor.py, et
+    son commentaire sur STAR 2025 : Bilan Actif = page image pure, aucun
+    texte natif) : transparent tant que le texte natif de la page suffit,
+    et ne déclenche l'OCR (coûteux) QUE si `extract_text()`/`extract_words()`
+    natifs sont vides — donc sans coût sur les documents déjà natifs.
+    `_is_target_page` (repérage) ET `extract_bilan_full_grid` (extraction)
+    en profitent tous les deux sans aucune modification : ils appellent
+    seulement `page.extract_text()`/`page.extract_words()`, peu importe
+    d'où vient réellement le texte."""
     import pdfplumber
 
     with pdfplumber.open(pdf_path) as pdf:
         for i, page in enumerate(pdf.pages[:max_pages]):
-            if not _is_target_page(page, side):
+            ocr_page = _OcrFallbackPage(page)
+            if not _is_target_page(ocr_page, side):
                 continue
-            grid = extract_bilan_full_grid(page, side)
+            grid = extract_bilan_full_grid(ocr_page, side)
             if grid is not None:
                 return i + 1, grid
     return None, None

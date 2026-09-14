@@ -321,3 +321,55 @@ limitations distinctes, pas des bugs d'extraction :
   être sommé, l'autre non — ambiguïté de la donnée source, pas de
   l'extraction).
 sociétés Non-Vie/Vie conventionnelles au format standard.
+
+## 2026-09-14 — repli OCR pour les pages scannées (STAR 2025 et 24 autres documents)
+
+Retour utilisateur : STAR 2025 Bilan Actif ne fonctionnait pas. Diagnostic :
+sa page Passif (page 3) est du texte natif et s'extrait très bien (69
+cellules), mais sa page Actif (page 2, juste avant) est une **image
+scannée pure** (3 caractères natifs, 6 images) — `bilan_full_extractor.py`
+n'avait AUCUN repli OCR, contrairement à Annexe 12/13
+(`scanned_table_extractor.py`).
+
+**Solution retenue** : réutiliser `bilan_kpi_extractor._OcrFallbackPage`,
+déjà construit et éprouvé pour l'extracteur KPI narrow (son propre
+commentaire cite explicitement STAR 2025 comme cas d'usage d'origine).
+C'est une enveloppe TRANSPARENTE d'une page pdfplumber : `extract_text()`/
+`extract_words()` se comportent normalement tant que le texte natif
+suffit, et ne déclenchent l'OCR (Tesseract, coûteux) que s'il est vide —
+donc sans AUCUN coût ni risque de régression sur les documents déjà
+natifs. Simplement enveloppé chaque page dans `locate_and_extract_bilan`
+avant `_is_target_page`/`extract_bilan_full_grid` : ces deux fonctions
+n'appellent que `page.extract_text()`/`page.extract_words()`, donc
+fonctionnent SANS AUCUNE modification, qu'importe d'où vient réellement
+le texte. Non-régression vérifiée (HAYETT 2020 : résultat identique au
+bit près avant/après).
+
+**Effet de bord découvert et corrigé** : sur une page OCR très dégradée,
+`_header_columns` peut ne reconnaître QU'UN SEUL jeton d'en-tête sur les
+3-4 attendus (ex. seulement "Amort" lu, "Brut"/"Net" ratés) — avec une
+seule position d'en-tête possible, `_assign_columns` plaçait alors TOUTES
+les valeurs de la page dans cette unique colonne (constaté STAR 2025 :
+colonne unique "Amortissements et provisions" contenant les valeurs de
+Brut/Net/Net(N-1) aussi). Corrigé : le repli générique (colonnes/ordre
+d'apparition) se déclenche maintenant dès que **moins de 2** en-têtes
+sont reconnus (pas seulement 0), pas dépendant de la qualité de lecture
+de la ligne d'en-tête.
+
+**Limite non résolue** : sur une page très dégradée, certains CODES
+top-level eux-mêmes sont mal lus par l'OCR ("AC1" → "Ac" sans chiffre,
+"AC2" → "jac2") — leur sous-total de section est alors perdu (jamais
+attribué, `current_section` n'ayant jamais été ouverte), ce qui casse
+l'identité Σ sections = Total pour CES pages précises (constaté STAR
+2025 Actif : écart important, seule la section AC3 correctement identifiée
+sur les 6 attendues). Comme pour la voie OCR d'Annexe 13, la grille est
+LIVRÉE avec ses écarts VISIBLES (`tableau_validations`, statut "ecart")
+plutôt que rejetée en silence — mêmes limites de qualité OCR déjà
+acceptées ailleurs, pas une régression de cette session.
+
+**Résultat mesuré** : sur les 47 documents Bilan non-Takaful encore vides
+avant cette session, **25 côtés gagnent des données** qui n'existaient
+pas du tout avant (14 Actif + 11 Passif, dont STAR 2025 Actif, BNA 2024,
+COMAR 2016/2018, AMI 6 années, HAYETT 2018, LLOYD_VIE 2023, TUNIS_RE 2019,
+CARTE_VIE 2018...). Le reste (Takaful, format sans code, vraies pages
+absentes) reste documenté ci-dessus comme limitation distincte.
