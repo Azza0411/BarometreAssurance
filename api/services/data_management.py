@@ -219,7 +219,21 @@ TABLEAU_GROUPS = [
      ["Annexe12", "Annexe 12 - Resultat technique Vie", "Annexe 12/13"]),
     ("annexe13", "Annexe 13 — Résultat technique Non-Vie",
      ["Annexe13", "Annexe 13 - Resultat technique Non-Vie", "Annexe 12/13"]),
-    ("bilan", "Bilan (Actif / Passif)", ["Bilan"]),
+    # Actif et Passif sont deux tableaux DISTINCTS du PDF source (pages
+    # différentes, totaux propres) — deux clés séparées plutôt qu'une
+    # grille fusionnée, pour préserver cette structure côté Correction
+    # manuelle. `raws=["Bilan"]` dupliqué sur les deux : le KPI narrow
+    # historique (bilan_kpi_extractor.py, kpi_values) ne distingue pas
+    # Actif/Passif, donc les deux groupes s'appuient sur la même présence
+    # ; seule l'enrichissement `tableau_cellules` ci-dessous (tc.tableau=
+    # 'bilan_actif'/'bilan_passif') les différencie réellement.
+    # Pas de " — " dans ces deux libellés (contrairement aux groupes
+    # ci-dessus) : le frontend (CorrectionManuelle.jsx) affiche
+    # `label.split(" — ")[0]` comme texte d'onglet court — avec un tiret,
+    # "Bilan — Actif" et "Bilan — Passif" ressortiraient IDENTIQUES
+    # ("Bilan") une fois tronqués, rendant les deux onglets indistinguables.
+    ("bilan_actif", "Bilan Actif", ["Bilan"]),
+    ("bilan_passif", "Bilan Passif", ["Bilan"]),
     # "État de résultat" / "Ratios calculés (interne)" / "Présentation de la
     # société" retirés du sélecteur (2026-09-09, retour utilisateur direct)
     # — restent des libellés `tableau` réels dans kpi_values (un export
@@ -300,6 +314,25 @@ def get_filter_options(conn):
         )
         for (code,) in cur.fetchall():
             societes_par_tableau.setdefault("annexe12", set()).add(code)
+        # Bilan Actif / Passif grille complète (extraction/bilan_full_extractor.py)
+        # — même principe, deux clés séparées (voir TABLEAU_GROUPS ci-dessus) :
+        # sans ce bloc, la présence des onglets Bilan dans Correction manuelle ne
+        # reposerait que sur le KPI narrow historique (kpi_values, tableau='Bilan'),
+        # qui peut être vide alors que la grille complète existe (ou l'inverse).
+        for cle in ("bilan_actif", "bilan_passif"):
+            cur.execute(
+                """
+                SELECT DISTINCT c.code
+                FROM tableau_cellules tc
+                JOIN documents d ON d.id = tc.document_id
+                JOIN sources s ON s.id = d.source_id
+                JOIN societes c ON c.id = d.cmf_id
+                WHERE s.nom = 'CMF' AND tc.tableau = %s
+                """,
+                (cle,),
+            )
+            for (code,) in cur.fetchall():
+                societes_par_tableau.setdefault(cle, set()).add(code)
 
     # Garde-fou pour Annexe 13 : kpi_values (ancien extracteur 7-KPI) peut
     # taguer à tort une société structurellement Vie-only comme ayant un
@@ -514,7 +547,7 @@ def locate_source_page(conn, code, annee, tableau):
     le tableau n'a pas encore de pipeline de repérage dédié (bilan, pas
     encore construit), s'il n'y a aucune cellule stockée, ou si la page n'a
     pas pu être retrouvée."""
-    if tableau not in ("annexe12", "annexe13", "bilan"):
+    if tableau not in ("annexe12", "annexe13", "bilan_actif", "bilan_passif"):
         return None
     doc_id = get_document_id(conn, code, annee)
     if not doc_id:
@@ -547,7 +580,7 @@ def page_source_info(conn, code, annee, tableau):
     affiché sous l'onglet "Annexe 13" y voit à raison une incohérence s'il
     n'est pas prévenu que c'est délibéré."""
     page_num = locate_source_page(conn, code, annee, tableau)
-    if page_num is None or tableau == "bilan":
+    if page_num is None or tableau in ("bilan_actif", "bilan_passif"):
         # Le concept de page "raccordement" (Annexe 16 substituée à
         # l'Annexe 13 par branche) n'existe pas côté Bilan — jamais signalé.
         return {"page": page_num, "raccordement": False}

@@ -380,38 +380,39 @@ def _bilan_validations(grid_actif, grid_passif):
 
 def process_bilan(pdf_path):
     """Pipeline complète pour un document : localise + extrait l'Actif ET
-    le Passif (voir `locate_and_extract_bilan`), fusionne en UNE seule
-    grille (même contrat que `annexe13_pipeline.process_annexe13` :
-    {page, colonnes, lignes, validations}) pour un stockage unique sous
-    tableau='bilan' — la page Correction manuelle affiche Actif et Passif
-    comme un seul tableau plutôt que deux tableaux séparés. Renvoie None
-    si NI l'Actif NI le Passif n'ont pu être extraits (ex. pages
-    scannées/texte cassé — voir CAS_PARTICULIERS_BILAN_FULL_TABLE.md)."""
+    le Passif (voir `locate_and_extract_bilan`). Renvoie DEUX résultats
+    INDÉPENDANTS — {"actif": {...} | None, "passif": {...} | None}, chacun
+    au même contrat que `annexe13_pipeline.process_annexe13`
+    ({page, colonnes, lignes, validations}) — plutôt qu'une grille
+    fusionnée : le Bilan Actif et le Bilan Passif sont deux tableaux
+    distincts dans le PDF source (souvent des pages différentes, chacun
+    avec son propre total), stockés sous deux clés séparées
+    (tableau='bilan_actif' / 'bilan_passif') pour préserver cette
+    structure plutôt que de la masquer derrière un seul tableau combiné.
+    Renvoie None (au lieu du dict) seulement si NI l'Actif NI le Passif
+    n'ont pu être extraits (ex. pages scannées/texte cassé — voir
+    CAS_PARTICULIERS_BILAN_FULL_TABLE.md)."""
     page_actif, grid_actif = locate_and_extract_bilan(pdf_path, "actif")
     page_passif, grid_passif = locate_and_extract_bilan(pdf_path, "passif")
     if grid_actif is None and grid_passif is None:
         return None
 
-    colonnes = []
-    lignes = {}
+    validations = _bilan_validations(grid_actif, grid_passif)
+    validations_actif = [v for v in validations if v["regle_code"] == "bilan_actif_total"]
+    validations_passif = [v for v in validations if v["regle_code"] != "bilan_actif_total"]
 
-    def _merge(grid):
+    def _build(page, grid, validations_cote):
         if not grid:
-            return
-        for col in grid["colonnes"]:
-            if col not in colonnes:
-                colonnes.append(col)
+            return None
+        lignes = {}
         for code, vals in grid["lignes"].items():
             libelle = vals.get("libelle") or code
             key = f"{code} — {libelle.capitalize()}" if libelle != code else code
             lignes[key] = {c: v for c, v in vals.items() if c != "libelle"}
-
-    _merge(grid_actif)
-    _merge(grid_passif)
+        return {"page": page, "colonnes": grid["colonnes"], "lignes": lignes,
+                "validations": validations_cote}
 
     return {
-        "page": page_actif or page_passif,
-        "colonnes": colonnes,
-        "lignes": lignes,
-        "validations": _bilan_validations(grid_actif, grid_passif),
+        "actif": _build(page_actif, grid_actif, validations_actif),
+        "passif": _build(page_passif, grid_passif, validations_passif),
     }

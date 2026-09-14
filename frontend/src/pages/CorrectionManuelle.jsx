@@ -158,7 +158,7 @@ export default function CorrectionManuelle() {
   // sa page (voir api/services/data_management.py::locate_source_page,
   // mis en cache en base dès le premier repérage pour rester rapide aux
   // ouvertures suivantes). `undefined` = pas encore su, `null` = pas
-  // trouvée (tableau "bilan", pas encore de pipeline de repérage).
+  // trouvée.
   const [showPdf, setShowPdf] = useState(false);
   const [pdfPage, setPdfPage] = useState(undefined);
   // true si la page trouvée est un tableau de RACCORDEMENT (réconcilie le
@@ -423,7 +423,7 @@ export default function CorrectionManuelle() {
   }
 
   // Référentiel applicable au type sélectionné — vide (donc repli sur un
-  // champ libre) pour 'bilan', non encore normalisé.
+  // champ libre) pour 'bilan_actif'/'bilan_passif', non encore normalisés.
   const options = selected?.kind === "ligne" ? referentiel.lignes : selected?.kind === "colonne" ? referentiel.colonnes : [];
 
   return (

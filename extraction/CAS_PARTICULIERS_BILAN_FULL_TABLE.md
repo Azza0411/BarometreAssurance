@@ -228,4 +228,26 @@ demande une VOIE D'EXTRACTION SUPPLÉMENTAIRE dédiée (arabe, sans-code,
 notes-narratives) d'une ampleur comparable au travail déjà fait pour le
 cas "standard". Pas entrepris ici par manque de temps dans cette session
 — la couverture actuelle (171/223, 77%) couvre déjà la quasi-totalité des
+
+## 2026-09-14 — scission Actif / Passif en deux tableaux distincts
+
+Retour utilisateur direct : l'Actif et le Passif sont deux tableaux
+SÉPARÉS dans le PDF source (pages différentes, totaux propres), pas un
+seul tableau combiné — `process_bilan` fusionnait pourtant les deux en
+une unique grille (`tableau='bilan'`), perdant cette structure.
+
+Corrigé : `process_bilan` renvoie maintenant `{"actif": {...} | None,
+"passif": {...} | None}`, deux résultats indépendants (chacun avec sa
+propre page, ses propres colonnes, ses propres validations), stockés
+sous deux clés séparées (`bilan_actif` / `bilan_passif` — voir
+`tableau_pipeline_service_bilan.py`, `data_management.py::TABLEAU_GROUPS`
+et les allow-lists de `locate_source_page`/`page_source_info`). Deux
+onglets distincts côté Correction manuelle ("Bilan Actif" / "Bilan
+Passif") plutôt qu'un seul "Bilan (Actif/Passif)".
+
+Anciennes lignes `tableau='bilan'` purgées de `tableau_cellules` /
+`tableau_validations` / `tableau_pages`, ré-extraction complète relancée
+sur les 223 documents CMF : 158 "ok" (Actif ET Passif trouvés), 13
+"partiel" (un seul côté), 46 page introuvable, 6 PDF absent — même
+couverture globale qu'avant (171/223), juste correctement scindée.
 sociétés Non-Vie/Vie conventionnelles au format standard.
