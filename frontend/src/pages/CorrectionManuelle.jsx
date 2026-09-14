@@ -169,6 +169,45 @@ export default function CorrectionManuelle() {
   // sans ce message, voir "Annexe n°16" sous l'onglet "Annexe 13" a
   // légitimement l'air d'une erreur.
   const [pdfRaccordement, setPdfRaccordement] = useState(false);
+  // Largeur du panneau Excel (en % de la rangée Excel|PDF), réglable à la
+  // souris via le séparateur — retour utilisateur explicite : "je peux
+  // diminuer et ajuster la largeur de cet espace-là et on adapte le
+  // reste" (le PDF prend toujours le reste, jamais figé à 50/50).
+  // Persisté par viewer (localStorage) — une simple préférence d'affichage,
+  // jamais une donnée du document ; ignorée sans dégrader l'affichage si
+  // absente/invalide (fenêtre privée, stockage bloqué...).
+  const [excelPct, setExcelPct] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem("cm-excel-pct"));
+      return saved >= 20 && saved <= 80 ? saved : 50;
+    } catch { return 50; }
+  });
+  const bodyRowRef = useRef(null);
+  const resizingRef = useRef(false);
+  const livePctRef = useRef(excelPct);
+
+  const startResize = (e) => {
+    e.preventDefault();
+    const row = bodyRowRef.current;
+    if (!row) return;
+    resizingRef.current = true;
+    const onMove = (ev) => {
+      if (!resizingRef.current) return;
+      const rect = row.getBoundingClientRect();
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100;
+      const clamped = Math.min(80, Math.max(20, Math.round(pct)));
+      livePctRef.current = clamped;
+      setExcelPct(clamped);
+    };
+    const onUp = () => {
+      resizingRef.current = false;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      try { localStorage.setItem("cm-excel-pct", String(livePctRef.current)); } catch { /* ignore */ }
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
 
   // { kind: 'valeur'|'ligne'|'colonne', ligne, colonne, actuelle }
   const [selected, setSelected] = useState(null);
@@ -435,7 +474,7 @@ export default function CorrectionManuelle() {
           explicite : "l'espace consacré à l'Excel doit être comme tout à
           l'heure". */}
       <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: showPdf ? "1fr 1fr" : "336px 1fr", flex: 1, minHeight: 0, overflow: "hidden" }}>
+        <div ref={bodyRowRef} style={{ display: "grid", gridTemplateColumns: showPdf ? `${excelPct}% 6px ${100 - excelPct}%` : "336px 1fr", flex: 1, minHeight: 0, overflow: "hidden" }}>
         {/* Formulaire de correction — colonne de gauche quand le PDF est
             masqué ; descend sous les visualiseurs sinon (voir plus bas). */}
         {!showPdf && (
@@ -735,6 +774,22 @@ export default function CorrectionManuelle() {
             )}
           </div>
         </div>
+
+        {/* Séparateur glissable Excel|PDF — largeur ajustable à la souris
+            (voir startResize), curseur "redimensionner horizontal" pour
+            indiquer l'interaction avant même le survol précis de la barre. */}
+        {showPdf && (
+          <div
+            onMouseDown={startResize}
+            title="Glisser pour ajuster la largeur"
+            style={{
+              cursor: "col-resize", background: "#334155", position: "relative",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <div style={{ width: 2, height: 28, borderRadius: 2, background: "#64748B" }} />
+          </div>
+        )}
 
         {/* PDF source — option activée depuis le bouton du panneau Excel, à
             côté de l'aperçu pour que l'utilisateur compare visuellement et
