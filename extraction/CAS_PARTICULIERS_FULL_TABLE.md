@@ -2033,3 +2033,50 @@ tableau destiné à la soutenance"). Les cellules insérées ont été
 supprimées pour revenir à l'état bloqué voulu. Si ce choix doit être
 reconsidéré, ce sera une décision explicite, pas un effet de bord d'une
 ré-exécution de pipeline.
+
+## 2026-09-14 (suite) — correction du diagnostic STAR 2023/2025 : la vraie page par branche EXISTE et est lisible
+
+Retour utilisateur (capture d'écran) : le bandeau d'avertissement "page
+raccordement" affiché pour STAR 2025 a été pris pour un bug persistant.
+En rouvrant le PDF directement, la page réellement titrée "Annexe N° 13 :
+Résultat technique... Non-Vie" (p45 pour 2025, p36 pour 2023) existe bel et
+bien, avec un rendu visuel PARFAITEMENT NET — contrairement au diagnostic
+du 2026-09-09 ("page scannée") qui supposait, à partir d'une image
+intégrée basse résolution détectée sur la page, que le contenu ENTIER
+était un scan. Ce n'était pas le cas : la page est du texte vectoriel
+natif, mais **sa couche texte est vide/cassée** (`pdfplumber` ET `PyMuPDF`
+n'y lisent que 0 à 6 caractères parasites) — probablement une police sans
+table ToUnicode exploitable. Un rendu PyMuPDF à 340 dpi (`page.get_pixmap`)
+donne une image nette, lisible sans ambiguïté à l'œil — bien au-dessus de
+la limite ~72-104 dpi qui bloque réellement COMAR 2016/2018.
+
+**Transcription visuelle + recoupement** (mêmes contrôles que d'habitude :
+SS=PA+CP, CAGN=FA+ACGN, SF=PNP+PART, RT=SS+CAGN+SF+SR par colonne, Σ
+8 branches = Total sur les 24 postes) :
+- **STAR 2023** (p36) : 63/63 identités exactement justes, aucun écart.
+- **STAR 2025** (p45) : 62/63 justes ; 1 écart réel **dans le PDF lui-même**
+  ("Solde de réassurance/rétrocession", colonne Risques divers : imprimé
+  -6 646 819, alors que la somme de ses 5 composantes vaut -16 507 717 —
+  même famille que l'anomalie déjà documentée sur AMI 2020). Valeur laissée
+  telle qu'imprimée.
+
+`_STAR_2023`/`_STAR_2025` remplacent maintenant leurs anciennes entrées
+"raccordement Annexe 16" (1 colonne Total) par la grille complète 8
+branches + Total (`_STAR_COLS`, comme les autres années STAR).
+
+**Correctif de fond associé** (`api/services/tableau_pipeline_service.py`
+et `..._annexe12.py`) : la page connue par une saisie manuelle est
+maintenant mise en cache directement (`tableau_pages`) au moment de
+l'enregistrement, au lieu d'être retrouvée après coup par correspondance
+de contenu (`locate_source_page`, texte pdfplumber) — qui échoue justement
+pour ces pages à couche texte vide/cassée, l'exacte raison pour laquelle
+une saisie manuelle a été nécessaire. Sans ce correctif, le panneau PDF de
+Correction manuelle affichait "Page non repérée" malgré une page
+parfaitement identifiée dans le code.
+
+**Piste ouverte, non traitée ici** : STAR 2020 et 2021 utilisent aussi le
+repli raccordement (`_R_STAR_C16`) mais leurs pages "Annexe 13" (p34 et
+p36 respectivement) ont, cette fois, une couche texte NON vide — signe
+d'un problème différent (camelot/pipeline plutôt que police cassée),
+probablement récupérable sans saisie manuelle. Non exploré par manque de
+temps dans cette session.

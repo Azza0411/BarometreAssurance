@@ -12,7 +12,7 @@ façon synchrone dans une requête HTTP."""
 
 import os
 
-from database.repository import get_connection, save_tableau_result
+from database.repository import get_connection, save_tableau_result, save_cached_tableau_page
 from extraction.annexe13_kpi_extractor import _is_target_page, RACCORDEMENT_RE, KPI_PATTERNS
 from extraction.annexe13_pipeline import process_annexe13, ANNEXE13_NON_VIE_EXCLUSIONS
 from extraction.full_table_extractor import relaxed_is_annexe13_page
@@ -76,8 +76,16 @@ def process_one_document(conn, document_id, code, nom_pdf):
     ultérieure ne peut donc jamais écraser ces valeurs par du bruit OCR."""
     annee = _annee_de(nom_pdf)
     if annee is not None and annexe13_verified.has(code, annee):
-        save_tableau_result(conn, document_id, TABLEAU_KEY,
-                            annexe13_verified.build_result(code, annee))
+        result = annexe13_verified.build_result(code, annee)
+        save_tableau_result(conn, document_id, TABLEAU_KEY, result)
+        # Page connue avec certitude (saisie manuelle) — la mettre en cache
+        # directement évite au repérage par contenu (locate_source_page,
+        # texte pdfplumber) de devoir la retrouver lui-même : impossible
+        # pour les pages dont c'est justement la couche texte native qui a
+        # motivé la saisie manuelle (vide ou cassée malgré un rendu visuel
+        # parfait — voir CAS_PARTICULIERS_FULL_TABLE.md, STAR 2023/2025).
+        if result.get("page"):
+            save_cached_tableau_page(conn, document_id, TABLEAU_KEY, result["page"])
         return "ok_verifie"
 
     pdf_path = local_pdf_path("CMF", code, nom_pdf)

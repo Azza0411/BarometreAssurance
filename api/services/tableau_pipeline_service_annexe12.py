@@ -13,7 +13,7 @@ production pour l'Annexe 13."""
 
 import os
 
-from database.repository import get_connection, save_tableau_result
+from database.repository import get_connection, save_tableau_result, save_cached_tableau_page
 from extraction.annexe12_kpi_extractor import _is_target_page, _RACCORDEMENT_RE, KPI_PATTERNS
 from extraction.annexe12_pipeline import process_annexe12, ANNEXE12_VIE_EXCLUSIONS
 from extraction.full_table_extractor import relaxed_is_annexe12_page
@@ -67,8 +67,12 @@ def process_one_document(conn, document_id, code, nom_pdf):
     docstring) — voir extraction/annexe12_verified.py."""
     annee = _annee_de(nom_pdf)
     if annee is not None and annexe12_verified.has(code, annee):
-        save_tableau_result(conn, document_id, TABLEAU_KEY,
-                            annexe12_verified.build_result(code, annee))
+        result = annexe12_verified.build_result(code, annee)
+        save_tableau_result(conn, document_id, TABLEAU_KEY, result)
+        # Voir le commentaire équivalent dans
+        # tableau_pipeline_service.py::process_one_document.
+        if result.get("page"):
+            save_cached_tableau_page(conn, document_id, TABLEAU_KEY, result["page"])
         return "ok_verifie"
 
     pdf_path = local_pdf_path("CMF", code, nom_pdf)
