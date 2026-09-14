@@ -536,6 +536,35 @@ def locate_source_page(conn, code, annee, tableau):
     return page_num
 
 
+def page_source_info(conn, code, annee, tableau):
+    """Numéro de page (voir `locate_source_page`) accompagné d'un indicateur
+    "raccordement" — la page trouvée réconcilie le résultat technique avec
+    le compte de résultat global (1 colonne "Total", ex. "Annexe n°16")
+    plutôt que de ventiler par branche : un repli légitime, déjà vérifié à
+    la main dans certains cas (voir extraction/annexe13_verified.py) quand
+    la vraie page par branche est un scan illisible, mais qui a besoin
+    d'être signalé explicitement — un utilisateur voyant "Annexe n°16"
+    affiché sous l'onglet "Annexe 13" y voit à raison une incohérence s'il
+    n'est pas prévenu que c'est délibéré."""
+    page_num = locate_source_page(conn, code, annee, tableau)
+    if page_num is None:
+        return {"page": None, "raccordement": False}
+    raccordement_re = _ANNEXE13_RACCORDEMENT_RE if tableau == "annexe13" else _ANNEXE12_RACCORDEMENT_RE
+    doc_id = get_document_id(conn, code, annee)
+    path = get_local_pdf_path_for_document(conn, doc_id) if doc_id else None
+    is_raccordement = False
+    if path:
+        try:
+            import pdfplumber
+            with pdfplumber.open(path) as pdf:
+                if 0 < page_num <= len(pdf.pages):
+                    head = (pdf.pages[page_num - 1].extract_text() or "")[:200]
+                    is_raccordement = bool(raccordement_re.search(head.lower()))
+        except Exception:
+            is_raccordement = False
+    return {"page": page_num, "raccordement": is_raccordement}
+
+
 def _raw_tableaux_for_groups(group_keys):
     if not group_keys:
         return None

@@ -19,7 +19,7 @@ from database.repository import get_connection
 from api.services.data_management import (
     list_documents_for_ui, get_local_pdf_path_for_document,
     get_filter_options, build_flexible_export_xlsx, get_reliability_stats,
-    get_document_grid, get_referentiel, locate_source_page,
+    get_document_grid, get_referentiel, page_source_info,
 )
 from api.services import tableau_pipeline_service
 
@@ -267,7 +267,12 @@ def page_pdf():
     PDF affiché à côté de l'aperçu Excel (correction manuelle), pour aider
     l'utilisateur à repérer visuellement une faute d'extraction. `page: null`
     si le tableau n'a pas de pipeline de repérage dédié (bilan) ou si la
-    page n'a pas pu être retrouvée — le front se rabat alors sur la page 1."""
+    page n'a pas pu être retrouvée — le front se rabat alors sur la page 1.
+    `raccordement: true` si cette page réconcilie le résultat technique
+    (1 colonne "Total") plutôt que de ventiler par branche — un repli
+    parfois délibérément vérifié à la main (voir annexe13/12_verified.py)
+    quand la vraie page par branche est un scan illisible, mais qui doit
+    être signalé plutôt que montré comme si c'était la page attendue."""
     code = request.args.get("societe")
     annee_raw = request.args.get("annee")
     tableau = request.args.get("tableau")
@@ -280,10 +285,10 @@ def page_pdf():
 
     conn = get_connection()
     try:
-        page = locate_source_page(conn, code, annee, tableau)
+        info = page_source_info(conn, code, annee, tableau)
     finally:
         conn.close()
-    return jsonify({"page": page})
+    return jsonify(info)
 
 
 @bp.route("/api/gestion-donnees/referentiel")

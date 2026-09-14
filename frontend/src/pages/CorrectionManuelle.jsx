@@ -161,6 +161,14 @@ export default function CorrectionManuelle() {
   // trouvée (tableau "bilan", pas encore de pipeline de repérage).
   const [showPdf, setShowPdf] = useState(false);
   const [pdfPage, setPdfPage] = useState(undefined);
+  // true si la page trouvée est un tableau de RACCORDEMENT (réconcilie le
+  // résultat technique, 1 colonne "Total") plutôt que la ventilation par
+  // branche attendue pour ce tableau — un repli parfois déjà vérifié à la
+  // main (voir extraction/annexe13_verified.py) quand la vraie page par
+  // branche est un scan illisible, mais qu'il faut signaler explicitement :
+  // sans ce message, voir "Annexe n°16" sous l'onglet "Annexe 13" a
+  // légitimement l'air d'une erreur.
+  const [pdfRaccordement, setPdfRaccordement] = useState(false);
 
   // { kind: 'valeur'|'ligne'|'colonne', ligne, colonne, actuelle }
   const [selected, setSelected] = useState(null);
@@ -211,7 +219,9 @@ export default function CorrectionManuelle() {
     if (!showPdf || !code || !annee || !tableau || pdfPage !== undefined) return;
     const p = new URLSearchParams({ societe: code, annee: String(annee), tableau });
     fetch(`${API}/api/gestion-donnees/page-pdf?${p.toString()}`)
-      .then(r => r.json()).then(d => setPdfPage(d.page ?? null)).catch(() => setPdfPage(null));
+      .then(r => r.json())
+      .then(d => { setPdfPage(d.page ?? null); setPdfRaccordement(!!d.raccordement); })
+      .catch(() => { setPdfPage(null); setPdfRaccordement(false); });
   }, [showPdf, code, annee, tableau, pdfPage]);
 
   // Recalcule le zoom "ajusté" à chaque nouveau tableau chargé, pendant que
@@ -745,7 +755,11 @@ export default function CorrectionManuelle() {
               PDF source — {code} · {annee}
             </span>
             {pdfPage !== undefined && (
-              <span style={{ background: "rgba(255,255,255,.08)", color: "#E5E7EB", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, flexShrink: 0, whiteSpace: "nowrap" }}>
+              <span style={{
+                background: pdfRaccordement ? "rgba(251,191,36,.15)" : "rgba(255,255,255,.08)",
+                color: pdfRaccordement ? "#FBBF24" : "#E5E7EB",
+                fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, flexShrink: 0, whiteSpace: "nowrap",
+              }}>
                 {pdfPage ? `Page ${pdfPage}` : "Page non repérée"}
               </span>
             )}
@@ -757,6 +771,27 @@ export default function CorrectionManuelle() {
               )}
             </div>
           </div>
+          {/* Avertissement explicite quand la page trouvée est un tableau de
+              RACCORDEMENT (1 colonne "Total") et non la ventilation par
+              branche attendue — sans ce message, voir "Annexe n°16" sous
+              l'onglet "Annexe 13" a légitimement l'air d'une erreur. C'est
+              en réalité un repli déjà vérifié à la main dans la plupart des
+              cas (voir extraction/annexe13_verified.py) quand la vraie page
+              par branche est un scan illisible (OCR testé, chiffres trop
+              dégradés pour être fiables à cette résolution). */}
+          {pdfRaccordement && (
+            <div style={{
+              display: "flex", alignItems: "flex-start", gap: 8, padding: "9px 16px",
+              background: "rgba(251,191,36,.10)", borderBottom: "1px solid rgba(251,191,36,.25)",
+            }}>
+              <span style={{ fontSize: 13, flexShrink: 0, marginTop: 1 }}>⚠️</span>
+              <p style={{ margin: 0, fontSize: 11.5, color: "#FDE68A", lineHeight: 1.4 }}>
+                Ce document ne contient pas de page "{tableauLabel}" par branche exploitable —
+                les valeurs affichées proviennent d'un tableau de raccordement (1 seule colonne
+                "Total"), utilisé comme repli et vérifié à la main.
+              </p>
+            </div>
+          )}
           {!pdfEmbedUrl ? (
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <p style={{ color: "#94A3B8", fontSize: 12.5, textAlign: "center", padding: "0 24px" }}>
