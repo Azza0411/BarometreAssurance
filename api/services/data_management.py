@@ -514,7 +514,7 @@ def locate_source_page(conn, code, annee, tableau):
     le tableau n'a pas encore de pipeline de repérage dédié (bilan, pas
     encore construit), s'il n'y a aucune cellule stockée, ou si la page n'a
     pas pu être retrouvée."""
-    if tableau not in ("annexe12", "annexe13"):
+    if tableau not in ("annexe12", "annexe13", "bilan"):
         return None
     doc_id = get_document_id(conn, code, annee)
     if not doc_id:
@@ -547,8 +547,10 @@ def page_source_info(conn, code, annee, tableau):
     affiché sous l'onglet "Annexe 13" y voit à raison une incohérence s'il
     n'est pas prévenu que c'est délibéré."""
     page_num = locate_source_page(conn, code, annee, tableau)
-    if page_num is None:
-        return {"page": None, "raccordement": False}
+    if page_num is None or tableau == "bilan":
+        # Le concept de page "raccordement" (Annexe 16 substituée à
+        # l'Annexe 13 par branche) n'existe pas côté Bilan — jamais signalé.
+        return {"page": page_num, "raccordement": False}
     raccordement_re = _ANNEXE13_RACCORDEMENT_RE if tableau == "annexe13" else _ANNEXE12_RACCORDEMENT_RE
     doc_id = get_document_id(conn, code, annee)
     path = get_local_pdf_path_for_document(conn, doc_id) if doc_id else None
