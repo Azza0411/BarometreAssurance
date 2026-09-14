@@ -67,3 +67,68 @@ brancher `tableau_pipeline_service` (tableau='bilan_actif'/'bilan_passif')
 et la route `/api/gestion-donnees/valider-*` correspondante ; (4) sweep
 complet du portefeuille pour mesurer la couverture réelle avant tout
 travail de correction cas par cas.
+
+## 2026-09-14 (suite) — durcissement société par société : 4/4 sociétés testées à 0 écart
+
+Poursuite immédiate de l'entrée précédente. **COMAR, ATTIJARI, MAGHREBIA,
+GAT** (2023, Actif + Passif) passent maintenant à 0 écart (Σ sections =
+Total, exact ou à l'arrondi près) après une série de correctifs
+GÉNÉRIQUES (aucun ne cible une société en particulier) :
+
+1. **Nombre de colonnes détecté dynamiquement** — certaines sociétés (ex.
+   ATTIJARI) ventilent aussi Brut/Amortissements pour l'année précédente
+   (6 colonnes numériques), pas seulement l'année courante (4 colonnes,
+   le cas le plus fréquent). Un nombre de colonnes supposé fixe faisait
+   ressortir Amort/Net/Net(N-1) entièrement vides.
+2. **Alias de colonne "VB"** (Valeur Brute, MAGHREBIA) reconnu comme
+   variante de "Brut" — sinon toute la colonne Brut restait vide.
+3. **Références de note filtrées** ("3.1", "3.1.1"...) — un UNIQUE mot
+   avec point, jamais un vrai montant (toujours des dinars entiers dans
+   ces tableaux) ; se glissaient sinon dans la colonne la plus proche et
+   en corrompaient la valeur. Une 1ère tentative par marge de position x0
+   s'est révélée peu fiable (colonnes alignées à droite : un montant large
+   démarre plus à gauche que son en-tête, court) — remplacée par ce test
+   sur la FORME du jeton lui-même, robuste indépendamment de l'alignement.
+4. **Ligne de sous-total de section sans code ni libellé** (répandu :
+   "AC1 Actifs incorporels" en en-tête, enfants AC11/AC12/AC13, puis une
+   ligne de chiffres SEULE = le sous-total AC1) — rattachée au code de
+   section ouvert, mais seulement si elle porte assez de valeurs pour
+   être un sous-total plausible (≥ n_cols-1) ; sinon une valeur isolée
+   parasite (ex. un "0" esseulé constaté MAGHREBIA/AC64) aurait "consommé"
+   la place et fait perdre le VRAI sous-total arrivant juste après.
+5. **Ligne de TOTAL général réduite au seul mot "Total"** (ATTIJARI) —
+   le motif exigeait auparavant "total (de l'actif|des actifs)" et
+   ratait ce cas.
+6. **Parenthèses de négatif résolues avant la reconstruction du libellé**
+   (pas seulement avant l'extraction des valeurs) — un résidu comme
+   "(95 277)" issu d'un montant entre parenthèses mal séparé restait sinon
+   dans le texte du libellé et empêchait par exemple la ligne de TOTAL de
+   GAT ("Total des actifs (95 854 277) ...") d'être reconnue comme telle.
+7. **Code réglementaire séparé de son numéro par une espace** ("AC 71" au
+   lieu de "AC71", constaté ATTIJARI et BIAT) — fusionné en un seul jeton
+   avant tout traitement, sinon le numéro seul ("71") était indiscernable
+   d'une vraie valeur et disparaissait du libellé avant même la détection
+   du code.
+
+**Pas encore couvert** (constaté en élargissant le test à 8 sociétés
+supplémentaires) :
+- **STAR, BH, TUNIS_RE, AMI** : page Actif introuvable pour au moins un
+  des deux côtés — même famille que les cas déjà documentés dans
+  `CAS_PARTICULIERS_FULL_TABLE.md` (page scannée/couche texte cassée,
+  parfois seul un côté Actif OU Passif est concerné selon le document).
+  Pas une nouvelle catégorie de bug — la même voie OCR/saisie manuelle
+  qu'Annexe 12/13 s'appliquera si besoin, pas encore branchée ici.
+- **ASTREE** : convention différente — code SANS espace ET collé au
+  libellé ("ACActifs incorporels"), sous-lignes regroupant plusieurs codes
+  sur une seule ligne ("AC11,12,13..."). Pas traité.
+- **BIAT** : une ligne de sous-total (AC5) montre un artefact de rendu où
+  le premier chiffre se détache du reste du nombre ("2 4 775 196" au lieu
+  de "24 775 196"), faisant échouer son rattachement à la section. Cas
+  isolé constaté sur une seule ligne, pas généralisé, pas corrigé.
+
+**Statut** : 4/4 sociétés testées avec un gabarit "normal" (texte natif
+exploitable) sont maintenant parfaites. Les cas restants relèvent soit de
+limitations déjà connues (scan), soit de conventions différentes non
+encore rencontrées — prochaine étape naturelle : élargir le sweep à
+davantage de sociétés/années pour mesurer la couverture réelle avant de
+continuer au cas par cas.

@@ -28,24 +28,34 @@ import re
 
 from extraction.bilan_kpi_extractor import (
     _cluster_lines, _extract_numeric_clusters, _normalizer,
+    _words_with_bracket_negatives_resolved,
     ACTIF_PAGE_TITLE_RE, PASSIF_PAGE_TITLE_RE, NUMERIC_TOKEN_RE,
 )
 
-_ROW_CODE_RE = re.compile(r"^(AC|PA|CP)(\d+)\b", re.IGNORECASE)
+_ROW_CODE_RE = re.compile(r"^(AC|PA|CP)\s?(\d+)\b", re.IGNORECASE)
 
 # Ligne de TOTAL général — jamais préfixée d'un code réglementaire (contrairement
 # à toutes les autres lignes), donc invisible à _ROW_CODE_RE : traitée à part,
 # jamais rattachée par erreur au dernier code rencontré (voir extract_bilan_full_grid).
-_TOTAL_ACTIF_RE = re.compile(r"^total\s+(de\s+l['\s]|des\s+)?actifs?\b")
-_TOTAL_PASSIF_RE = re.compile(r"^total\s+(du\s+|des\s+)?passifs?\b")
+_TOTAL_ACTIF_RE = re.compile(r"^total(\s+(de\s+l['\s]|des\s+)?actifs?)?$")
+_TOTAL_PASSIF_RE = re.compile(r"^total(\s+(du\s+|des\s+)?passifs?)?$")
 
-# En-têtes de colonnes recherchés, dans l'ordre gauche->droite attendu.
-# Côté Actif : Brut / Amortissements et provisions / Net (année courante) /
-# Net (année précédente). Côté Passif : pas de ventilation brut/amort, donc
-# seulement les 2 colonnes "Net" (l'en-tête répète "Montant Net" 2 fois,
-# distingué par sa position x0, pas par un texte différent).
-_HEADER_TOKENS_ACTIF = ["brut", "amort", "net", "net"]
-_HEADER_TOKENS_PASSIF = ["net", "net"]
+# En-têtes de colonnes numériques recherchés côté Actif ; côté Passif,
+# seulement "Net" (pas de ventilation brut/amortissements sur ce côté).
+# Le NOMBRE de colonnes n'est PAS fixe : la plupart des sociétés ne
+# détaillent que l'année courante (Brut/Amort/Net N, puis un unique "Net"
+# N-1 — 4 colonnes), mais certaines (ex. ATTIJARI) répètent le triplet
+# Brut/Amort/Net EN ENTIER pour l'année précédente (6 colonnes). Détecté
+# dynamiquement par `_header_token_sequence` plutôt que supposé — un
+# nombre de colonnes codé en dur ferait dérailler l'alignement de toutes
+# les valeurs sur les documents à 6 colonnes (constaté : la totalité de
+# "Amort", "Net" et "Net (N-1)" ressortait vide sur ATTIJARI 2023).
+_WANTED_TOKENS_ACTIF = {"brut", "vb", "amort", "net"}
+_WANTED_TOKENS_PASSIF = {"net"}
+# "VB" (Valeur Brute) : abréviation alternative de "Brut" pour cette même
+# colonne (constaté MAGHREBIA) — mêmes noms de colonnes en sortie quel que
+# soit l'intitulé réellement imprimé.
+_LABEL_BY_TOKEN = {"brut": "Brut", "vb": "Brut", "amort": "Amortissements et provisions", "net": "Net"}
 
 
 def _is_target_page(page, side, lines_checked=6):
@@ -61,30 +71,54 @@ def _is_target_page(page, side, lines_checked=6):
     return True
 
 
-def _header_column_positions(lines, side):
-    """Position x0 de chaque en-tête de colonne numérique, dans l'ordre
-    gauche->droite — cherché sur les toutes premières lignes de la page
-    (avant que les codes AC../PA../CP.. n'apparaissent). Renvoie une liste
-    de x0 triée, de la même longueur que les jetons attendus pour ce côté
-    (peut être plus courte si un en-tête n'a pas été retrouvé — le
-    classement des valeurs se rabat alors sur l'ordre d'apparition)."""
-    tokens = _HEADER_TOKENS_ACTIF if side == "actif" else _HEADER_TOKENS_PASSIF
+def _header_columns(lines, side):
+    """Détecte les colonnes numériques réellement présentes sur cette page
+    — nom + position x0 — en repérant CHAQUE occurrence des jetons d'en-
+    tête voulus (Brut/Amort/Net côté Actif, Net côté Passif) dans les
+    lignes situées avant le premier code AC../PA../CP.., dans l'ordre de
+    lecture gauche->droite. Le nombre de colonnes ressort de ce qui est
+    RÉELLEMENT trouvé (4 ou 6 côté Actif selon que l'année précédente est
+    aussi ventilée Brut/Amort/Net ou réduite à un "Net" — voir le
+    commentaire sur `_WANTED_TOKENS_ACTIF`), jamais supposé fixe. La 2e
+    occurrence d'un même jeton (et les suivantes) reçoit un suffixe
+    "(N-k)". Renvoie (noms_de_colonnes, positions_x0) — listes parallèles."""
+    wanted = _WANTED_TOKENS_ACTIF if side == "actif" else _WANTED_TOKENS_PASSIF
     header_lines = []
     for line in lines:
         has_code = any(_ROW_CODE_RE.match(_normalizer.clean(w["text"])) for w in line)
         if has_code:
             break
         header_lines.append(line)
-    positions = []
-    seen = 0
-    target = tokens[seen] if tokens else None
+    counts = {}
+    names, positions = [], []
     for line in header_lines:
         for w in sorted(line, key=lambda w: w["x0"]):
-            if target and _normalizer.clean(w["text"]) == target:
-                positions.append(w["x0"])
-                seen += 1
-                target = tokens[seen] if seen < len(tokens) else None
-    return positions
+            # startswith, pas égalité stricte : "Amort." (COMAR/ATTIJARI),
+            # "Amortissements" (en toutes lettres ailleurs) partagent le même
+            # préfixe mais pas le même jeton nettoyé exact (le point final
+            # de l'abréviation n'est pas retiré par le normaliseur).
+            raw = _normalizer.clean(w["text"])
+            token = next((t for t in wanted if raw.startswith(t)), None)
+            if token is None:
+                continue
+            counts[token] = counts.get(token, 0) + 1
+            suffix = "" if counts[token] == 1 else f" (N-{counts[token] - 1})"
+            names.append(_LABEL_BY_TOKEN[token] + suffix)
+            positions.append(w["x0"])
+    return names, positions
+
+
+# Référence de note ("3.1", "3.1.1"...) : toujours un UNIQUE mot-jeton
+# contenant un point (contrairement à un vrai montant, dont les groupes de
+# milliers sont des mots SÉPARÉS par un espace — "75 000 000" est 3 jetons,
+# jamais 1 seul avec point). Les chiffres de ces tableaux sont toujours des
+# dinars entiers ("chiffres arrondis") : aucune vraie valeur n'a de point
+# décimal, donc ce test ne peut pas rejeter à tort un vrai montant. Une
+# marge de position x0 avait été tentée d'abord mais s'est révélée peu
+# fiable (colonnes alignées à DROITE : un montant large comme "75 000 000"
+# démarre bien plus à gauche que le mot d'en-tête court "Net" qui le
+# surmonte, faisant rejeter à tort de vraies valeurs).
+_NOTE_REF_TOKEN_RE = re.compile(r"^\d+(?:\.\d+)+$")
 
 
 def _assign_columns(clusters, header_x, n_cols):
@@ -116,11 +150,15 @@ def extract_bilan_full_grid(page, side, min_rows=5):
     if not words:
         return None
     lines = _cluster_lines(words)
-    header_x = _header_column_positions(lines, side)
-    colonnes = (
-        ["Brut", "Amortissements et provisions", "Net", "Net (N-1)"] if side == "actif"
-        else ["Net", "Net (N-1)"]
-    )
+    colonnes, header_x = _header_columns(lines, side)
+    if not colonnes:
+        # Repli si aucun en-tête n'a pu être localisé (page non conforme au
+        # gabarit attendu) : nombre de colonnes générique, valeurs affectées
+        # par ordre d'apparition (voir `_assign_columns`, header_x vide).
+        colonnes = (
+            ["Brut", "Amortissements et provisions", "Net", "Net (N-1)"] if side == "actif"
+            else ["Net", "Net (N-1)"]
+        )
     n_cols = len(colonnes)
 
     lignes = {}
@@ -130,6 +168,15 @@ def extract_bilan_full_grid(page, side, min_rows=5):
                         # libellé déjà vu sur la ligne de titre de section.
     current_code = None
     current_values = {}
+    current_section = None  # dernier code de section top-level (1 seul chiffre,
+                             # ex. AC1, AC2) — une ligne de SOUS-TOTAL de section
+                             # arrive souvent SANS aucun code ni libellé (juste
+                             # des chiffres, après tous ses postes de détail) ;
+                             # elle doit lui revenir, pas au dernier enfant
+                             # rencontré (ex. AC12), qui a déjà ses propres
+                             # valeurs et les garderait (via `setdefault`),
+                             # perdant silencieusement le total de la section.
+    _TOP_SECTION_RE = re.compile(r"^(AC|PA|CP)\d$")
     total_re = _TOTAL_ACTIF_RE if side == "actif" else _TOTAL_PASSIF_RE
 
     def _flush():
@@ -137,8 +184,25 @@ def extract_bilan_full_grid(page, side, min_rows=5):
             lignes[current_code] = {i: v for i, v in current_values.items()}
 
     for line in lines:
-        label_words = [w for w in line if not NUMERIC_TOKEN_RE.match(w["text"])]
-        clusters = _extract_numeric_clusters(line)
+        # Code réglementaire séparé de son numéro par une espace ("AC 71"
+        # au lieu de "AC71", constaté ATTIJARI) : fusionné en un seul mot
+        # AVANT tout le reste, sinon "71" seul seul est indiscernable d'une
+        # vraie valeur numérique de la ligne — il serait retiré du libellé
+        # par le filtre `NUMERIC_TOKEN_RE` avant même que `_ROW_CODE_RE`
+        # n'ait eu la chance de reconnaître le code sur le texte complet.
+        if (len(line) >= 2 and re.match(r"^(AC|PA|CP)$", line[0]["text"], re.IGNORECASE)
+                and re.match(r"^\d+$", line[1]["text"])):
+            line = [{**line[0], "text": line[0]["text"] + line[1]["text"]}, *line[2:]]
+        # Résolution des négatifs entre parenthèses/chevrons AVANT de
+        # distinguer libellé/valeurs — sinon "(95" et "277)" (fragments
+        # d'un "(95 854 277)" comptable) ne matchent ni l'un ni l'autre et
+        # se retrouvent inclus à tort dans le libellé reconstruit (constaté
+        # sur la ligne "Total des actifs" de GAT : le résidu "(95 277)"
+        # dans le texte empêchait sa reconnaissance comme ligne de total).
+        resolved_line = _words_with_bracket_negatives_resolved(line)
+        label_words = [w for w in resolved_line if not NUMERIC_TOKEN_RE.match(w["text"])]
+        line_no_notes = [w for w in resolved_line if not _NOTE_REF_TOKEN_RE.match(w["text"])]
+        clusters = _extract_numeric_clusters(line_no_notes)
         text_norm = _normalizer.clean(" ".join(w["text"] for w in label_words))
         if total_re.match(text_norm):
             # Ligne de TOTAL général — jamais préfixée d'un code, traitée à
@@ -155,10 +219,26 @@ def extract_bilan_full_grid(page, side, min_rows=5):
         if m:
             _flush()
             current_code = f"{m.group(1).upper()}{m.group(2)}"
+            if _TOP_SECTION_RE.match(current_code):
+                current_section = current_code
             rest = text_norm[m.end():].strip()
             if rest and current_code not in label_by_code:
                 label_by_code[current_code] = rest
             current_values = _assign_columns(clusters, header_x, n_cols)
+        elif (not text_norm and current_section and current_section not in lignes
+              and len(clusters) >= max(2, n_cols - 1)):
+            # Ligne de sous-total de section SANS code ni libellé (voir plus
+            # haut) : rattachée au code de section ouvert plutôt qu'au
+            # dernier enfant — seulement si cette section n'a pas encore sa
+            # propre valeur, ET que la ligne porte (presque) autant de
+            # valeurs que de colonnes attendues (`n_cols - 1` au minimum) :
+            # un sous-total légitime remplit toutes les colonnes, alors
+            # qu'une VRAIE ligne de détail sans libellé récupéré (rare, ex.
+            # une valeur "0" esseulée constatée sur MAGHREBIA/AC64) n'en a
+            # typiquement qu'une — la prendre pour le sous-total aurait
+            # perdu le vrai total, arrivant juste après, en le trouvant déjà
+            # "pris".
+            lignes[current_section] = _assign_columns(clusters, header_x, n_cols)
         elif current_code:
             # Ligne de continuation (libellé replié, ou valeurs arrivées
             # une ligne après un libellé trop long) — rattachée au dernier
