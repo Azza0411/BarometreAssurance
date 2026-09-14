@@ -19,7 +19,7 @@ from database.repository import get_connection, get_document_id, apply_manual_co
 from api.services.data_management import (
     list_documents_for_ui, get_local_pdf_path_for_document,
     get_filter_options, build_flexible_export_xlsx, get_reliability_stats,
-    get_document_grid, get_referentiel, page_source_info,
+    get_document_grid, get_referentiel, page_source_info, kpi_raw_labels_for,
 )
 from api.services import tableau_pipeline_service
 
@@ -327,7 +327,11 @@ def enregistrer_corrections():
     correction dans `tableau_cellules` — voir
     database/repository.py::apply_manual_corrections. Tout ou rien : une
     correction invalide (nom en doublon, valeur non numérique...) annule
-    toute la liste plutôt que de laisser la base à moitié corrigée."""
+    toute la liste plutôt que de laisser la base à moitié corrigée. Une
+    correction de VALEUR est aussi répercutée dans `kpi_values` (KPI narrow
+    utilisés par les autres dashboards — Aperçu marché, Analyse
+    comparative...) quand elle y correspond de façon non ambiguë, voir
+    `apply_manual_corrections`."""
     body = request.get_json(silent=True) or {}
     code = body.get("societe")
     annee_raw = body.get("annee")
@@ -349,7 +353,7 @@ def enregistrer_corrections():
         if not doc_id:
             return jsonify({"error": "Aucun document CMF pour cette société/année"}), 404
         try:
-            apply_manual_corrections(conn, doc_id, tableau, corrections)
+            apply_manual_corrections(conn, doc_id, tableau, corrections, kpi_raw_labels=kpi_raw_labels_for(tableau))
         except CorrectionError as exc:
             return jsonify({"error": str(exc)}), 400
     finally:

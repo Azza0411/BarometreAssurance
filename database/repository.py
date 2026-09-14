@@ -548,7 +548,33 @@ def _parse_correction_valeur(brut):
         raise CorrectionError(f"« {brut} » n'est pas un nombre valide.")
 
 
-def apply_manual_corrections(conn, document_id, tableau, corrections):
+def _propagate_correction_to_kpi(cur, document_id, kpi_raw_labels, ancienne_valeur, nouvelle_valeur):
+    """Après une correction de VALEUR, répercute le même changement dans
+    kpi_values si un KPI y correspond de façon NON AMBIGUË — par VALEUR,
+    pas par nom : `kpi_definitions.py::SOURCE_PAR_KPI` (qui associe un nom
+    de KPI à une ligne/colonne) n'est PAS garanti synchronisé avec la vraie
+    extraction (son propre commentaire le dit), donc pas fiable pour une
+    écriture automatique. On cherche plutôt, parmi les KPI de ce document
+    dont le libellé `tableau` brut appartient au même groupe que la
+    cellule corrigée (`kpi_raw_labels`, voir data_management.py::
+    kpi_raw_labels_for), celui dont la valeur ACTUELLE est exactement
+    l'ancienne valeur de la cellule. Si aucun ou plusieurs correspondent
+    (ambigu — deux KPI différents peuvent coïncider sur la même valeur),
+    on ne touche à rien plutôt que de risquer une mise à jour au mauvais
+    endroit : mieux vaut une propagation manquée qu'une propagation fausse."""
+    if ancienne_valeur is None or not kpi_raw_labels:
+        return
+    placeholders = ",".join(["%s"] * len(kpi_raw_labels))
+    cur.execute(
+        f"SELECT id, valeur_nombre FROM kpi_values WHERE document_id=%s AND tableau IN ({placeholders})",
+        [document_id] + list(kpi_raw_labels),
+    )
+    matches = [r for r in cur.fetchall() if r[1] is not None and abs(r[1] - ancienne_valeur) < 0.5]
+    if len(matches) == 1:
+        cur.execute("UPDATE kpi_values SET valeur_nombre=%s WHERE id=%s", (nouvelle_valeur, matches[0][0]))
+
+
+def apply_manual_corrections(conn, document_id, tableau, corrections, kpi_raw_labels=None):
     """Applique une liste de corrections (voir le contrat ci-dessous) pour UN
     document/tableau, dans une seule transaction — soit toutes appliquées,
     soit aucune (une correction invalide annule les autres plutôt que de
@@ -558,7 +584,10 @@ def apply_manual_corrections(conn, document_id, tableau, corrections):
     identifient la cellule ; pour "ligne"/"colonne", le champ correspondant
     porte le nom ACTUEL (avant renommage). Lève `CorrectionError` (message
     français prêt pour l'utilisateur) si une correction est invalide ; ne
-    modifie rien dans ce cas (rollback)."""
+    modifie rien dans ce cas (rollback). `kpi_raw_labels` (voir
+    data_management.py::kpi_raw_labels_for) active la propagation vers
+    kpi_values pour les corrections de valeur — voir
+    `_propagate_correction_to_kpi`."""
     try:
         with conn.cursor() as cur:
             for c in corrections:
@@ -577,6 +606,7 @@ def apply_manual_corrections(conn, document_id, tableau, corrections):
                         "UPDATE tableau_cellules SET valeur=%s WHERE document_id=%s AND tableau=%s AND ligne=%s AND colonne=%s",
                         (nouvelle, document_id, tableau, c["ligne"], c["colonne"]),
                     )
+                    _propagate_correction_to_kpi(cur, document_id, kpi_raw_labels, ancienne, nouvelle)
                     cur.execute(
                         """INSERT INTO tableau_corrections
                            (document_id, tableau, kind, ligne, colonne, ancienne_valeur, nouvelle_valeur)

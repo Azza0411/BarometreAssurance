@@ -244,6 +244,16 @@ TABLEAU_GROUPS = [
 _TABLEAU_GROUP_TO_RAW = {key: raws for key, _label, raws in TABLEAU_GROUPS}
 
 
+def kpi_raw_labels_for(tableau):
+    """Libellés bruts `kpi_values.tableau` correspondant à une clé
+    `tableau_cellules` (ex. 'annexe12' -> ["Annexe12", "Annexe 12 - ...",
+    "Annexe 12/13"]) — sert à retrouver, après une correction manuelle, le
+    KPI narrow (kpi_values) qui pourrait représenter la même donnée que la
+    cellule corrigée (voir database/repository.py::apply_manual_corrections,
+    propagation par VALEUR plutôt que par nom — voir sa docstring)."""
+    return _TABLEAU_GROUP_TO_RAW.get(tableau, [])
+
+
 def get_filter_options(conn):
     """Options disponibles pour les 3 filtres de l'export flexible :
     sociétés CMF (code + nom), années CMF disponibles, groupes de tableaux,
