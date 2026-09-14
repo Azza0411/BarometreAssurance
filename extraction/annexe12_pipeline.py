@@ -38,10 +38,19 @@ from config.company_registry import TAKAFUL_CODES
 # Seul le Takaful (Annexes 14/15 spécifiques, cadre réglementaire différent)
 # est exclu d'emblée, par cohérence avec ANNEXE13_NON_VIE_EXCLUSIONS. Le
 # reste de la liste des exclusions réelles (sociétés purement Non-Vie sans
-# aucune ligne Vie dans leur dépôt — ex. COTUNACE, Crédit-Caution) se
-# construit EMPIRIQUEMENT au fil des extractions, comme pour l'Annexe 13
-# (voir CAS_PARTICULIERS_FULL_TABLE.md) plutôt que d'être devinée ici.
-ANNEXE12_VIE_EXCLUSIONS = set(TAKAFUL_CODES)
+# aucune ligne Vie dans leur dépôt) se construit EMPIRIQUEMENT au fil des
+# extractions, comme pour l'Annexe 13 (voir CAS_PARTICULIERS_FULL_TABLE.md)
+# plutôt que d'être devinée ici :
+# - COTUNACE (Crédit-Caution) : aucune mention "assurance vie"/"résultat
+#   technique vie" dans AUCUN de ses 11 documents (2015-2025) — vérifié
+#   texte intégral, confirmé société purement Non-Vie.
+# - CARTE (Non-Vie ; sa Vie est déjà couverte par CARTE_VIE, dépôt CMF
+#   séparé — même famille que GAT/GAT_VIE) : idem sur 8 de ses 10
+#   documents ; les 2 seules mentions "vie" restantes (CARTE_2025) sont
+#   une provision de réassurance à 0,000 et un simple renvoi de note
+#   ("...présenté au niveau de l'annexe 12"), jamais une vraie ligne
+#   chiffrée — confirmé société sans activité Vie réelle.
+ANNEXE12_VIE_EXCLUSIONS = set(TAKAFUL_CODES) | {"COTUNACE", "CARTE"}
 
 # ── Normalisation des libellés de ligne (Vie) ───────────────────────────────
 CANONICAL_ROWS_VIE = [

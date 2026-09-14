@@ -177,3 +177,57 @@ narratif (toutes valeurs "-"), pas la vraie grille par catégorie — format
 de dépôt différent ces 3 années-là (comme la bascule de gabarit déjà
 documentée AMI/BNA côté Annexe 13). Les autres nécessiteraient un
 diagnostic titre-par-titre supplémentaire, hors budget de cette session.
+
+## 2026-09-14 — audit corrigé (bug d'arrondi) + exclusion CARTE/COTUNACE + TUNIS_RE identifié
+
+Retour utilisateur : audit des 31 "à traiter" (<80% confirmé) de la
+session précédente. Diagnostic sur CARTE_VIE 2022 (24/44 confirmées) a
+révélé que le bug est dans l'OUTIL D'AUDIT lui-même (scratchpad
+`audit_stored_annexe12.py`, hors projet) : il arrondit chaque valeur
+stockée avant de la chercher comme sous-chaîne de chiffres dans le texte
+du PDF, alors que le texte concatène partie entière + décimale sans
+séparateur ("532,784" -> "532784" après nettoyage) — round() change le
+dernier chiffre dès que la décimale est ≥ 0.5, cassant le match à tort.
+Corrigé (troncature au lieu de round()) : CARTE_VIE 2022 passe de 24/44
+à 44/44, et globalement les 31 suspects tombent à **12 vrais cas**
+(19 faux positifs).
+
+**Les 12 vrais cas** partagent tous la même cause : pages scannées, OCR
+de mauvaise qualité (libellés de ligne baragouinés, colonnes réduites à
+des placeholders muets "(colonne N)", chiffres mal fusionnés entre
+colonnes) — même plafond déjà documenté côté Annexe 13 (AMI, COTUNACE).
+AMI (5 occurrences : 2015/2016/2017/2022/2023) a une cause différente :
+cette société ne publie JAMAIS de grille Annexe 12, uniquement des notes
+narratives (rubriques PRV1/CHV1...9) — vérifié : les vraies valeurs
+n'existent que dans le texte de ces notes, jamais dans un tableau.
+Retour utilisateur explicite : **aucune saisie manuelle** (contrairement
+à Annexe 13/`annexe13_verified.py`) — ces 12 cas restent donc "à traiter"
+sans solution automatique connue à ce stade.
+
+**Diagnostic des 42 "vides" (page introuvable)** :
+
+- **CARTE et COTUNACE (21/42, la moitié)** : n'ont RÉELLEMENT AUCUNE
+  activité Vie — vérifié texte intégral, aucune mention "assurance vie"/
+  "résultat technique vie" dans 8/10 documents CARTE et AUCUN des 11
+  documents COTUNACE ; les 2 mentions restantes (CARTE 2025) sont une
+  provision de réassurance à 0,000 et un simple renvoi de note. Ajoutées
+  à `ANNEXE12_VIE_EXCLUSIONS` (le commentaire du fichier anticipait déjà
+  ce cas mais ne l'avait jamais implémenté). Ce n'était pas un bug —
+  CARTE_VIE (dépôt CMF séparé) couvre déjà la Vie du groupe CARTE, même
+  famille que GAT/GAT_VIE.
+- **TUNIS_RE (6/42)** : société de RÉASSURANCE avec un référentiel
+  comptable ENTIÈREMENT différent — codes PRV1/PRV11/PRV12/RTV (pas
+  AC/PA/CP ni le vocabulaire `CANONICAL_ROWS_VIE`), page titrée "ETAT DE
+  RESULTAT TECHNIQUE GLOBAL VIE" avec une répartition Acceptation/
+  Rétrocession/Net plutôt que par branche (Epargne/Temporaire Décès...).
+  Un "TABLEAU DE RACCORDEMENT... VIE" existe aussi (note complémentaire),
+  symétrique du raccordement déjà géré côté Non-Vie. Nécessite un
+  vocabulaire et une pipeline dédiés (même ampleur que Takaful) — pas
+  entrepris ici, hors budget de cette session.
+- **Reste (15/42 : AMI 2019/2020, ASTREE 2015/2018/2020, BH 2020,
+  CARTE_VIE 2018, HAYETT 2019, MAGHREBIA 2021/2022, MAGHREBIA_VIE
+  2016/2020, UIB 2020/2021/2022)** : correspond presque exactement aux 13
+  gaps déjà documentés plus haut comme "non structurels, hors budget" —
+  UIB 2020-2022 confirmé (RTV n'est qu'une ligne de renvoi narrative,
+  toutes valeurs "-"), les autres vraisemblablement des pages scannées
+  (même plafond OCR que les 12 "à traiter" ci-dessus).
