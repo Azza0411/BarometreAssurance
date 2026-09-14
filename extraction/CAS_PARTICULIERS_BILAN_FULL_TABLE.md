@@ -373,3 +373,25 @@ pas du tout avant (14 Actif + 11 Passif, dont STAR 2025 Actif, BNA 2024,
 COMAR 2016/2018, AMI 6 années, HAYETT 2018, LLOYD_VIE 2023, TUNIS_RE 2019,
 CARTE_VIE 2018...). Le reste (Takaful, format sans code, vraies pages
 absentes) reste documenté ci-dessus comme limitation distincte.
+
+## 2026-09-14 (suite) — capture de "Total capitaux propres avant affectation" (TOTAL_CP)
+
+Retour utilisateur (test réel via Vue par assurance/KpiDetail, STAR 2024) :
+le KPI narrow "Capitaux propres" (429 897 743) cite comme source la ligne
+IMPRIMÉE "Total capitaux propres avant affectation" (Bilan Passif, p.3) —
+pas une somme recalculée de CP1..CP6. `extract_bilan_full_grid` ne
+capturait pourtant que les lignes CP1..CP6 individuelles, jamais ce
+sous-total lui-même : une correction manuelle sur une seule ligne CP ne
+pouvait donc jamais se répercuter sur ce KPI (la propagation par valeur,
+voir `database/repository.py::_propagate_correction_to_kpi`, compare une
+correction à UNE valeur de KPI, pas à une formule de plusieurs cellules).
+
+Corrigé (générique, pas spécifique à STAR) : nouvelle regex `_TOTAL_CP_RE`
+reconnaît "Total capitaux propres" seul ou suivi de "avant affectation" —
+distinct de "Total capitaux propres AVANT RÉSULTAT de l'exercice"
+(sous-total intermédiaire, EXCLUT CP6, mot suivant "avant" différent) qui
+n'est jamais capturé (ce n'est pas le total final). Stockée sous sa
+propre clé "TOTAL_CP", jamais rattachée au dernier code CP rencontré.
+Vérifié STAR 2024 : TOTAL_CP = 429 897 743 exactement (matche le KPI),
+aucune régression sur les identités déjà validées (HAYETT 2020, STAR
+2024 lui-même : toujours 0 écart).

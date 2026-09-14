@@ -47,6 +47,19 @@ _TOTAL_PASSIF_RE = re.compile(r"^total(\s+(du\s+|des\s+)?passifs?)?$")
 # avec un vrai "Total du Passif" lors d'une validation future : ce total
 # combiné n'est PAS comparable à la somme des seules sections PA/CP2..7.
 _TOTAL_GENERAL_RE = re.compile(r"^total\s+(des\s+)?capitaux\s+propres\s+et\s+(des\s+|du\s+)?passifs?$")
+# "Total capitaux propres AVANT AFFECTATION" (ou juste "Total capitaux
+# propres" seul) — la vraie ligne IMPRIMÉE dans le PDF pour le sous-total
+# Capitaux propres complet (CP1..CP6 inclus), déjà utilisée comme source
+# du KPI narrow "Capitaux propres" (voir kpi_definitions.py) — constaté
+# STAR : sans la capturer comme SA PROPRE ligne, une correction manuelle
+# sur une cellule CP1..CP6 individuelle ne peut jamais se répercuter sur
+# ce KPI (qui vaut leur SOMME, jamais une seule cellule) puisque la
+# propagation par valeur (voir database/repository.py::
+# _propagate_correction_to_kpi) compare une correction à UNE valeur de
+# KPI, pas à une formule. À NE PAS confondre avec "Total capitaux propres
+# AVANT RÉSULTAT de l'exercice" (sous-total intermédiaire, EXCLUT CP6) —
+# le mot suivant "avant" doit être "affectation", pas "resultat".
+_TOTAL_CP_RE = re.compile(r"^total\s+(des\s+)?capitaux\s+propres(\s+avant\s+affectation)?$")
 
 # En-têtes de colonnes numériques recherchés côté Actif ; côté Passif,
 # seulement "Net" (pas de ventilation brut/amortissements sur ce côté).
@@ -287,6 +300,19 @@ def extract_bilan_full_grid(page, side, min_rows=5):
         line_no_notes = [w for w in resolved_line if not _NOTE_REF_TOKEN_RE.match(w["text"])]
         clusters = _extract_numeric_clusters(line_no_notes)
         text_norm = _normalizer.clean(" ".join(w["text"] for w in label_words))
+        if side == "passif" and _TOTAL_CP_RE.match(text_norm):
+            # "Total capitaux propres (avant affectation)" — sous-total
+            # imprimé CP1..CP6 inclus (voir _TOTAL_CP_RE) : jamais rattaché
+            # au dernier code CP rencontré (comme les autres lignes de
+            # total), pour rester disponible comme SA PROPRE cellule
+            # ("TOTAL_CP") — but NE PERTURBE PAS la détection ultérieure de
+            # "Total capitaux propres et passifs" (_TOTAL_GENERAL_RE, texte
+            # different) ni de "Total (du passif)" bare (total_re).
+            _flush()
+            current_code = None
+            lignes["TOTAL_CP"] = _assign_columns(clusters, header_x, n_cols)
+            label_by_code["TOTAL_CP"] = text_norm
+            continue
         if total_re.match(text_norm) or (side == "passif" and _TOTAL_GENERAL_RE.match(text_norm)):
             # Ligne de TOTAL général — jamais préfixée d'un code, traitée à
             # part pour ne jamais se retrouver fusionnée avec la dernière
