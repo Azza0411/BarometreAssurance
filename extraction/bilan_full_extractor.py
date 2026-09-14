@@ -185,7 +185,41 @@ def extract_bilan_full_grid(page, side, min_rows=5):
                              # valeurs et les garderait (via `setdefault`),
                              # perdant silencieusement le total de la section.
     _TOP_SECTION_RE = re.compile(r"^(AC|PA|CP)\d$")
+    # Marqueur de sous-total de section abrégé ("A1", "A2"... côté Actif,
+    # "P1", "P2"... côté Passif) SANS le préfixe complet AC/PA/CP — constaté
+    # HAYETT, où chaque section se termine par une ligne "<lettre><chiffre>
+    # <valeurs>" plutôt qu'un vrai code répété. Le chiffre imprimé n'est PAS
+    # fiable (glyphe mal interprété par pdfplumber sur au moins un cas
+    # constaté : 2 sections consécutives affichent toutes deux "A1") — on ne
+    # s'appuie donc jamais sur lui, seulement sur le fait que la ligne n'est
+    # QUE ce marqueur (`current_section`, déjà suivi indépendamment, fait foi).
+    _SECTION_MARKER_RE = re.compile(r"^[a-z]\d{0,2}$")
     total_re = _TOTAL_ACTIF_RE if side == "actif" else _TOTAL_PASSIF_RE
+    open_sections = []  # tous les codes de section top-level rencontrés, DANS
+                         # L'ORDRE — sert à retrouver, pour une ligne de
+                         # sous-total ambiguë (bare/marqueur), la section
+                         # encore non résolue la plus récente PLUTÔT que
+                         # `current_section` seul (voir plus bas et
+                         # `sections_with_children`) : constaté MAGHREBIA_VIE,
+                         # où le sous-total de AC3 (qui a des enfants) est
+                         # imprimé APRÈS la ligne de AC4 (qui n'en a pas) —
+                         # `current_section` a déjà avancé sur AC4 à ce
+                         # moment, donc s'y fier seul perdrait le sous-total
+                         # de AC3 en le laissant tomber dans la continuation.
+    sections_with_children = set()  # une section top-level SANS aucun enfant
+                         # (ex. CP1, CP2, CP4, CP6 — jamais de "CP12") porte
+                         # déjà sa valeur réelle sur SA PROPRE ligne de code ;
+                         # `_pending_section` ne la propose donc JAMAIS comme
+                         # cible d'une ligne "Total ..."/"bare" (elle serait
+                         # un cumul intermédiaire sans rapport, span plusieurs
+                         # codes — écraserait à tort la vraie valeur de la
+                         # section, constaté HAYETT/CP4).
+
+    def _pending_section():
+        for code in reversed(open_sections):
+            if code in sections_with_children and code not in lignes:
+                return code
+        return None
 
     def _flush():
         if current_code and current_values:
@@ -252,7 +286,29 @@ def extract_bilan_full_grid(page, side, min_rows=5):
             _flush()
             current_code = None
             key = "TOTAL" if total_re.match(text_norm) else "TOTAL_GENERAL"
-            lignes[key] = _assign_columns(clusters, header_x, n_cols)
+            values = _assign_columns(clusters, header_x, n_cols)
+            if side == "passif" and key == "TOTAL":
+                # Ligne "Total (du passif)" parfois en réalité le total
+                # GÉNÉRAL (Capitaux propres + Passif) sans que le libellé le
+                # précise (juste "Total" tout court, constaté
+                # LLOYD_TUNISIEN — même absence de vrai "Total du Passif"
+                # isolé que BIAT/ASTREE, mais sans le libellé combiné
+                # explicite qui permettrait de le détecter par le texte).
+                # Désambiguïsé par la VALEUR plutôt que par le texte : les CP
+                # précèdent toujours les PA dans le document, donc Σ CP et Σ
+                # PA déjà rencontrés à ce stade sont comparés à cette ligne —
+                # on garde l'hypothèse la plus proche numériquement.
+                sum_pa, sum_cp = {}, {}
+                for code, vals in lignes.items():
+                    target = sum_pa if _TOP_PASSIF_RE.match(code) else sum_cp if _TOP_CP_RE.match(code) else None
+                    if target is not None:
+                        for i, v in vals.items():
+                            target[i] = target.get(i, 0) + v
+                diff_pa = sum(abs(values.get(i, 0) - sum_pa.get(i, 0)) for i in values)
+                diff_general = sum(abs(values.get(i, 0) - sum_pa.get(i, 0) - sum_cp.get(i, 0)) for i in values)
+                if diff_general < diff_pa:
+                    key = "TOTAL_GENERAL"
+            lignes[key] = values
             label_by_code[key] = text_norm
             continue
         m = _ROW_CODE_RE.match(text_norm)
@@ -261,24 +317,53 @@ def extract_bilan_full_grid(page, side, min_rows=5):
             current_code = f"{m.group(1).upper()}{m.group(2)}"
             if _TOP_SECTION_RE.match(current_code):
                 current_section = current_code
+                open_sections.append(current_code)
+            elif current_section and current_code != current_section and current_code.startswith(current_section):
+                sections_with_children.add(current_section)
             rest = text_norm[m.end():].strip()
             if rest and current_code not in label_by_code:
                 label_by_code[current_code] = rest
             current_values = _assign_columns(clusters, header_x, n_cols)
-        elif (not text_norm and current_section and current_section not in lignes
+        elif ((not text_norm or _SECTION_MARKER_RE.match(text_norm))
+              and _pending_section() is not None
               and len(clusters) >= max(2, n_cols - 1)):
-            # Ligne de sous-total de section SANS code ni libellé (voir plus
-            # haut) : rattachée au code de section ouvert plutôt qu'au
-            # dernier enfant — seulement si cette section n'a pas encore sa
-            # propre valeur, ET que la ligne porte (presque) autant de
-            # valeurs que de colonnes attendues (`n_cols - 1` au minimum) :
-            # un sous-total légitime remplit toutes les colonnes, alors
-            # qu'une VRAIE ligne de détail sans libellé récupéré (rare, ex.
-            # une valeur "0" esseulée constatée sur MAGHREBIA/AC64) n'en a
-            # typiquement qu'une — la prendre pour le sous-total aurait
-            # perdu le vrai total, arrivant juste après, en le trouvant déjà
-            # "pris".
-            lignes[current_section] = _assign_columns(clusters, header_x, n_cols)
+            # Ligne de sous-total de section SANS code complet : soit
+            # totalement "bare" (juste des chiffres), soit portant un
+            # marqueur abrégé façon "A1"/"P2" (constaté HAYETT — voir
+            # _SECTION_MARKER_RE) — rattachée à la section ENCORE NON
+            # RÉSOLUE la plus récente (`_pending_section`, pas forcément
+            # `current_section` : voir MAGHREBIA_VIE, où le sous-total de
+            # AC3 est imprimé après la ligne AC4), seulement si (a) une telle
+            # section existe et a RÉELLEMENT des enfants (sinon sa propre
+            # ligne de code porte déjà la valeur, voir plus bas), (b) elle
+            # n'a pas encore sa propre valeur, ET (c) la ligne porte (presque)
+            # autant de valeurs que de colonnes attendues (`n_cols - 1` au
+            # minimum) : un sous-total légitime remplit toutes les colonnes,
+            # alors qu'une VRAIE ligne de détail sans
+            # libellé récupéré (rare, ex. une valeur "0" esseulée constatée
+            # sur MAGHREBIA/AC64) n'en a typiquement qu'une — la prendre pour
+            # le sous-total aurait perdu le vrai total, arrivant juste après,
+            # en le trouvant déjà "pris".
+            lignes[_pending_section()] = _assign_columns(clusters, header_x, n_cols)
+        elif text_norm.startswith("total") and _pending_section() is not None:
+            # Sous-total de SECTION avec libellé explicite ("Total actifs
+            # incorporels", "TOTAL PLACEMENTS"...), à distinguer du cas
+            # juste au-dessus (ligne "bare", sans aucun texte). Gabarit très
+            # fréquent (constaté HAYETT, MAGHREBIA_VIE, CARTE, CARTE_VIE,
+            # LLOYD_TUNISIEN, Takaful...) où chaque section a sa PROPRE
+            # ligne de sous-total, distincte de tous ses postes de détail —
+            # sans cette branche, ce texte ne matche ni un code
+            # (_ROW_CODE_RE) ni la ligne "bare" (text_norm non vide ici), et
+            # se retrouvait absorbé à tort dans le DERNIER code de détail
+            # rencontré (branche "continuation" ci-dessous, via
+            # `setdefault`) — perdant silencieusement le sous-total de
+            # section (Σ sections ≠ Total, constaté sur ~19 sociétés).
+            section = _pending_section()
+            if section == current_section:
+                _flush()
+                current_code = None
+            lignes[section] = _assign_columns(clusters, header_x, n_cols)
+            label_by_code[section] = text_norm
         elif current_code:
             # Ligne de continuation (libellé replié, ou valeurs arrivées
             # une ligne après un libellé trop long) — rattachée au dernier

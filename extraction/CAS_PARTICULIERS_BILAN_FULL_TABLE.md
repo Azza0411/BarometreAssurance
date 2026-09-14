@@ -250,4 +250,74 @@ Anciennes lignes `tableau='bilan'` purgées de `tableau_cellules` /
 sur les 223 documents CMF : 158 "ok" (Actif ET Passif trouvés), 13
 "partiel" (un seul côté), 46 page introuvable, 6 PDF absent — même
 couverture globale qu'avant (171/223), juste correctement scindée.
+
+## 2026-09-14 — audit d'exactitude : 400 écarts trouvés, 3 causes génériques corrigées
+
+Après la scission Actif/Passif, vérification des identités comptables
+(Σ sections = Total) sur les 223 documents : **400 écarts** répartis sur
+19 sociétés — bien plus que les "0 écart" obtenus pendant le
+développement initial (qui ne portait que sur 6 sociétés testées à la
+main : COMAR, ATTIJARI, BIAT, MAGHREBIA, GAT, ASTREE). Diagnostic
+détaillé (HAYETT, LLOYD_TUNISIEN, MAGHREBIA_VIE) a révélé 3 causes
+génériques, corrigées dans `bilan_full_extractor.py` :
+
+**1. Marqueur de sous-total abrégé ("A1", "P2"...)** — plusieurs sociétés
+(HAYETT et al.) terminent chaque section par une ligne "<lettre>
+<chiffre> <valeurs>" (ex. "A1 8 632 873...") plutôt qu'un vrai code
+répété ou une ligne totalement vide. Le chiffre imprimé n'est PAS fiable
+(glyphe mal interprété par pdfplumber — 2 sections consécutives peuvent
+afficher toutes deux "A1"). Fixé en généralisant la détection de
+sous-total "bare" à ce format (`_SECTION_MARKER_RE`), sans jamais se
+fier au chiffre du marqueur (seul `current_section`/`_pending_section`
+fait foi).
+
+**2. Ligne "Total <section>" étiquetée** — d'autres sociétés (CARTE,
+CARTE_VIE, LLOYD_TUNISIEN, Takaful...) impriment une vraie ligne
+"Total actifs incorporels"/"TOTAL PLACEMENTS" par section. Ce texte ne
+matchait aucune branche existante et se retrouvait absorbé dans le
+dernier poste de détail. Fixé par une branche dédiée, restreinte aux
+sections ayant RÉELLEMENT des enfants (`sections_with_children`) — sans
+cette restriction, une ligne comme "Total capitaux propres avant
+affectation" (qui n'est PAS le sous-total d'un CP précis, span plusieurs
+codes CP) écraserait à tort la vraie valeur d'un code CP sans enfant
+(constaté HAYETT/CP4).
+
+**3. Sous-total imprimé après une section suivante SANS enfant** — sur
+MAGHREBIA_VIE, le sous-total de AC3 (qui a des enfants) apparaît
+physiquement APRÈS la ligne AC4 (qui n'en a pas) dans l'ordre de lecture
+— `current_section` avait déjà avancé sur AC4, perdant le sous-total de
+AC3. Fixé en remplaçant la dépendance à `current_section` seul par
+`_pending_section()` : recherche, parmi TOUTES les sections top-level
+déjà ouvertes (`open_sections`, dans l'ordre), la plus récente qui a des
+enfants ET n'a pas encore de valeur — pas forcément la dernière ouverte.
+
+**Résultat** : 400 → 326 écarts (-19%). Le reste se répartit en
+limitations distinctes, pas des bugs d'extraction :
+
+- **AT_TAKAFULIA / ZITOUNA_TAKAFUL** (37 + 31 écarts) : gabarit
+  structurellement différent ("Bilan Combiné", colonnes "Entreprise
+  Takaful" / "Fonds des Adhérents" / "combiné" × 2 exercices — aucun
+  jeton Brut/Amort/Net) — `_header_columns` ne reconnaît aucun de ces
+  en-têtes et retombe sur le gabarit générique à 4 colonnes, complètement
+  inadapté. Relève du chantier Takaful déjà planifié (Phase 3 de la
+  feuille de route), pas de cette session.
+- **CARTE / CARTE_VIE** (29 + 29 écarts) : imbrication à 3 niveaux
+  (AC7 > AC72/AC73 > détails, chacun avec SA PROPRE ligne de sous-total
+  "bare") — `_pending_section` s'arrête au premier sous-total rencontré
+  (celui d'AC72, une "petite section" intermédiaire) et rate le VRAI
+  sous-total d'AC7 qui suit. Nécessiterait de distinguer un sous-total de
+  sous-section d'un sous-total de section top-level — pas juste par
+  l'ordre d'apparition. Pas résolu ici (rendement décroissant).
+- **MAGHREBIA_VIE** (25 écarts restants) : AC3 et AC4 partagent une
+  UNIQUE ligne de sous-total combinée (au lieu de deux séparées) —
+  particularité de présentation propre à cette société, pas une erreur
+  d'extraction généralisable.
+- **LLOYD_TUNISIEN, TUNIS_RE, GAT_VIE, ATTIJARI, ASTREE, UIB, STAR,
+  CTAMA, COMAR, AMI, GAT, BIAT** (écarts résiduels, 2 à 20 par société) :
+  cas isolés non encore diagnostiqués un par un (code CP/PA répété avec
+  des valeurs à additionner sélectivement, notes de réconciliation
+  mêlées à la grille...) — voir `LLOYD_TUNISIEN 2020` pour un exemple
+  documenté (CP2 et CP5 répétés dans le PDF source lui-même, l'un devant
+  être sommé, l'autre non — ambiguïté de la donnée source, pas de
+  l'extraction).
 sociétés Non-Vie/Vie conventionnelles au format standard.
