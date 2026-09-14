@@ -534,8 +534,15 @@ def _parse_correction_valeur(brut):
     """Convertit la saisie libre de l'utilisateur (ex. "1 234,56", "-45",
     "1234.5") en float — accepte l'espace comme séparateur de milliers et la
     virgule OU le point comme séparateur décimal, comme dans le reste de
-    l'extraction (voir extraction/bilan_kpi_extractor.py::_parse_number)."""
-    s = brut.strip().replace(" ", "").replace(" ", "")
+    l'extraction (voir extraction/bilan_kpi_extractor.py::_parse_number).
+    `\\s` (Unicode, pas juste un espace normal) : la valeur affichée à
+    l'écran (fmt(), CorrectionManuelle.jsx) vient de
+    toLocaleString("fr-TN"), qui utilise l'ESPACE FINE INSÉCABLE (U+202F)
+    comme séparateur de milliers — visuellement identique à un espace
+    normal mais un caractère Unicode différent, qui restait tel quel si
+    l'utilisateur copiait-collait la valeur affichée (constaté :
+    "1 512 488 186" rejeté comme non numérique malgré l'apparence)."""
+    s = re.sub(r"\s", "", brut.strip())
     if not s:
         raise CorrectionError("Valeur vide.")
     if "." in s and "," in s:
