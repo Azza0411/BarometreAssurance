@@ -9,6 +9,7 @@ valeur de KPI), pas une mise en page métier avec formules recalculables.
 """
 
 import os
+import re
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -443,16 +444,76 @@ def get_referentiel(tableau):
     return {"lignes": [], "colonnes": []}
 
 
+def _grid_reference_values(grid):
+    """Valeurs numériques distinctes (entiers, valeur absolue, hors 0 —
+    représente conventionnellement une cellule vide "-", jamais un vrai
+    chiffre) de la grille STOCKÉE. Sert de signature de contenu pour
+    retrouver la page PDF réelle — voir `_find_page_matching_grid_values`."""
+    values = set()
+    for row in grid["lignes"]:
+        for v in row["valeurs"].values():
+            if v is None:
+                continue
+            try:
+                iv = int(round(float(v)))
+            except (TypeError, ValueError):
+                continue
+            if iv != 0:
+                values.add(abs(iv))
+    return values
+
+
+def _find_page_matching_grid_values(pdf_path, grid, max_pages=120):
+    """Retrouve la page dont le texte contient le PLUS de valeurs de la
+    grille STOCKÉE — par CONTENU plutôt que par titre de section. Nécessaire
+    car la donnée peut provenir d'un tableau au titre tout différent de
+    "Annexe 13" (ex. un tableau de raccordement "Annexe n°16" servant de
+    repli quand la page Annexe 13 par branche n'existe pas/n'est pas
+    exploitable dans ce document — constaté sur STAR 2025 : chercher une
+    page titrée "Annexe 13" tombait sur une page de résumé sans rapport,
+    dont seules les 2-3 premières valeurs coïncidaient par coïncidence).
+    Rapide (texte pdfplumber seul, pas de camelot) : quelques secondes pour
+    tout le document plutôt que plusieurs dizaines."""
+    values = _grid_reference_values(grid)
+    if not values:
+        return None
+    import pdfplumber
+    best_page, best_score = None, 0
+    with pdfplumber.open(pdf_path) as pdf:
+        for i, page in enumerate(pdf.pages[:max_pages]):
+            text = page.extract_text() or ""
+            if not text:
+                continue
+            digits_blob = re.sub(r"[^0-9]", "", text)
+            score = 0
+            for v in values:
+                s = str(v)
+                if len(s) >= 4:
+                    if s in digits_blob:
+                        score += 1
+                elif re.search(rf"(?<!\d){s}(?!\d)", text):
+                    score += 1
+            if score > best_score:
+                best_score, best_page = score, i + 1
+    # Exige une correspondance substantielle (pas juste 1-2 nombres communs
+    # par coïncidence) — mieux vaut ne rien afficher qu'une page sans rapport.
+    if best_page is None or best_score < max(3, len(values) // 3):
+        return None
+    return best_page
+
+
 def locate_source_page(conn, code, annee, tableau):
     """Numéro de page du PDF source où se trouve le tableau demandé — pour
     l'afficher à côté de l'aperçu Excel dans la page de correction manuelle
     et aider l'utilisateur à repérer visuellement les fautes d'extraction.
-    Mis en cache dans `tableau_pages` (voir schema.sql) dès le premier appel
-    pour ce document : le repérage complet (camelot inclus, plusieurs
-    secondes) ne doit se faire qu'une fois, jamais à chaque ouverture — un
-    document déjà publié ne change pas de pagination. None si le tableau n'a
-    pas encore de pipeline de repérage dédié (bilan, pas encore construit)
-    ou si la page n'a pas pu être retrouvée."""
+    Retrouvée par CONTENU (voir `_find_page_matching_grid_values`) — la
+    grille déjà stockée fait foi, jamais une ré-extraction indépendante qui
+    pourrait diverger de ce qui est réellement affiché à l'écran. Mis en
+    cache dans `tableau_pages` (voir schema.sql) dès le premier appel pour ce
+    document : un document déjà publié ne change pas de pagination. None si
+    le tableau n'a pas encore de pipeline de repérage dédié (bilan, pas
+    encore construit), s'il n'y a aucune cellule stockée, ou si la page n'a
+    pas pu être retrouvée."""
     if tableau not in ("annexe12", "annexe13"):
         return None
     doc_id = get_document_id(conn, code, annee)
@@ -464,21 +525,13 @@ def locate_source_page(conn, code, annee, tableau):
         return cached
 
     path = get_local_pdf_path_for_document(conn, doc_id)
-    if not path:
-        return None
-    try:
-        if tableau == "annexe13":
-            page_num, _ = locate_and_extract_full_table(
-                path, _is_annexe13_page, _ANNEXE13_KPI_PATTERNS, _ANNEXE13_RACCORDEMENT_RE,
-                extra_page_predicate=relaxed_is_annexe13_page,
-            )
-        else:
-            page_num, _ = locate_and_extract_full_table(
-                path, _is_annexe12_page, _ANNEXE12_KPI_PATTERNS, _ANNEXE12_RACCORDEMENT_RE,
-                extra_page_predicate=relaxed_is_annexe12_page, use_notes_fallback=False,
-            )
-    except Exception:
-        page_num = None
+    grid = get_document_grid(conn, code, annee, tableau)
+    page_num = None
+    if path and grid and grid["lignes"]:
+        try:
+            page_num = _find_page_matching_grid_values(path, grid)
+        except Exception:
+            page_num = None
     save_cached_tableau_page(conn, doc_id, tableau, page_num)
     return page_num
 
