@@ -33,7 +33,11 @@ from extraction.bilan_kpi_extractor import (
     _OcrFallbackPage,
 )
 
-_ROW_CODE_RE = re.compile(r"^(AC|PA|CP)\s?(\d+)(?:,\d+)*", re.IGNORECASE)
+# "AN" (Actifs Nets des adhérents) : préfixe propre aux sociétés Takaful,
+# section du Bilan Passif qui n'existe que pour elles (fonds mutualisé des
+# assurés, distinct des Capitaux propres des actionnaires — voir
+# extraction/takaful_kpi_extractor.py pour le contexte réglementaire).
+_ROW_CODE_RE = re.compile(r"^(AC|PA|CP|AN)\s?(\d+)(?:,\d+)*", re.IGNORECASE)
 
 # Ligne de TOTAL général — jamais préfixée d'un code réglementaire (contrairement
 # à toutes les autres lignes), donc invisible à _ROW_CODE_RE : traitée à part,
@@ -60,6 +64,11 @@ _TOTAL_GENERAL_RE = re.compile(r"^total\s+(des\s+)?capitaux\s+propres\s+et\s+(de
 # AVANT RÉSULTAT de l'exercice" (sous-total intermédiaire, EXCLUT CP6) —
 # le mot suivant "avant" doit être "affectation", pas "resultat".
 _TOTAL_CP_RE = re.compile(r"^total\s+(des\s+)?capitaux\s+propres(\s+avant\s+affectation)?$")
+# "Total des Actifs Nets des adhérents" — même principe que _TOTAL_CP_RE,
+# mais pour la section "AN" (Actifs Nets des adhérents, propre aux
+# sociétés Takaful) : sous-total propre, jamais rattaché au dernier code
+# AN rencontré.
+_TOTAL_AN_RE = re.compile(r"^total\s+(des\s+)?actifs?\s+nets?\s+des\s+adherents?$")
 
 # En-têtes de colonnes numériques recherchés côté Actif ; côté Passif,
 # seulement "Net" (pas de ventilation brut/amortissements sur ce côté).
@@ -77,6 +86,37 @@ _WANTED_TOKENS_PASSIF = {"net"}
 # colonne (constaté MAGHREBIA) — mêmes noms de colonnes en sortie quel que
 # soit l'intitulé réellement imprimé.
 _LABEL_BY_TOKEN = {"brut": "Brut", "vb": "Brut", "amort": "Amortissements et provisions", "net": "Net"}
+
+# Gabarit Takaful ("Bilan Combiné", à partir de ~2020, voir
+# takaful_kpi_extractor.py) : colonnes "Entreprise (Takaful et/ou
+# Rétakaful)" / "Fonds des Adhérents" / "...combiné" PAR EXERCICE, aucun
+# des jetons Brut/Amort/Net/VB attendus par `_header_columns`. Détecté par
+# ce simple indice de vocabulaire plutôt que par société (générique : une
+# société non-Takaful n'a aucune raison d'employer ces mots). Le
+# comptage habituel par occurrence de jeton (`_header_columns`) n'est PAS
+# fiable ici : l'en-tête s'étale sur PLUSIEURS lignes PHYSIQUES à cause du
+# retour à la ligne (repéré : "Entreprise" apparaît jusqu'à 4 fois pour 2
+# vraies colonnes) — le nombre de colonnes est donc déduit du nombre de
+# valeurs sur une VRAIE ligne de données (voir `_takaful_column_names`),
+# pas du nombre de mots d'en-tête reconnus.
+_TAKAFUL_HEADER_HINT_RE = re.compile(r"entreprise\s+takaful|fonds\s+des\s+adherents|\bcombine\b")
+_TAKAFUL_COLUMN_GROUP = ["Entreprise", "Fonds des adhérents", "Combiné"]
+
+
+def _takaful_column_names(n_cols):
+    """Noms de colonnes pour un Bilan Combiné Takaful : le triplet
+    Entreprise/Fonds des adhérents/Combiné, répété une fois par exercice
+    (suffixe "(N-k)" à partir du 2e). None si `n_cols` n'est pas un
+    multiple de 3 (gabarit différent de ce qui est attendu — mieux vaut
+    laisser le repli générique plutôt que d'imposer des noms qui ne
+    correspondent à rien)."""
+    if not n_cols or n_cols % 3 != 0:
+        return None
+    names = []
+    for r in range(n_cols // 3):
+        suffix = "" if r == 0 else f" (N-{r})"
+        names.extend(g + suffix for g in _TAKAFUL_COLUMN_GROUP)
+    return names
 
 
 def _is_target_page(page, side, lines_checked=6):
@@ -140,7 +180,7 @@ def _header_columns(lines, side):
 # démarre bien plus à gauche que le mot d'en-tête court "Net" qui le
 # surmonte, faisant rejeter à tort de vraies valeurs).
 _NOTE_REF_TOKEN_RE = re.compile(r"^\d+(?:\.\d+)+$")
-_DASH_PLACEHOLDER_RE = re.compile(r"^[-–—]+$")
+_DASH_PLACEHOLDER_RE = re.compile(r"^[-‐‑–—]+$")
 
 
 def _assign_columns(clusters, header_x, n_cols):
@@ -172,7 +212,24 @@ def extract_bilan_full_grid(page, side, min_rows=5):
     if not words:
         return None
     lines = _cluster_lines(words)
-    colonnes, header_x = _header_columns(lines, side)
+    colonnes, header_x = [], []
+    if any(_TAKAFUL_HEADER_HINT_RE.search(_normalizer.clean(" ".join(w["text"] for w in line)))
+           for line in lines[:25]):
+        # Gabarit Takaful (voir _TAKAFUL_HEADER_HINT_RE) : le nombre de
+        # colonnes vient du nombre de valeurs sur une VRAIE ligne de
+        # détail (code AC/PA/CP/AN reconnu en tête), pas du comptage de
+        # mots d'en-tête (peu fiable ici, voir le commentaire sur
+        # `_TAKAFUL_HEADER_HINT_RE`).
+        max_clusters = 0
+        for line in lines:
+            first = _normalizer.clean(line[0]["text"]) if line else ""
+            if line and _ROW_CODE_RE.match(first):
+                resolved = _words_with_bracket_negatives_resolved(line)
+                no_notes = [w for w in resolved if not _NOTE_REF_TOKEN_RE.match(w["text"])]
+                max_clusters = max(max_clusters, len(_extract_numeric_clusters(no_notes)))
+        colonnes = _takaful_column_names(max_clusters) or []
+    if not colonnes:
+        colonnes, header_x = _header_columns(lines, side)
     if len(colonnes) < 2:
         # Repli si l'en-tête n'a pas pu être localisé de façon fiable (page
         # non conforme au gabarit attendu, OU en-tête bien présente mais mal
@@ -207,7 +264,7 @@ def extract_bilan_full_grid(page, side, min_rows=5):
                              # rencontré (ex. AC12), qui a déjà ses propres
                              # valeurs et les garderait (via `setdefault`),
                              # perdant silencieusement le total de la section.
-    _TOP_SECTION_RE = re.compile(r"^(AC|PA|CP)\d$")
+    _TOP_SECTION_RE = re.compile(r"^(AC|PA|CP|AN)\d$")
     # Marqueur de sous-total de section abrégé ("A1", "A2"... côté Actif,
     # "P1", "P2"... côté Passif) SANS le préfixe complet AC/PA/CP — constaté
     # HAYETT, où chaque section se termine par une ligne "<lettre><chiffre>
@@ -298,6 +355,22 @@ def extract_bilan_full_grid(page, side, min_rows=5):
             if not NUMERIC_TOKEN_RE.match(w["text"]) and not _DASH_PLACEHOLDER_RE.match(w["text"])
         ]
         line_no_notes = [w for w in resolved_line if not _NOTE_REF_TOKEN_RE.match(w["text"])]
+        if not header_x:
+            # Repli ordinal (header_x vide, voir `_assign_columns`) : un "-"
+            # isolé (placeholder "néant") doit compter comme un ZÉRO
+            # explicite à SA position, sinon `_extract_numeric_clusters`
+            # l'ignore silencieusement (ne matche pas NUMERIC_TOKEN_RE) et
+            # décale toutes les valeurs suivantes d'une colonne vers la
+            # gauche — constaté Takaful (AT_TAKAFULIA) : une ligne à 6
+            # colonnes attendues n'en produisait que 4 dès qu'un "-"
+            # apparaissait au milieu ("... ‐ 394 477 394 477 ‐ 488 919
+            # 488 919"). Sans effet en mode position (l'affectation par
+            # proximité à l'en-tête, voir `_assign_columns`, ne dépend
+            # jamais d'un compte ordinal).
+            line_no_notes = [
+                {**w, "text": "0"} if _DASH_PLACEHOLDER_RE.match(w["text"]) else w
+                for w in line_no_notes
+            ]
         clusters = _extract_numeric_clusters(line_no_notes)
         text_norm = _normalizer.clean(" ".join(w["text"] for w in label_words))
         if side == "passif" and _TOTAL_CP_RE.match(text_norm):
@@ -312,6 +385,14 @@ def extract_bilan_full_grid(page, side, min_rows=5):
             current_code = None
             lignes["TOTAL_CP"] = _assign_columns(clusters, header_x, n_cols)
             label_by_code["TOTAL_CP"] = text_norm
+            continue
+        if side == "passif" and _TOTAL_AN_RE.match(text_norm):
+            # "Total des Actifs Nets des adhérents" (Takaful) — même
+            # traitement que TOTAL_CP ci-dessus, pour la section AN.
+            _flush()
+            current_code = None
+            lignes["TOTAL_AN"] = _assign_columns(clusters, header_x, n_cols)
+            label_by_code["TOTAL_AN"] = text_norm
             continue
         if total_re.match(text_norm) or (side == "passif" and _TOTAL_GENERAL_RE.match(text_norm)):
             # Ligne de TOTAL général — jamais préfixée d'un code, traitée à

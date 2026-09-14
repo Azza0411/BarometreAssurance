@@ -395,3 +395,62 @@ propre clé "TOTAL_CP", jamais rattachée au dernier code CP rencontré.
 Vérifié STAR 2024 : TOTAL_CP = 429 897 743 exactement (matche le KPI),
 aucune régression sur les identités déjà validées (HAYETT 2020, STAR
 2024 lui-même : toujours 0 écart).
+
+## 2026-09-14 (suite) — support Takaful (Bilan Combiné)
+
+Retour utilisateur : ajouter le support Takaful, jusqu'ici totalement
+absent (AT_TAKAFULIA/ZITOUNA_TAKAFUL/AL_AMANAH_TAKAFUL exclus de tout).
+Découverte clé : le Bilan Takaful utilise les MÊMES codes réglementaires
+AC/PA/CP que les assureurs conventionnels — toute la logique de
+sections/sous-totaux déjà construite est réutilisable sans changement.
+Seule différence : les colonnes ("Entreprise" / "Fonds des Adhérents" /
+"...combiné" × 2 exercices, "Bilan Combiné" — réforme réglementaire
+~2020, voir extraction/takaful_kpi_extractor.py pour le contexte), pas de
+jetons Brut/Amort/Net que `_header_columns` reconnaît.
+
+**Ajouté** :
+1. `_TAKAFUL_HEADER_HINT_RE` détecte ce gabarit par vocabulaire (générique,
+   pas par société) ; le nombre de colonnes est déduit du nombre de
+   valeurs sur une VRAIE ligne de détail (code reconnu en tête), PAS du
+   comptage de mots d'en-tête — l'en-tête Takaful s'étale sur plusieurs
+   lignes physiques à cause du retour à la ligne ("Entreprise" apparaît
+   jusqu'à 4 fois pour 2 vraies colonnes), rendant le comptage par
+   occurrence de jeton peu fiable ici.
+2. Section "AN" (Actifs Nets des adhérents, fonds mutualisé des assurés —
+   propre au Takaful) ajoutée à `_ROW_CODE_RE`/`_TOP_SECTION_RE`, avec son
+   propre sous-total imprimé ("Total des Actifs Nets des adhérents",
+   `_TOTAL_AN_RE`) capturé comme TOTAL_CP l'est pour les Capitaux propres.
+3. **Bug généralisable corrigé en cours de route** : en mode de repli
+   ORDINAL (`header_x` vide — utilisé ici, et aussi par le repli OCR
+   STAR 2025), un placeholder "néant" isolé ("‐", "‐‐", U+2010/U+2011 non
+   couverts par `_DASH_PLACEHOLDER_RE` jusqu'ici) était silencieusement
+   ignoré par `_extract_numeric_clusters`, décalant TOUTES les valeurs
+   suivantes d'une colonne vers la gauche (constaté : "AC1 ... ‐ 394 477
+   394 477 ‐ 488 919 488 919" ne produisait que 4 valeurs sur 6 attendues).
+   Corrigé : un tel placeholder compte désormais comme un ZÉRO explicite
+   à SA position en mode ordinal (sans effet en mode position, qui ne
+   dépend jamais d'un compte ordinal).
+
+**Résultat mesuré (27 documents AT_TAKAFULIA/ZITOUNA_TAKAFUL, hors
+AL_AMANAH_TAKAFUL en arabe)** : **15/27 récupèrent l'Actif** (7 validés à
+0 écart exact — AT_TAKAFULIA 2020/2021 notamment), **15/27 récupèrent le
+Passif** (seulement 2 à 0 écart — voir limites ci-dessous). Avant cette
+session : 0/27 exploitable (repli générique 4 colonnes complètement
+inadapté).
+
+**Limites non résolues, documentées plutôt que forcées** :
+- **Passif souvent multi-page** (constaté AT_TAKAFULIA 2023) : le tableau
+  commence en bas de la page Actif (le titre "ANNEXE N°2... Passifs"
+  y est imprimé) et continue sur la page suivante SANS titre répété —
+  `_is_target_page`/`locate_and_extract_bilan` ne gèrent qu'une page à la
+  fois, ratent alors le Passif entièrement ou le capturent incomplet.
+  Nécessiterait une détection de continuation multi-page, pas entreprise
+  ici (chantier à part).
+- **ZITOUNA_TAKAFUL : référence de note collée à la valeur** — ex. "AC1
+  Actifs incorporels 1 0 491 163..." — le "1" (numéro de note) est un
+  simple chiffre SANS point décimal, indiscernable d'une vraie valeur
+  par `_NOTE_REF_TOKEN_RE` (qui ne reconnaît que "3.1"-style). Décale
+  toutes les colonnes d'une position. Pas résolu ici.
+- **AL_AMANAH_TAKAFUL** : états financiers en arabe — hors périmètre de
+  ce module (latin uniquement) ; voir arabic_ocr_extractor.py pour la
+  voie déjà entreprise ailleurs sur ce type de document.
