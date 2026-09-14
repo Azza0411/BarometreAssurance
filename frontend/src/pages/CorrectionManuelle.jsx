@@ -545,18 +545,24 @@ export default function CorrectionManuelle() {
             visualiseur grandir au-delà de l'écran plutôt que de faire
             défiler, quel que soit le calcul de hauteur du bandeau au-dessus. */}
         <div style={{ background: VIEWER_BG, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: "1px solid rgba(255,255,255,.08)", flexWrap: "wrap" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 7, color: "#E5E7EB", fontSize: 12.5, fontWeight: 700 }}>
+          {/* minHeight fixe + nowrap : ce bandeau et celui du PDF (même
+              structure, même hauteur) doivent rester alignés pixel pour
+              pixel entre les deux colonnes — un habillage plus long d'un
+              côté qui passerait à la ligne aurait sinon désaligné tout le
+              contenu en dessous (zoom, tableau/page) entre Excel et PDF. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px", minHeight: 46, borderBottom: "1px solid rgba(255,255,255,.08)", flexWrap: "nowrap", overflow: "hidden" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 7, color: "#E5E7EB", fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>
               <svg viewBox="0 0 16 16" fill="none" width="13" height="13">
                 <rect x="2" y="1" width="12" height="14" rx="2" stroke="#94A3B8" strokeWidth="1.3"/>
                 <path d="M5 5h6M5 8h4M5 11h5" stroke="#94A3B8" strokeWidth="1.1" strokeLinecap="round"/>
               </svg>
               Excel — {code} · {annee}
             </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
-              <span style={{ background: "rgba(255,255,255,.08)", color: "#E5E7EB", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>
-                Feuille : {tableauLabel}
-              </span>
+            <span style={{ background: "rgba(255,255,255,.08)", color: "#E5E7EB", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, flexShrink: 0, whiteSpace: "nowrap" }}>
+              {tableauLabel}
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", flexShrink: 0 }}>
+              {exportErreur && <span style={{ fontSize: 11, color: "#FCA5A5", fontWeight: 600 }}>{exportErreur}</span>}
               {pdfHref && (
                 <button
                   onClick={() => setShowPdf(s => !s)}
@@ -564,27 +570,26 @@ export default function CorrectionManuelle() {
                   style={{
                     display: "flex", alignItems: "center", gap: 6, border: `1px solid ${showPdf ? "#93C5FD" : "#334155"}`,
                     background: showPdf ? "rgba(147,197,253,.12)" : "none", color: "#93C5FD",
-                    borderRadius: 7, padding: "5px 11px", fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+                    borderRadius: 7, padding: "5px 11px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
                   }}
                 >
-                  {showPdf ? "Masquer le PDF source" : "Afficher le PDF source"}
+                  {showPdf ? "Masquer le PDF" : "Afficher le PDF"}
                 </button>
               )}
-              {exportErreur && <span style={{ fontSize: 11, color: "#FCA5A5", fontWeight: 600 }}>{exportErreur}</span>}
               <button
                 onClick={exporterExcel} disabled={exportLoading || !grid}
                 title="Télécharger cette combinaison société/tableau/année en Excel"
                 style={{
                   display: "flex", alignItems: "center", gap: 6, border: "1px solid #334155",
                   background: exportLoading ? "#334155" : "none", color: exportLoading || !grid ? "#64748B" : "#CBD5E1",
-                  borderRadius: 7, padding: "5px 11px", fontSize: 11.5, fontWeight: 700,
+                  borderRadius: 7, padding: "5px 11px", fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
                   cursor: exportLoading || !grid ? "not-allowed" : "pointer",
                 }}
               >
                 <svg viewBox="0 0 14 14" fill="none" width="12" height="12">
                   <path d="M7 1.5v7m0 0L4.3 6M7 8.5l2.7-2.5M2 11h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-                {exportLoading ? "Génération…" : "Télécharger l'Excel"}
+                {exportLoading ? "Génération…" : "Télécharger"}
               </button>
             </div>
           </div>
@@ -592,10 +597,11 @@ export default function CorrectionManuelle() {
           {/* Barre de contrôles zoom — identique à celle du visualiseur PDF
               de KpiDetail (Qualité des données) : mêmes boutons, mêmes
               couleurs. "Réinitialiser" restaure le zoom AJUSTÉ (tableau
-              entier visible), pas 100 % fixe. */}
+              entier visible), pas 100 % fixe. Même hauteur que la barre du
+              panneau PDF (PdfCanvas) pour rester alignées entre les colonnes. */}
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "center",
-            gap: 8, padding: "6px 10px",
+            gap: 8, height: 40, padding: "0 12px", boxSizing: "border-box",
             background: "#1E293B", borderBottom: "1px solid #334155",
           }}>
             <button onClick={() => setZoom(z => Math.max(ZOOM_MIN, +(z - 0.1).toFixed(2)))}
@@ -728,22 +734,24 @@ export default function CorrectionManuelle() {
             le visualiseur PDF de la page Qualité des données. */}
         {showPdf && (
         <div style={{ background: VIEWER_BG, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, borderLeft: "1px solid rgba(255,255,255,.08)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: "1px solid rgba(255,255,255,.08)", flexWrap: "wrap" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 7, color: "#E5E7EB", fontSize: 12.5, fontWeight: 700 }}>
+          {/* Même hauteur/structure que le bandeau Excel (voir commentaire
+              là-bas) — aligné pixel pour pixel entre les deux colonnes. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px", minHeight: 46, borderBottom: "1px solid rgba(255,255,255,.08)", flexWrap: "nowrap", overflow: "hidden" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 7, color: "#E5E7EB", fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>
               <svg viewBox="0 0 16 16" fill="none" width="13" height="13">
                 <path d="M4 1.5h6l3 3v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="#94A3B8" strokeWidth="1.3"/>
                 <path d="M9.5 1.5V4a1 1 0 0 0 1 1H13" stroke="#94A3B8" strokeWidth="1.3"/>
               </svg>
               PDF source — {code} · {annee}
             </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
-              {pdfPage !== undefined && (
-                <span style={{ background: "rgba(255,255,255,.08)", color: "#E5E7EB", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>
-                  {pdfPage ? `Page ${pdfPage}` : "Page non repérée"}
-                </span>
-              )}
+            {pdfPage !== undefined && (
+              <span style={{ background: "rgba(255,255,255,.08)", color: "#E5E7EB", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, flexShrink: 0, whiteSpace: "nowrap" }}>
+                {pdfPage ? `Page ${pdfPage}` : "Page non repérée"}
+              </span>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", flexShrink: 0 }}>
               {pdfHref && (
-                <a href={pdfHref} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 5, color: "#93C5FD", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>
+                <a href={pdfHref} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 5, color: "#93C5FD", fontSize: 11.5, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}>
                   Ouvrir dans un onglet ↗
                 </a>
               )}
@@ -777,20 +785,22 @@ export default function CorrectionManuelle() {
             côte à côte plutôt qu'empilés, pour rester compact en hauteur. */}
         {showPdf && (
         <div style={{
-          display: "flex", gap: 12, padding: "14px 18px", background: BG,
-          borderTop: `1px solid ${BORDER}`, flexShrink: 0, maxHeight: 260, overflow: "auto",
+          display: "flex", flexDirection: "column", gap: 10, padding: "16px 22px", background: BG,
+          borderTop: `1px solid ${BORDER}`, flexShrink: 0, maxHeight: 300, overflow: "auto",
         }}>
+          <span style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, letterSpacing: ".4px", textTransform: "uppercase" }}>Correction</span>
+          <div style={{ display: "flex", gap: 16 }}>
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "center", gap: 10, flexShrink: 0,
-            padding: "8px 14px", background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 9, fontSize: 11,
+            padding: "10px 18px", background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 10, fontSize: 11,
           }}>
             <span style={{ color: MUTED, whiteSpace: "nowrap" }}>
               {grid ? <><b style={{ color: DARK }}>{grid.lignes.length}</b> lignes × <b style={{ color: DARK }}>{grid.colonnes.length}</b> colonnes</> : "—"}
             </span>
           </div>
 
-          <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "14px 16px", flex: 1, minWidth: 260 }}>
-            <h3 style={{ margin: "0 0 10px", fontSize: 13.5, fontWeight: 800, color: DARK }}>Corriger</h3>
+          <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "16px 20px", flex: 1, minWidth: 260 }}>
+            <h3 style={{ margin: "0 0 12px", fontSize: 13.5, fontWeight: 800, color: DARK }}>Corriger</h3>
             {!selected ? (
               <p style={{ fontSize: 12.5, color: MUTED, margin: 0 }}>Cliquez une valeur, un nom de ligne ou de colonne dans un des tableaux ci-dessus.</p>
             ) : (
@@ -831,8 +841,8 @@ export default function CorrectionManuelle() {
             )}
           </div>
 
-          <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "14px 16px", flex: 1, minWidth: 260, display: "flex", flexDirection: "column", minHeight: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+          <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "16px 20px", flex: 1, minWidth: 260, display: "flex", flexDirection: "column", minHeight: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
               <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 800, color: DARK }}>Corrections en attente</h3>
               <button onClick={enregistrerTout} disabled={corrections.size === 0} style={{
                 padding: "6px 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 700, flexShrink: 0,
@@ -865,6 +875,7 @@ export default function CorrectionManuelle() {
               ))}
             </div>
             {saveNote && <p style={{ margin: "8px 0 0", fontSize: 11, color: "#B45309", fontWeight: 600 }}>{saveNote}</p>}
+          </div>
           </div>
         </div>
         )}
