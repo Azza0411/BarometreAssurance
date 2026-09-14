@@ -132,3 +132,39 @@ limitations déjà connues (scan), soit de conventions différentes non
 encore rencontrées — prochaine étape naturelle : élargir le sweep à
 davantage de sociétés/années pour mesurer la couverture réelle avant de
 continuer au cas par cas.
+
+## 2026-09-14 (suite) — ASTREE et BIAT : 6/6 sociétés testées à 0 écart
+
+Poursuite immédiate. **ASTREE et BIAT** rejoignent COMAR/ATTIJARI/
+MAGHREBIA/GAT — tous à 0 écart maintenant (Actif ET Passif), avec 3
+correctifs supplémentaires, tous génériques :
+
+1. **"-" isolé exclu du libellé** (placeholder "néant", ex. "AC540... -
+   - -") : ne matchait pas `NUMERIC_TOKEN_RE` (exige ≥1 chiffre) et se
+   retrouvait donc dans le texte du libellé — une ligne de sous-total
+   faite seulement de chiffres et de "-" isolés (Amort/Net non ventilé
+   sur cette ligne) ressortait alors avec un libellé non vide ("-"),
+   ratant la détection "ligne de sous-total sans libellé" (constaté
+   BIAT/AC5).
+2. **Total combiné "Capitaux propres et Passifs"** reconnu comme variante
+   valide de ligne de total (clé séparée `TOTAL_GENERAL`, jamais confondue
+   avec `TOTAL` = Total du Passif seul) — certains documents (BIAT, ASTREE)
+   n'imprimment JAMAIS de "Total du Passif" isolé, seulement ce total
+   combiné (= Total de l'Actif).
+3. **Code réglementaire collé au libellé, AVEC numéro** ("AC11,12,13Inves-
+   tissements...", "AC2Actifs...", constaté ASTREE) : `_ROW_CODE_RE`
+   n'exigeait plus de séparateur après le numéro (`\b` retiré) — capture
+   aussi les listes de codes séparées par virgule (garde le premier).
+4. **Code top-level collé, SANS aucun numéro** ("ACActifs incorporels",
+   ASTREE) : le numéro de section apparaît ailleurs sur la MÊME ligne
+   comme référence de note isolée (lettre reprenant l'initiale du préfixe
+   + numéro, ex. "...incorporels A 1 3 089 682..." -> section 1). Repéré
+   et recollé au préfixe avant tout le reste du traitement (partie
+   décimale ignorée si présente, ex. "A 3.1" -> 3, non pertinent ici car
+   ce marqueur n'apparaît que sur les lignes de section top-level, jamais
+   sur un sous-poste qui a déjà son propre code explicite).
+
+**6/6 sociétés testées avec un texte natif exploitable sont maintenant
+parfaites** (COMAR, ATTIJARI, MAGHREBIA, GAT, BIAT, ASTREE — Actif et
+Passif, 12/12 côtés). Restent, comme avant : STAR/BH/TUNIS_RE/AMI (pages
+scannées/texte cassé, catégorie déjà connue).

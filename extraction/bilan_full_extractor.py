@@ -32,13 +32,20 @@ from extraction.bilan_kpi_extractor import (
     ACTIF_PAGE_TITLE_RE, PASSIF_PAGE_TITLE_RE, NUMERIC_TOKEN_RE,
 )
 
-_ROW_CODE_RE = re.compile(r"^(AC|PA|CP)\s?(\d+)\b", re.IGNORECASE)
+_ROW_CODE_RE = re.compile(r"^(AC|PA|CP)\s?(\d+)(?:,\d+)*", re.IGNORECASE)
 
 # Ligne de TOTAL général — jamais préfixée d'un code réglementaire (contrairement
 # à toutes les autres lignes), donc invisible à _ROW_CODE_RE : traitée à part,
 # jamais rattachée par erreur au dernier code rencontré (voir extract_bilan_full_grid).
 _TOTAL_ACTIF_RE = re.compile(r"^total(\s+(de\s+l['\s]|des\s+)?actifs?)?$")
 _TOTAL_PASSIF_RE = re.compile(r"^total(\s+(du\s+|des\s+)?passifs?)?$")
+# Certains documents (ex. BIAT) n'imprimment JAMAIS de "Total du Passif"
+# isolé (hors capitaux propres) — seulement le total général combiné
+# ("Total capitaux propres et passifs" = Total de l'Actif). Reconnu à
+# part (clé "TOTAL_GENERAL", pas "TOTAL") pour ne jamais le confondre
+# avec un vrai "Total du Passif" lors d'une validation future : ce total
+# combiné n'est PAS comparable à la somme des seules sections PA/CP2..7.
+_TOTAL_GENERAL_RE = re.compile(r"^total\s+(des\s+)?capitaux\s+propres\s+et\s+(des\s+|du\s+)?passifs?$")
 
 # En-têtes de colonnes numériques recherchés côté Actif ; côté Passif,
 # seulement "Net" (pas de ventilation brut/amortissements sur ce côté).
@@ -119,6 +126,7 @@ def _header_columns(lines, side):
 # démarre bien plus à gauche que le mot d'en-tête court "Net" qui le
 # surmonte, faisant rejeter à tort de vraies valeurs).
 _NOTE_REF_TOKEN_RE = re.compile(r"^\d+(?:\.\d+)+$")
+_DASH_PLACEHOLDER_RE = re.compile(r"^[-–—]+$")
 
 
 def _assign_columns(clusters, header_x, n_cols):
@@ -193,6 +201,27 @@ def extract_bilan_full_grid(page, side, min_rows=5):
         if (len(line) >= 2 and re.match(r"^(AC|PA|CP)$", line[0]["text"], re.IGNORECASE)
                 and re.match(r"^\d+$", line[1]["text"])):
             line = [{**line[0], "text": line[0]["text"] + line[1]["text"]}, *line[2:]]
+        # Titre de section top-level SANS aucun numéro accolé, collé
+        # directement au libellé ("ACActifs incorporels", constaté ASTREE
+        # — contrairement à ses propres sous-postes, glués mais AVEC
+        # numéro : "AC11,12,13Investissements..."). Le numéro de la section
+        # apparaît ailleurs sur la même ligne comme une référence de note
+        # séparée ("...incorporels A 1 3 089 682...") : une lettre isolée
+        # reprenant l'initiale du préfixe, suivie du numéro (partie entière
+        # seule si décimale, ex. "A 3.1" -> 3). Repéré puis recollé au
+        # préfixe pour que le reste du traitement (identique à toutes les
+        # autres lignes) le retrouve comme un vrai code "AC1".
+        _bare_m = re.match(r"^(AC|PA|CP)([A-ZÀ-Ý].*)$", line[0]["text"])
+        if _bare_m:
+            initiale = _bare_m.group(1)[0]
+            for i in range(1, len(line) - 1):
+                if line[i]["text"] == initiale and re.match(r"^\d+(?:\.\d+)?$", line[i + 1]["text"]):
+                    section_num = line[i + 1]["text"].split(".")[0]
+                    line = [
+                        {**line[0], "text": _bare_m.group(1) + section_num + _bare_m.group(2)},
+                        *line[1:i], *line[i + 2:],
+                    ]
+                    break
         # Résolution des négatifs entre parenthèses/chevrons AVANT de
         # distinguer libellé/valeurs — sinon "(95" et "277)" (fragments
         # d'un "(95 854 277)" comptable) ne matchent ni l'un ni l'autre et
@@ -200,11 +229,21 @@ def extract_bilan_full_grid(page, side, min_rows=5):
         # sur la ligne "Total des actifs" de GAT : le résidu "(95 277)"
         # dans le texte empêchait sa reconnaissance comme ligne de total).
         resolved_line = _words_with_bracket_negatives_resolved(line)
-        label_words = [w for w in resolved_line if not NUMERIC_TOKEN_RE.match(w["text"])]
+        # Un "-" isolé (case "néant" placeholder, très fréquent dans ces
+        # tableaux — ex. "AC540... - - -") ne matche pas NUMERIC_TOKEN_RE
+        # (qui exige au moins 1 chiffre) et se retrouvait donc à tort dans
+        # le libellé reconstruit — un sous-total de section fait seulement
+        # de chiffres ET de "-" isolés (Amort/Net non ventilé) ressortait
+        # alors avec un texte non vide ("-"), ratant la détection "ligne
+        # de sous-total sans libellé" (constaté BIAT/AC5).
+        label_words = [
+            w for w in resolved_line
+            if not NUMERIC_TOKEN_RE.match(w["text"]) and not _DASH_PLACEHOLDER_RE.match(w["text"])
+        ]
         line_no_notes = [w for w in resolved_line if not _NOTE_REF_TOKEN_RE.match(w["text"])]
         clusters = _extract_numeric_clusters(line_no_notes)
         text_norm = _normalizer.clean(" ".join(w["text"] for w in label_words))
-        if total_re.match(text_norm):
+        if total_re.match(text_norm) or (side == "passif" and _TOTAL_GENERAL_RE.match(text_norm)):
             # Ligne de TOTAL général — jamais préfixée d'un code, traitée à
             # part pour ne jamais se retrouver fusionnée avec la dernière
             # section rencontrée (sinon ses valeurs, arrivant après que
@@ -212,8 +251,9 @@ def extract_bilan_full_grid(page, side, min_rows=5):
             # ignorées par le `setdefault` de la branche "continuation").
             _flush()
             current_code = None
-            lignes["TOTAL"] = _assign_columns(clusters, header_x, n_cols)
-            label_by_code["TOTAL"] = text_norm
+            key = "TOTAL" if total_re.match(text_norm) else "TOTAL_GENERAL"
+            lignes[key] = _assign_columns(clusters, header_x, n_cols)
+            label_by_code[key] = text_norm
             continue
         m = _ROW_CODE_RE.match(text_norm)
         if m:
