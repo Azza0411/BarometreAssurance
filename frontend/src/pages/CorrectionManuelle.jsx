@@ -209,6 +209,41 @@ export default function CorrectionManuelle() {
     window.addEventListener("mouseup", onUp);
   };
 
+  // Même réglage, côté "formulaire | Excel" par défaut (PDF masqué) — même
+  // retour utilisateur, appliqué aux deux dispositions plutôt qu'à une
+  // seule. En pixels ici (pas en %) : le formulaire garde un sens à une
+  // largeur fixe raisonnable, pas proportionnelle à l'écran.
+  const [formWidthPx, setFormWidthPx] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem("cm-form-width"));
+      return saved >= 260 && saved <= 560 ? saved : 336;
+    } catch { return 336; }
+  });
+  const liveFormWidthRef = useRef(formWidthPx);
+
+  const startFormResize = (e) => {
+    e.preventDefault();
+    const row = bodyRowRef.current;
+    if (!row) return;
+    resizingRef.current = true;
+    const onMove = (ev) => {
+      if (!resizingRef.current) return;
+      const rect = row.getBoundingClientRect();
+      const px = ev.clientX - rect.left;
+      const clamped = Math.min(560, Math.max(260, Math.round(px)));
+      liveFormWidthRef.current = clamped;
+      setFormWidthPx(clamped);
+    };
+    const onUp = () => {
+      resizingRef.current = false;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      try { localStorage.setItem("cm-form-width", String(liveFormWidthRef.current)); } catch { /* ignore */ }
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   // { kind: 'valeur'|'ligne'|'colonne', ligne, colonne, actuelle }
   const [selected, setSelected] = useState(null);
   const [nouvelleValeur, setNouvelleValeur] = useState("");
@@ -474,7 +509,7 @@ export default function CorrectionManuelle() {
           explicite : "l'espace consacré à l'Excel doit être comme tout à
           l'heure". */}
       <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
-        <div ref={bodyRowRef} style={{ display: "grid", gridTemplateColumns: showPdf ? `${excelPct}% 6px ${100 - excelPct}%` : "336px 1fr", flex: 1, minHeight: 0, overflow: "hidden" }}>
+        <div ref={bodyRowRef} style={{ display: "grid", gridTemplateColumns: showPdf ? `${excelPct}% 6px ${100 - excelPct}%` : `${formWidthPx}px 6px 1fr`, flex: 1, minHeight: 0, overflow: "hidden" }}>
         {/* Formulaire de correction — colonne de gauche quand le PDF est
             masqué ; descend sous les visualiseurs sinon (voir plus bas). */}
         {!showPdf && (
@@ -584,6 +619,21 @@ export default function CorrectionManuelle() {
             {saveNote && <p style={{ margin: "10px 0 0", fontSize: 11, color: "#B45309", fontWeight: 600 }}>{saveNote}</p>}
           </div>
         </div>
+        )}
+
+        {/* Séparateur glissable formulaire|Excel (disposition par défaut,
+            PDF masqué) — même interaction que le séparateur Excel|PDF. */}
+        {!showPdf && (
+          <div
+            onMouseDown={startFormResize}
+            title="Glisser pour ajuster la largeur"
+            style={{
+              cursor: "col-resize", background: BORDER, position: "relative",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <div style={{ width: 2, height: 28, borderRadius: 2, background: MUTED }} />
+          </div>
         )}
 
         {/* Droite : visualiseur */}
