@@ -517,6 +517,115 @@ def save_cached_tableau_page(conn, document_id, tableau, page):
     conn.commit()
 
 
+# ── Corrections manuelles (tableau_corrections + mutation de tableau_cellules) ──
+# Voir schema.sql::tableau_corrections. Chaque correction est appliquée
+# directement sur tableau_cellules (source de vérité servie par
+# get_document_grid/l'export Excel/le repérage de page) ET journalisée pour
+# garder une trace de qui a corrigé quoi et quand, indépendamment de la
+# mutation elle-même.
+
+class CorrectionError(Exception):
+    """Levée quand une correction ne peut pas être appliquée (nom déjà pris
+    par une autre ligne/colonne du même document, valeur non numérique...) —
+    message déjà en français, prêt à être renvoyé tel quel au frontend."""
+
+
+def _parse_correction_valeur(brut):
+    """Convertit la saisie libre de l'utilisateur (ex. "1 234,56", "-45",
+    "1234.5") en float — accepte l'espace comme séparateur de milliers et la
+    virgule OU le point comme séparateur décimal, comme dans le reste de
+    l'extraction (voir extraction/bilan_kpi_extractor.py::_parse_number)."""
+    s = brut.strip().replace(" ", "").replace(" ", "")
+    if not s:
+        raise CorrectionError("Valeur vide.")
+    if "." in s and "," in s:
+        s = s.replace(",", "")
+    elif "," in s:
+        s = s.replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        raise CorrectionError(f"« {brut} » n'est pas un nombre valide.")
+
+
+def apply_manual_corrections(conn, document_id, tableau, corrections):
+    """Applique une liste de corrections (voir le contrat ci-dessous) pour UN
+    document/tableau, dans une seule transaction — soit toutes appliquées,
+    soit aucune (une correction invalide annule les autres plutôt que de
+    laisser la base à moitié corrigée). `corrections` : liste de dicts
+    {"kind": "valeur"|"ligne"|"colonne", "ligne": str|None,
+    "colonne": str|None, "nouvelle": str} — pour "valeur", `ligne`+`colonne`
+    identifient la cellule ; pour "ligne"/"colonne", le champ correspondant
+    porte le nom ACTUEL (avant renommage). Lève `CorrectionError` (message
+    français prêt pour l'utilisateur) si une correction est invalide ; ne
+    modifie rien dans ce cas (rollback)."""
+    try:
+        with conn.cursor() as cur:
+            for c in corrections:
+                kind = c["kind"]
+                if kind == "valeur":
+                    nouvelle = _parse_correction_valeur(c["nouvelle"])
+                    cur.execute(
+                        "SELECT valeur FROM tableau_cellules WHERE document_id=%s AND tableau=%s AND ligne=%s AND colonne=%s",
+                        (document_id, tableau, c["ligne"], c["colonne"]),
+                    )
+                    row = cur.fetchone()
+                    if row is None:
+                        raise CorrectionError(f"Cellule « {c['ligne']} / {c['colonne']} » introuvable — a-t-elle changé depuis le chargement de la page ?")
+                    ancienne = row[0]
+                    cur.execute(
+                        "UPDATE tableau_cellules SET valeur=%s WHERE document_id=%s AND tableau=%s AND ligne=%s AND colonne=%s",
+                        (nouvelle, document_id, tableau, c["ligne"], c["colonne"]),
+                    )
+                    cur.execute(
+                        """INSERT INTO tableau_corrections
+                           (document_id, tableau, kind, ligne, colonne, ancienne_valeur, nouvelle_valeur)
+                           VALUES (%s, %s, 'valeur', %s, %s, %s, %s)""",
+                        (document_id, tableau, c["ligne"], c["colonne"],
+                         None if ancienne is None else str(ancienne), str(nouvelle)),
+                    )
+                elif kind in ("ligne", "colonne"):
+                    ancien_nom = c[kind]
+                    nouveau_nom = c["nouvelle"].strip()
+                    if not nouveau_nom:
+                        raise CorrectionError("Le nouveau nom ne peut pas être vide.")
+                    if nouveau_nom == ancien_nom:
+                        continue
+                    try:
+                        cur.execute(
+                            f"UPDATE tableau_cellules SET {kind}=%s WHERE document_id=%s AND tableau=%s AND {kind}=%s",
+                            (nouveau_nom, document_id, tableau, ancien_nom),
+                        )
+                    except pymysql.err.IntegrityError:
+                        cible = "cette colonne" if kind == "ligne" else "cette ligne"
+                        raise CorrectionError(
+                            f"« {nouveau_nom} » existe déjà pour {cible} dans ce document — "
+                            "renommer créerait un doublon."
+                        )
+                    if cur.rowcount == 0:
+                        raise CorrectionError(f"« {ancien_nom} » introuvable — a-t-il changé depuis le chargement de la page ?")
+                    if kind == "colonne":
+                        # Les validations (tableau_validations.colonne) référencent
+                        # le même libellé de colonne — les renommer aussi évite un
+                        # nom incohérent avec la grille corrigée à l'affichage.
+                        cur.execute(
+                            "UPDATE tableau_validations SET colonne=%s WHERE document_id=%s AND tableau=%s AND colonne=%s",
+                            (nouveau_nom, document_id, tableau, ancien_nom),
+                        )
+                    cur.execute(
+                        f"""INSERT INTO tableau_corrections
+                           (document_id, tableau, kind, {kind}, ancienne_valeur, nouvelle_valeur)
+                           VALUES (%s, %s, %s, %s, %s, %s)""",
+                        (document_id, tableau, kind, ancien_nom, ancien_nom, nouveau_nom),
+                    )
+                else:
+                    raise CorrectionError(f"Type de correction inconnu : « {kind} ».")
+    except CorrectionError:
+        conn.rollback()
+        raise
+    conn.commit()
+
+
 def get_tableau_validation_summary(conn, document_id, tableau):
     """Résumé des validations pour un document (compte par statut) — utilisé
     pour afficher un badge de fiabilité dans la page Gestion de données."""

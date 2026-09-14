@@ -8,6 +8,7 @@ ici l'export est un extrait BRUT de kpi_values (format long : une ligne par
 valeur de KPI), pas une mise en page métier avec formules recalculables.
 """
 
+import math
 import os
 import re
 
@@ -481,18 +482,25 @@ def _grid_reference_values(grid):
     """Valeurs numériques distinctes (entiers, valeur absolue, hors 0 —
     représente conventionnellement une cellule vide "-", jamais un vrai
     chiffre) de la grille STOCKÉE. Sert de signature de contenu pour
-    retrouver la page PDF réelle — voir `_find_page_matching_grid_values`."""
+    retrouver la page PDF réelle — voir `_find_page_matching_grid_values`.
+    TRONCATURE (pas round()) : le texte du PDF concatène partie entière et
+    décimale sans séparateur une fois nettoyé ("532,784" -> "532784") —
+    round() change le dernier chiffre dès que la décimale est ≥ 0.5,
+    cassant la recherche par sous-chaîne à tort pour ~moitié des valeurs
+    (même bug identifié et corrigé dans l'audit externe Annexe 12,
+    2026-09-14 : CARTE_VIE 2022 passait de 24/44 à 44/44 confirmées une
+    fois la troncature appliquée)."""
     values = set()
     for row in grid["lignes"]:
         for v in row["valeurs"].values():
             if v is None:
                 continue
             try:
-                iv = int(round(float(v)))
+                iv = int(math.floor(abs(float(v))))
             except (TypeError, ValueError):
                 continue
             if iv != 0:
-                values.add(abs(iv))
+                values.add(iv)
     return values
 
 

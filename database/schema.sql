@@ -182,6 +182,26 @@ CREATE TABLE IF NOT EXISTS tableau_pages (
     CONSTRAINT fk_tableau_pages_document FOREIGN KEY (document_id) REFERENCES documents(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Historique des corrections manuelles apportees depuis la page Correction
+-- manuelle (bouton "Enregistrer tout") -- journal d'audit APPEND-ONLY, ne
+-- remplace jamais la ligne precedente : sert a savoir qui a corrige quoi et
+-- quand, independamment de la mutation reelle appliquee a tableau_cellules.
+-- 'kind' = 'valeur' (une cellule), 'ligne' (renommage d'un libelle de ligne,
+-- s'applique a toutes les cellules de ce document/tableau portant cette
+-- ligne) ou 'colonne' (idem pour une branche/colonne).
+CREATE TABLE IF NOT EXISTS tableau_corrections (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    document_id     INT NOT NULL,
+    tableau         VARCHAR(50) NOT NULL,
+    kind            VARCHAR(20) NOT NULL,
+    ligne           VARCHAR(255) NULL,   -- ligne concernee (avant renommage si kind='ligne')
+    colonne         VARCHAR(255) NULL,   -- colonne concernee (avant renommage si kind='colonne')
+    ancienne_valeur VARCHAR(255) NULL,
+    nouvelle_valeur VARCHAR(255) NOT NULL,
+    date_ajout      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_tableau_corrections_document FOREIGN KEY (document_id) REFERENCES documents(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS reglementation_vues (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     doc_key     VARCHAR(64)  NOT NULL,  -- id (hash) ou url du texte source

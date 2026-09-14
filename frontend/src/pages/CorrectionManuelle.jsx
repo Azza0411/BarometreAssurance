@@ -135,11 +135,12 @@ function NameSelect({ value, onChange, options, placeholder = "Choisir un nom…
 }
 
 /* ═══════════════════════════ Page ═══════════════════════════
-   Consultation (et bientôt correction) d'un document CMF déjà en base,
-   accessible directement depuis Gestion de données — même grammaire
-   visuelle que KpiDetail (repère, visualiseur sombre). `Enregistrer tout`
-   reste un espace réservé pour l'instant : l'écriture réelle en base est la
-   prochaine étape. */
+   Consultation ET correction d'un document CMF déjà en base, accessible
+   directement depuis Gestion de données — même grammaire visuelle que
+   KpiDetail (repère, visualiseur sombre). `Enregistrer tout` écrit
+   réellement en base (POST /api/gestion-donnees/corrections, voir
+   database/repository.py::apply_manual_corrections) puis recharge la
+   grille pour refléter aussitôt les valeurs/noms corrigés. */
 export default function CorrectionManuelle() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -379,11 +380,42 @@ export default function CorrectionManuelle() {
   };
   const retirerCorrection = (key) => setCorrections(prev => { const n = new Map(prev); n.delete(key); return n; });
 
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+
   const enregistrerTout = () => {
-    if (corrections.size === 0) return;
-    // Le point de sauvegarde réel (écriture en base / audit) reste la
-    // prochaine étape, une fois ce contenu de gauche validé.
-    setSaveNote("L'enregistrement effectif sera branché à l'étape suivante — cette liste reste locale pour l'instant.");
+    if (corrections.size === 0 || saving) return;
+    setSaving(true);
+    setSaveNote(null);
+    setSaveError(false);
+    const payload = {
+      societe: code, annee, tableau,
+      corrections: [...corrections.values()].map(c => (
+        c.kind === "valeur"
+          ? { kind: "valeur", ligne: c.ligne, colonne: c.colonne, nouvelle: c.nouvelle }
+          : { kind: c.kind, [c.kind]: c.kind === "ligne" ? c.ligne : c.colonne, nouvelle: c.nouvelle }
+      )),
+    };
+    fetch(`${API}/api/gestion-donnees/corrections`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(async r => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || "Échec de l'enregistrement.");
+        return d;
+      })
+      .then(() => {
+        setCorrections(new Map());
+        setSaveNote(`${payload.corrections.length} correction(s) enregistrée(s) en base.`);
+        // Recharge la grille depuis la base — reflète immédiatement les
+        // valeurs/noms corrigés, comme n'importe quelle donnée déjà stockée.
+        const p = new URLSearchParams({ societe: code, annee: String(annee), tableau });
+        fetch(`${API}/api/gestion-donnees/cellules?${p.toString()}`).then(r => r.json()).then(setGrid).catch(() => {});
+      })
+      .catch(err => { setSaveNote(err.message); setSaveError(true); })
+      .finally(() => setSaving(false));
   };
 
   // Télécharge directement ce tableau (société/tableau/année en cours),
@@ -610,13 +642,13 @@ export default function CorrectionManuelle() {
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12 }}>
               <span style={{ fontSize: 11.5, color: MUTED }}>{corrections.size} en attente</span>
-              <button onClick={enregistrerTout} disabled={corrections.size === 0} style={{
+              <button onClick={enregistrerTout} disabled={corrections.size === 0 || saving} style={{
                 padding: "9px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
-                cursor: corrections.size ? "pointer" : "not-allowed",
-                border: `1.5px solid ${ACCENT}`, background: ACCENT, color: "#fff", opacity: corrections.size ? 1 : .5, font: "inherit",
-              }}>Enregistrer tout</button>
+                cursor: corrections.size && !saving ? "pointer" : "not-allowed",
+                border: `1.5px solid ${ACCENT}`, background: ACCENT, color: "#fff", opacity: corrections.size && !saving ? 1 : .5, font: "inherit",
+              }}>{saving ? "Enregistrement…" : "Enregistrer tout"}</button>
             </div>
-            {saveNote && <p style={{ margin: "10px 0 0", fontSize: 11, color: "#B45309", fontWeight: 600 }}>{saveNote}</p>}
+            {saveNote && <p style={{ margin: "10px 0 0", fontSize: 11, color: saveError ? BAD : ACCENT, fontWeight: 600 }}>{saveNote}</p>}
           </div>
         </div>
         )}
@@ -984,11 +1016,11 @@ export default function CorrectionManuelle() {
           <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "16px 20px", flex: 1, minWidth: 260, display: "flex", flexDirection: "column", minHeight: 0 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
               <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 800, color: DARK }}>Corrections en attente</h3>
-              <button onClick={enregistrerTout} disabled={corrections.size === 0} style={{
+              <button onClick={enregistrerTout} disabled={corrections.size === 0 || saving} style={{
                 padding: "6px 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 700, flexShrink: 0,
-                cursor: corrections.size ? "pointer" : "not-allowed",
-                border: `1.5px solid ${ACCENT}`, background: ACCENT, color: "#fff", opacity: corrections.size ? 1 : .5, font: "inherit",
-              }}>Enregistrer tout ({corrections.size})</button>
+                cursor: corrections.size && !saving ? "pointer" : "not-allowed",
+                border: `1.5px solid ${ACCENT}`, background: ACCENT, color: "#fff", opacity: corrections.size && !saving ? 1 : .5, font: "inherit",
+              }}>{saving ? "Enregistrement…" : `Enregistrer tout (${corrections.size})`}</button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
               {corrections.size === 0 ? (
@@ -1014,7 +1046,7 @@ export default function CorrectionManuelle() {
                 </div>
               ))}
             </div>
-            {saveNote && <p style={{ margin: "8px 0 0", fontSize: 11, color: "#B45309", fontWeight: 600 }}>{saveNote}</p>}
+            {saveNote && <p style={{ margin: "8px 0 0", fontSize: 11, color: saveError ? BAD : ACCENT, fontWeight: 600 }}>{saveNote}</p>}
           </div>
           </div>
         </div>

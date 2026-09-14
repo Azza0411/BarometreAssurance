@@ -15,7 +15,7 @@ from datetime import datetime
 
 from flask import Blueprint, jsonify, request, send_file
 
-from database.repository import get_connection
+from database.repository import get_connection, get_document_id, apply_manual_corrections, CorrectionError
 from api.services.data_management import (
     list_documents_for_ui, get_local_pdf_path_for_document,
     get_filter_options, build_flexible_export_xlsx, get_reliability_stats,
@@ -314,6 +314,47 @@ def cellules():
     if grille is None:
         return jsonify({"error": "Aucun document CMF pour cette société/année"}), 404
     return jsonify(grille)
+
+
+@bp.route("/api/gestion-donnees/corrections", methods=["POST"])
+def enregistrer_corrections():
+    """Enregistre en base une liste de corrections manuelles pour UN document
+    CMF (société + année + tableau) — bouton "Enregistrer tout" de la page
+    Correction manuelle. Corps JSON : {"societe", "annee", "tableau",
+    "corrections": [{"kind": "valeur"|"ligne"|"colonne", "ligne", "colonne",
+    "nouvelle"}, ...]}. Applique directement sur `tableau_cellules` (la
+    grille affichée/exportée en repart aussitôt) et journalise chaque
+    correction dans `tableau_cellules` — voir
+    database/repository.py::apply_manual_corrections. Tout ou rien : une
+    correction invalide (nom en doublon, valeur non numérique...) annule
+    toute la liste plutôt que de laisser la base à moitié corrigée."""
+    body = request.get_json(silent=True) or {}
+    code = body.get("societe")
+    annee_raw = body.get("annee")
+    tableau = body.get("tableau")
+    corrections = body.get("corrections")
+    if not code or annee_raw is None or not tableau or not isinstance(corrections, list) or not corrections:
+        return jsonify({"error": "Paramètres 'societe', 'annee', 'tableau' et 'corrections' (liste non vide) requis"}), 400
+    try:
+        annee = int(annee_raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Paramètre 'annee' invalide"}), 400
+    for c in corrections:
+        if not isinstance(c, dict) or c.get("kind") not in ("valeur", "ligne", "colonne") or not c.get("nouvelle"):
+            return jsonify({"error": "Chaque correction doit avoir 'kind' (valeur|ligne|colonne) et 'nouvelle'"}), 400
+
+    conn = get_connection()
+    try:
+        doc_id = get_document_id(conn, code, annee)
+        if not doc_id:
+            return jsonify({"error": "Aucun document CMF pour cette société/année"}), 404
+        try:
+            apply_manual_corrections(conn, doc_id, tableau, corrections)
+        except CorrectionError as exc:
+            return jsonify({"error": str(exc)}), 400
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "appliquees": len(corrections)})
 
 
 @bp.route("/api/gestion-donnees/page-pdf")
