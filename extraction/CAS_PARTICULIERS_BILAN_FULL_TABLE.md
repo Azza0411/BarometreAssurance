@@ -168,3 +168,64 @@ correctifs supplémentaires, tous génériques :
 parfaites** (COMAR, ATTIJARI, MAGHREBIA, GAT, BIAT, ASTREE — Actif et
 Passif, 12/12 côtés). Restent, comme avant : STAR/BH/TUNIS_RE/AMI (pages
 scannées/texte cassé, catégorie déjà connue).
+
+## 2026-09-14 (suite) — diagnostic précis des 46 échecs restants
+
+Sweep complet (223 documents) : **171 OK (77%), 46 page introuvable, 6 PDF
+absent, 0 erreur**. Investigation détaillée des 46 — répartis en 4
+catégories DISTINCTES, chacune nécessitant un module dédié (aucune n'est
+un simple bug de regex comme les correctifs précédents) :
+
+### 1. Langue arabe (Takaful) — 10 documents
+**AL_AMANAH_TAKAFUL** (9/9 années) et **ZITOUNA_TAKAFUL 2020**. Texte
+présent mais `_is_target_page` ne matche jamais ("actif"/"passif" en
+français n'apparaissent nulle part — état financier intégralement en
+arabe). Nécessite le pipeline arabe déjà existant pour d'autres tableaux
+(`extraction/arabic_ocr_extractor.py`) mais pas encore étendu au Bilan
+pleine grille. **AL_AMANAH_TAKAFUL 2018** et **ZITOUNA_TAKAFUL 2018** sont
+en plus des scans (catégorie 2 également).
+
+### 2. Page cible réellement scannée/texte cassé — ~8 documents
+**COMAR 2016/2018** (déjà documenté, choix délibéré de ne pas régénérer —
+voir plus haut), **LLOYD_VIE 2023**, **AMI 2017**, **COTUNACE 2019**,
+**ZITOUNA_TAKAFUL 2018**, et la vraie page Actif/Passif de **MAGHREBIA_VIE**
+(toutes années — voir catégorie 4, ses candidats "texte" sont des faux
+positifs, la vraie page est en fait scannée, pages 2-5 à ~0 caractères).
+Même famille qu'Annexe 12/13 déjà connue.
+
+### 3. Gabarit SANS code réglementaire (labels français bruts) — COTUNACE
+**COTUNACE** (toutes années restantes) n'utilise PAS le plan comptable
+AC1/AC2/PA../CP.. — juste des libellés français directs ("Actifs
+incorporels", "Logiciels", "Placements :"...) avec une simple colonne
+"Notes" (référence numérique, ex. "4", "5", "6" — pas un code de section).
+`_ROW_CODE_RE` ne matche jamais, `extract_bilan_full_grid` ne trouve donc
+aucune ligne codée. Nécessiterait un mode d'extraction ALTERNATIF basé sur
+le libellé (comme Annexe 12/13 à l'origine) plutôt que sur le code — pas
+qu'un correctif, une 2e voie d'extraction à écrire.
+
+### 4. Page trouvée = "Notes sur le Bilan" (détail narratif), pas le
+tableau récapitulatif — STAR 2019/2023, TUNIS_RE 2023, HAYETT 2018/2019,
+BNA 2024, UIB 2024, CARTE_VIE 2018, AMI (plusieurs années), MAGHREBIA_VIE
+(toutes années)
+Le vrai tableau récapitulatif Actif/Passif (celui à 4 colonnes bien
+formaté) n'existe PAS comme page séparée dans ces documents — seule une
+section narrative "Notes sur le Bilan" existe, qui reprend CERTAINS codes
+(ex. "AC1 - Actifs incorporels") mais éclate chaque poste en un MINI-
+TABLEAU à en-têtes propres et non-homogènes (constaté STAR 2019 : "AC1"
+suivi d'un tableau Matériels de transport/MMB/AAI... avec ses propres
+colonnes "Valeur Brute au 31/12/2019"...). `_is_target_page` matche ces
+pages à tort (le mot "actif"/"bilan" apparaît bien dans les 6 premières
+lignes) mais `extract_bilan_full_grid` échoue ensuite faute de lignes
+AC../PA.. au format attendu — le filet de sécurité (essayer TOUS les
+candidats, garder le 1er qui produit ≥5 lignes) ne suffit pas quand AUCUN
+candidat de la page n'a la vraie forme tabulaire. Même famille que le
+repli "Notes sur les Comptes de Résultats" déjà géré pour Annexe 13
+(`notes_resultat_extractor.py`) — nécessiterait un module symétrique dédié
+au Bilan, pas encore écrit.
+
+**Conclusion** : aucun de ces 4 groupes n'est un bug ponctuel — chacun
+demande une VOIE D'EXTRACTION SUPPLÉMENTAIRE dédiée (arabe, sans-code,
+notes-narratives) d'une ampleur comparable au travail déjà fait pour le
+cas "standard". Pas entrepris ici par manque de temps dans cette session
+— la couverture actuelle (171/223, 77%) couvre déjà la quasi-totalité des
+sociétés Non-Vie/Vie conventionnelles au format standard.
