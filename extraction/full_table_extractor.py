@@ -825,9 +825,6 @@ def locate_and_extract_full_table(pdf_path, is_target_page, kpi_patterns, raccor
                 head = _normalizer.clean((page.extract_text() or "")[:300])
                 candidates.append((i, head))
 
-    if raccordement_re is not None:
-        candidates.sort(key=lambda t: bool(raccordement_re.search(t[1])))
-
     # Une page effectivement titrée "Annexe N°X" est LA page officielle du
     # tableau — à préférer sur toute autre page qui se contente d'évoquer un
     # "résultat technique" en passant (ex. une page de sommaire/renvoi sans
@@ -835,6 +832,23 @@ def locate_and_extract_full_table(pdf_path, is_target_page, kpi_patterns, raccor
     # "colonnes" que la vraie page). On départage d'abord sur ce signal,
     # robuste car indépendant de la reconstruction elle-même, puis seulement
     # ensuite sur le nombre de colonnes.
+    # Une page de RACCORDEMENT (résumé à une seule colonne "Total", qui
+    # réconcilie le résultat technique avec le compte de résultat global —
+    # ex. "Annexe n°16 : Tableau de raccordement...") n'est PAS la page par
+    # branche que cette fonction doit renvoyer pour le stockage grille
+    # complète : elle correspond bien au prédicat partagé (voir le
+    # commentaire dans _find_total_value côté extracteur 7-KPI, où elle est
+    # au contraire délibérément préférée — un seul total sans ambiguïté de
+    # colonne) mais y substituer silencieusement une unique colonne "Total"
+    # à la vraie ventilation par branche donnerait une grille trompeuse
+    # (constaté sur STAR 2025 : page "Annexe 16" acceptée à la place d'une
+    # page "Annexe 13" par branche absente/inexploitable du document,
+    # produisant un "TOTAL" à une colonne rangé sous "annexe13" sans aucune
+    # branche). Exclue ici : mieux vaut aucune donnée (repli notes/OCR
+    # ci-dessous, ou échec) qu'une donnée réelle mais hors sujet.
+    if raccordement_re is not None:
+        candidates = [(i, head) for i, head in candidates if not raccordement_re.search(head)]
+
     best = None
     for i, head in candidates:
         result = extract_full_table_camelot(pdf_path, i + 1, min_data_cells=min_data_cells)
