@@ -2080,3 +2080,32 @@ p36 respectivement) ont, cette fois, une couche texte NON vide — signe
 d'un problème différent (camelot/pipeline plutôt que police cassée),
 probablement récupérable sans saisie manuelle. Non exploré par manque de
 temps dans cette session.
+
+## 2026-09-14 (suite) — STAR 2020/2021 : bug generalise du signe moins Unicode
+
+STAR 2020 (p34) et 2021 (p36) : contrairement a 2023/2025, leur page
+"Annexe 13" a une couche texte NORMALE, extractible sans probleme par
+`extract_full_table_camelot`. Le vrai bug : le PDF 2021 utilise le signe
+moins Unicode U+2010 (`‐`) au lieu de l'ASCII `-` pour les valeurs
+negatives. `_clean_cell_value`/`_looks_numeric_cell`
+(`full_table_extractor.py`) ne reconnaissaient QUE l'ASCII `-` : toute
+cellule negative etait rejetee comme "non numerique", desynchronisant les
+lignes suivantes (constate : la ligne "Charges de prestation" disparaissait
+et se retrouvait fusionnee avec la suivante).
+
+**Correctif general** (pas specifique a STAR) : toutes les variantes
+Unicode du signe moins deja recensees dans `bilan_kpi_extractor.MINUS_CHARS`
+("‐‑‒–—−") sont maintenant normalisees en ASCII "-" avant tout parsing de
+cellule dans `full_table_extractor.py`. Bénéficiera automatiquement à tout
+futur document utilisant l'une de ces variantes, sans code dédié.
+
+**Résultat** : STAR 2020 (page 34) et 2021 (page 36) extraites par camelot
+avec succès — 0 écart réel sur les deux (quelques "données manquantes"
+légitimes, cellules réellement vides dans le PDF). `_STAR_2020`/
+`_STAR_2021` remplacent le repli raccordement par la grille complète.
+
+**STAR — bilan des 4 années corrigées cette session** : 2020 (bug signe
+moins), 2021 (bug signe moins), 2023 (couche texte cassée, transcription
+visuelle), 2025 (couche texte cassée, transcription visuelle + 1 anomalie
+source). Plus aucune année STAR ne dépend du repli Annexe 16 — `_R_STAR_C16`
+supprimé (dernier consommateur).

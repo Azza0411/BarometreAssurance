@@ -2199,104 +2199,88 @@ _STAR_2024 = _grid(_STAR_COLS, 32, [
 ], rows=_R_STAR)
 
 
-# ── STAR — Annexe 16 « Tableau de raccordement du résultat technique
-# Non-Vie » (colonne « Total » seule). 2020, 2021, 2023, 2025 : ces dépôts
-# n'ont PAS d'Annexe 13 « par catégorie » — seule la C16 existe. Calque
-# texte bruité (annotations de formule PRNV.../CHNV... collées au libellé,
-# négatifs « - »/U+2010/parenthèses, signe détaché, libellé + valeur
-# éclatés sur 2-3 lignes) — reconstruit par flux de segments typés
-# (scratchpad/star_c16.py). Mêmes identités additives que la table « par
-# catégorie » ; toutes vérifiées écart nul (2020/2021/2023 : la ligne
-# « Part des réassureurs dans les autres provisions techniques » est vide
-# dans la source).
-_R_STAR_C16 = [    'Primes acquises',
-    'Primes émises',
-    'Variation des primes non acquises',
-    'Charges de prestations',
-    'Prestations et frais payés',
-    'Charges des provisions pour prestations diverses',
-    'Solde de souscription',
-    "Frais d'acquisition",
-    'Autres charges de gestion nettes',
-    "Charges d'acquisition et de gestion nettes",
-    'Produits nets de placements',
-    'Participation aux résultats',
-    'Solde financier',
-    'Part des réassureurs dans les primes acquises',
-    'Part des réassureurs dans les prestations payées',
-    'Part des réassureurs dans les charges de provisions pour prestations',
-    'Part des réassureurs dans les charges des autres provisions techniques',
-    'Part des réassureurs dans la participation aux résultats',
-    'Commissions reçues des réassureurs / rétrocessionnaires',
-    'Solde de réassurance / rétrocession',
-    'Résultat technique',
-    'Provisions pour primes non acquises (clôture)',
-    'Provisions pour primes non acquises (réouverture)',
-    'Provisions pour sinistres à payer (clôture)',
-    'Provisions pour sinistres à payer (réouverture)',
-    'Autres provisions techniques (clôture)',
-    'Autres provisions techniques (réouverture)',
-]
+# ── STAR 2020/2021/2023/2025 utilisaient jusqu'au 2026-09-14 un repli sur
+# l'Annexe 16 « Tableau de raccordement » (1 colonne « Total »), sous
+# l'hypothèse que la page Annexe 13 « par catégorie » était un scan
+# illisible dans ces 4 dépôts. Diagnostic corrigé (voir
+# CAS_PARTICULIERS_FULL_TABLE.md 2026-09-14) : la page existe bel et bien,
+# en texte natif ou en rendu vectoriel net — 2020/2021 avaient un bug de
+# parsing (signe moins Unicode, corrigé dans full_table_extractor.py) ;
+# 2023/2025 ont une couche texte cassée mais un rendu visuel parfait
+# (transcrites à la main). Les 4 années utilisent maintenant _STAR_COLS
+# comme les autres — plus aucun consommateur de l'ancien repli C16.
 
-_STAR_2020 = _grid(["Total"], 36, [[v] for v in [
-    330457121,
-    329127423,
-    1329698,
-    -281741006,
-    -234644801,
-    -47096205,
-    48716115,
-    -44722670,
-    -37181522,
-    -81904191,
-    40872824,
-    -6500179,
-    34372645,
-    34879750,
-    -9992793,
-    -7201880,
-    None,
-    -411078,
-    8486355,
-    9609800,
-    -8425231,
-    107971432,
-    109301130,
-    605701121,
-    559003814,
-    29079377,
-    28541256,
-]], rows=_R_STAR_C16)
+# Page 34, titrée "6-Résultat technique par catégorie d'assurance Non Vie
+# au 31/12/2020(annexe 13)" — contrairement à 2023/2025, la couche texte
+# est NORMALE ici (voir CAS_PARTICULIERS_FULL_TABLE.md 2026-09-14 "STAR
+# 2020/2021") ; extraite par camelot (`extract_full_table_camelot`), pas
+# saisie visuellement. Gardée figée ici comme les autres années (repli
+# raccordement remplacé) plutôt que laissée à la voie automatique, par
+# cohérence avec le reste de la société. `None` = valeur absente du PDF
+# (ex. GROUPE non concerné par la réassurance sur plusieurs lignes).
+_STAR_2020 = _grid(_STAR_COLS, 34, [
+    [85711763, None, 12350656, 15178169, 8673717, 5320339, 201459283, 1763195, 330457121],
+    [85300229, None, 13474265, 15907889, 9745840, 4613564, 198363820, 1721815, 329127423],
+    [411533, None, -1123609, -729720, -1072124, 706775, 3095463, 41380, 1329698],
+    [-76426545, -518822, -8775895, -15195143, -7438407, -425188, -172405708, -555298, -281741006],
+    [-73519306, -1254548, -7173069, -9978646, 1319109, -335454, -143003846, -699041, -234644801],
+    [-2907239, 735726, -1602827, -5216497, -8757516, -89734, -29401862, 143743, -47096205],
+    [9285218, -518822, 3574761, -16974, 1235309, 4895150, 29053575, 1207897, 48716115],
+    [-7484363, None, -2548245, -2637625, -1086056, -136646, -30780680, -49055, -44722670],
+    [-7512730, -270830, -2917424, -3494382, -1263231, -426873, -20636652, -659401, -37181522],
+    [-14997094, -270830, -5465669, -6132006, -2349287, -563519, -51417332, -708455, -81904191],
+    [1232989, 854829, 1067506, 3053507, 1801587, 360924, 32215362, 286120, 40872824],
+    [-3985764, None, -588541, -195009, 392941, -1063939, -1043001, -16866, -6500179],
+    [-2752775, 854829, 478965, 2858498, 2194528, -703015, 31172360, 269254, 34372645],
+    [None, None, -7288397, -9404488, -5725994, -3732166, -8536632, -192073, -34879750],
+    [None, 60086, 3497124, 4849196, 1039866, None, 403359, 143161, 9992793],
+    [None, -54660, 1671647, -286057, 4984390, 80676, 866716, -60832, 7201880],
+    [None, None, 136705, 78091, -631224, None, None, 5349, -411078],
+    [None, None, 1497090, 1339584, 1740031, 150591, 3716785, 42275, 8486355],
+    [None, 5425, -485831, -3423673, 1407068, -3500899, -3549771, -62119, -9609800],
+    [-8464650, 70602, -1897774, -6714156, 2487619, 127718, 5258833, 706576, -8425231],
+    [23745, None, 4383837, 5883669, 2781282, 3116025, 90301781, 1481092, 107971432],
+    [435279, None, 3260228, 5153949, 1709158, 3822800, 93397244, 1522472, 109301130],
+    [19360412, 2095683, 12254788, 47414331, 31290808, 2931406, 486888578, 3465116, 605701121],
+    [16453173, 2276150, 10651961, 43196976, 22533292, 2841672, 457441729, 3608860, 559003814],
+])
 
-_STAR_2021 = _grid(["Total"], 38, [[v] for v in [
-    332397831,
-    331913494,
-    484337,
-    -282454968,
-    -266586378,
-    -15868590,
-    49942863,
-    -49832761,
-    -37765051,
-    -87597812,
-    48265380,
-    -5496316,
-    42769064,
-    35428639,
-    -14972893,
-    634608,
-    None,
-    -331184,
-    9331139,
-    12090399,
-    -6976284,
-    107487095,
-    107971432,
-    622186260,
-    605701121,
-    26344241,
-    29079377,
-]], rows=_R_STAR_C16)
+# Page 36, titrée "6. Résultat technique par catégorie d'assurance Non-Vie
+# au 31/12/2021 (annexe 13)" — voir CAS_PARTICULIERS_FULL_TABLE.md 2026-09-14
+# "STAR 2020/2021" : la couche texte est normale, mais utilise le signe
+# moins Unicode U+2010 (‐) plutôt que l'ASCII "-", que `_clean_cell_value`
+# ne reconnaissait pas -> cellules négatives rejetées, lignes désynchro-
+# nisées. Corrigé de façon générale dans `full_table_extractor.py`
+# (normalise toute variante de signe moins avant parsing, pas seulement
+# pour STAR). Extraite par camelot après ce correctif ; 0 écart réel,
+# 6/63 "données manquantes" (cellules réellement absentes du PDF, ex.
+# GROUPE non concerné par la réassurance sur certaines lignes).
+_STAR_2021 = _grid(_STAR_COLS, 36, [
+    [85353105, 0, 12822481, 15831526, 13266067, 4480994, 198545653, 2098006, 332397831],
+    [85840573, 0, 13910666, 15991854, 12536367, 4365769, 197239897, 2028369, 331913494],
+    [-487469, 0, -1088185, -160328, 729700, 115225, 1305755, 69637, 484337],
+    [-82346129, 2447816, -9718999, -7943394, -4060095, -1618944, -177930784, -1284439, -282454968],
+    [-85578763, -1106777, -7682721, -9661159, -8214070, -821111, -152336614, -1185163, -266586378],
+    [3232634, 3554592, -2036279, 1717765, 4153975, -797832, -25594170, -99276, -15868590],
+    [3006976, 2447816, 3103481, 7888132, 9205972, 2862050, 20614868, 813567, 49942863],
+    [-7475244, 0, -3047785, -2737877, -1736661, -225307, -34522685, -87201, -49832761],
+    [-7652213, -337954, -3572000, -4094089, -1443706, -447873, -19434326, -782890, -37765051],
+    [-15127457, -337954, -6619785, -6831966, -3180367, -673180, -53957011, -870091, -87597812],
+    [1411809, 831437, 1386203, 3604454, 2148077, 411678, 38152195, 319528, 48265380],
+    [-1883645, None, -435641, -33929, -183332, -1000345, -1951547, -7877, -5496316],
+    [-471835, 831437, 950562, 3570524, 1964744, -588668, 36200648, 311651, 42769064],
+    [0, 0, -6754991, -8248071, -8150386, -3178362, -8900868, -195962, -35428639],
+    [0, 10960, 4121056, 3944091, 6424145, 80000, 311947, 80693, 14972893],
+    [0, -285213, 390755, 830368, -3140241, 423962, 1220230, -74469, -634608],
+    [0, 0, 99516, 21043, -451743, None, None, None, -331184],
+    [0, 0, 1637328, 1667244, 1908884, 142432, 3935971, 39280, 9331139],
+    [None, -274253, -506337, -1785324, -3409341, -2531967, -3432720, -150457, -12090399],
+    [-12592317, 2667045, -3072079, 2841366, 4581010, -931764, -574215, 104671, -6976284],
+    [511214, 0, 5472022, 6043997, 2051581, 3000800, 88996026, 1411455, 107487095],
+    [23745, 0, 4383837, 5883669, 2781282, 3116025, 90301781, 1481092, 107971432],
+    [16105639, 1480635, 14291067, 46655098, 27136833, 3729238, 509223359, 3564392, 622186260],
+    [19360412, 2095683, 12254788, 47414331, 31290808, 2931406, 486888578, 3465116, 605701121],
+])
 
 # Page 36 : même situation que 2025 (voir commentaire plus bas) — page
 # "Annexe N°13" par branche RÉELLEMENT présente entre Annexe 11 (p35) et

@@ -46,7 +46,7 @@ structure différente et ne sont pas couverts par ce module pour l'instant."""
 
 import re
 
-from extraction.bilan_kpi_extractor import _normalizer, ROW_CODE_PREFIX_RE, _parse_number, _cluster_lines
+from extraction.bilan_kpi_extractor import _normalizer, ROW_CODE_PREFIX_RE, _parse_number, _cluster_lines, MINUS_CHARS
 from extraction.annexe13_kpi_extractor import (
     NON_VIE_RE as _A13_NON_VIE_RE, VIE_RE as _A13_VIE_RE,
 )
@@ -188,10 +188,19 @@ MIN_DATA_CELLS = 4  # une vraie ligne de donnees a au moins 4 cellules numerique
 # 142 408") — `\s*` entre le signe et le premier chiffre couvre les deux.
 _CELL_NUMERIC_RE = re.compile(r"^\(?-?\s*\d[\d\s.,]*\)?$")
 
+# Variantes Unicode du signe moins (‐‑‒–—−, voir bilan_kpi_extractor.MINUS_CHARS)
+# normalisées en ASCII "-" avant tout autre traitement — un PDF peut utiliser
+# n'importe laquelle comme signe négatif (constaté U+2010 sur STAR 2021 : la
+# regex/le float() ASCII ci-dessous ne reconnaissaient que "-", rejetant
+# silencieusement toute cellule négative de la page comme non numérique, et
+# décalant les lignes suivantes par perte de synchronisation avec les vraies
+# lignes du tableau).
+_MINUS_VARIANTS_RE = re.compile(f"[{MINUS_CHARS}]")
+
 
 def _looks_numeric_cell(text):
-    text = (text or "").strip()
-    if text in ("-", "–", "—"):
+    text = _MINUS_VARIANTS_RE.sub("-", (text or "").strip())
+    if text == "-":
         return True  # case "néant" du tableau — compte comme une valeur structurelle
     return bool(_CELL_NUMERIC_RE.match(text))
 
@@ -201,8 +210,8 @@ def _clean_cell_value(text):
     (y compris un tiret seul "néant" — présent structurellement mais sans
     valeur). Parenthèses = négatif (notation comptable standard) ; espaces
     internes = séparateur de milliers."""
-    text = (text or "").strip()
-    if not text or text in ("-", "–", "—"):
+    text = _MINUS_VARIANTS_RE.sub("-", (text or "").strip())
+    if not text or text == "-":
         return None
     negative = text.startswith("(") and text.endswith(")")
     if not _CELL_NUMERIC_RE.match(text):
