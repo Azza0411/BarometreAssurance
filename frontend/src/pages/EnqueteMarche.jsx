@@ -1212,6 +1212,69 @@ function FicheClientEntreprise({ data, code }) {
   );
 }
 
+/* ── Upload du fichier Excel source (mise à jour locale de la donnée,
+   sans repasser par un scraping) ────────────────────────────────────────
+   Attend le même format que le fichier actuel (feuilles "BDD Retail" et
+   "BDD Corporate", voir extraction/enquete_extractor.py) — validé côté
+   serveur avant remplacement ; l'ancien fichier est sauvegardé, jamais
+   supprimé. */
+function UploadEnquete({ onUploaded }) {
+  const inputRef = useRef(null);
+  const [state, setState] = useState("idle"); // idle | loading | ok | error
+  const [message, setMessage] = useState("");
+
+  const handleFile = (file) => {
+    if (!file) return;
+    setState("loading");
+    setMessage("");
+    const form = new FormData();
+    form.append("file", file);
+    fetch(`${API}/api/enquete-marche/upload`, { method: "POST", body: form })
+      .then(async r => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || "Échec de l'envoi.");
+        return d;
+      })
+      .then(() => {
+        setState("ok");
+        setMessage("Fichier mis à jour.");
+        onUploaded?.();
+      })
+      .catch(err => { setState("error"); setMessage(err.message); });
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <input
+        ref={inputRef} type="file" accept=".xlsx"
+        style={{ display: "none" }}
+        onChange={e => { handleFile(e.target.files?.[0]); e.target.value = ""; }}
+      />
+      <button
+        onClick={() => inputRef.current?.click()}
+        disabled={state === "loading"}
+        title="Remplacer le fichier Excel source de l'enquête (même format que l'actuel)"
+        style={{
+          display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8,
+          border: `1.5px solid ${D}`, background: "#fff", color: D, fontWeight: 700, fontSize: 12,
+          cursor: state === "loading" ? "not-allowed" : "pointer", opacity: state === "loading" ? .6 : 1,
+          font: "inherit",
+        }}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke={D} strokeWidth="1.8" width="15" height="15">
+          <path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/>
+        </svg>
+        {state === "loading" ? "Envoi…" : "Mettre à jour les données"}
+      </button>
+      {message && (
+        <span style={{ fontSize: 11, fontWeight: 600, color: state === "error" ? "#C8102E" : "#0F6E56" }}>
+          {message}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /* ══ PAGE PRINCIPALE ══════════════════════════════════════════════════════════*/
 export default function EnqueteMarche() {
   const [tab,        setTab]        = useState("echantillon");
@@ -1219,6 +1282,7 @@ export default function EnqueteMarche() {
   const [code,       setCode]       = useState("STAR");
   const [surveyData, setSurveyData] = useState(null);
   const [loading,    setLoading]    = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   /* Liste de TOUTES les compagnies (même source que FichesEntreprises) */
   useEffect(() => {
@@ -1228,7 +1292,9 @@ export default function EnqueteMarche() {
       .catch(() => {});
   }, []);
 
-  /* Données enquête pour la compagnie sélectionnée */
+  /* Données enquête pour la compagnie sélectionnée — `refreshKey` force un
+     nouvel appel après un upload réussi (le fichier source a changé, le
+     cache serveur vient d'être vidé). */
   useEffect(() => {
     if (!code) return;
     setLoading(true);
@@ -1237,7 +1303,7 @@ export default function EnqueteMarche() {
       .then(r => r.json())
       .then(d => { setSurveyData(d); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [code]);
+  }, [code, refreshKey]);
 
   return (
     <div style={{ height:"calc(100vh - 92px)", background:"#EEEEF4", fontFamily:"Barlow,system-ui,sans-serif", display:"flex", flexDirection:"column", overflow:"hidden" }}>
@@ -1250,7 +1316,12 @@ export default function EnqueteMarche() {
         ]}
         activeTab={tab}
         onTabChange={setTab}
-        right={companies.length > 0 ? <CompanyDropdown companies={companies} selected={code} onSelect={setCode}/> : null}
+        right={
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <UploadEnquete onUploaded={() => setRefreshKey(k => k + 1)} />
+            {companies.length > 0 && <CompanyDropdown companies={companies} selected={code} onSelect={setCode}/>}
+          </div>
+        }
       />
 
       {/* ── Corps ── */}

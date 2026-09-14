@@ -22,9 +22,18 @@ import pandas as pd
 _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 def _find_xlsx():
+    """Fichier Excel source de l'enquête : parmi les .xlsx de `data/` dont
+    le nom contient "survey", le plus RÉCEMMENT MODIFIÉ (pas le premier du
+    glob, non déterministe autrement) — un upload (voir
+    api/routes/enquete.py::enquete_upload) ajoute un nouveau fichier
+    horodaté plutôt que d'écraser l'existant en place (remplacer un
+    fichier déjà ouvert/synchronisé — ex. OneDrive — peut échouer sous
+    Windows avec PermissionError ; ajouter un nouveau fichier ne touche
+    jamais l'ancien, qui reste disponible comme historique/secours)."""
     files = glob.glob(os.path.join(_DATA_DIR, "*.xlsx"))
-    survey = [f for f in files if "Survey" in os.path.basename(f) or "survey" in os.path.basename(f)]
-    return survey[0] if survey else (files[0] if files else None)
+    survey = [f for f in files if "survey" in os.path.basename(f).lower()]
+    candidates = survey or files
+    return max(candidates, key=os.path.getmtime) if candidates else None
 
 
 
@@ -307,6 +316,36 @@ def _normalize_revenu(v):
         return None
     return sv
 
+
+
+def list_survey_companies():
+    """Liste des codes compagnie RÉELLEMENT présents dans le fichier Excel
+    source (colonnes "Assurance - Compagnie 1" à "5", BDD Retail +
+    Corporate), triés par nombre de mentions décroissant. Remplace un
+    ancien `["STAR"]` codé en dur dans la route API — le sélecteur de
+    société de la page Enquête de marché n'affichait donc jamais que
+    STAR, quelle que soit la compagnie réellement choisie ensuite par
+    l'utilisateur (retour utilisateur direct : "ça n'affiche que les
+    données STAR"). `compute_stats` lui-même calculait déjà correctement
+    des statistiques différentes par compagnie — seule cette liste était
+    figée."""
+    path = _find_xlsx()
+    if not path:
+        return []
+    counts = {}
+    for sheet in ("BDD Retail", "BDD Corporate"):
+        try:
+            df = pd.read_excel(path, sheet_name=sheet)
+        except Exception:
+            continue
+        for col in _COMPANIE_COLS:
+            if col not in df.columns:
+                continue
+            for v in df[col].dropna():
+                code = _norm_company(v)
+                if code:
+                    counts[code] = counts.get(code, 0) + 1
+    return [code for code, _n in sorted(counts.items(), key=lambda kv: -kv[1])]
 
 
 @lru_cache(maxsize=32)
