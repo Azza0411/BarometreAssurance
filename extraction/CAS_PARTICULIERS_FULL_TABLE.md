@@ -1981,3 +1981,55 @@ document — particularité de la source, pas une erreur). Modèle LLOYD
 habituel (SS = PA − CP magnitude, SF = PNP + Participation signé) : écart
 nul sauf ±1 DT (Incendie/Transport, arrondi source). **LLOYD passe de 9/10
 à 10/10 — société complète.**
+
+## 2026-09-14 — audit corrigé (tient compte de `annexe13_verified.py`) + persistance des fixes déjà en place
+
+L'audit de justesse externe (`audit_annexe13_values.py`, hors dépôt) teste
+l'extraction BRUTE indépendamment — il ignore que `annexe13_verified.py`
+court-circuite cette extraction pour la quasi-totalité des documents
+(114/122). Ses "cas suspects" (AMI, COTUNACE, GAT, CARTE, ASTREE 2015...)
+sont donc en grande partie des faux positifs : ils testent une voie que
+`process_one_document` n'emprunte jamais pour ces documents. Un audit
+corrigé (scratchpad, hors dépôt) qui compare plutôt le contenu RÉELLEMENT
+stocké (`tableau_cellules`) au texte du PDF, en sautant les `(code, année)`
+présents dans `VERIFIED`, donne un tableau bien plus court :
+
+- **114/122 déjà vérifiés à la main** — non retestés.
+- **6 documents vides** avant ce jour : ASTREE 2023, BNA 2024, CARTE 2020,
+  COMAR 2016, COTUNACE 2015, COTUNACE 2016.
+
+En ré-exécutant `process_one_document` sur ces 6 :
+- **BNA 2024 et CARTE 2020** passent à `ok` — les fixes correspondants
+  (voie "Notes" pour BNA, `_reconstructed_page_head_text` pour CARTE, tous
+  deux documentés plus haut dans ce fichier) existaient déjà dans le code
+  mais n'avaient jamais été **persistés** en base. Rien de nouveau côté
+  extraction, juste un pipeline de validation qui n'avait pas été relancé
+  après ces correctifs — maintenant à jour.
+- **ASTREE 2023, COMAR 2016, COTUNACE 2015, COTUNACE 2016** restent en
+  échec (`page_introuvable`) — confirmés cohérents avec les limitations
+  déjà documentées ci-dessus (page scannée basse résolution pour COMAR,
+  annexe absente du dépôt pour COTUNACE 2015/2016, mauvais numéro
+  d'annexe pour ASTREE 2023). Aucune tentative de correctif ad hoc ici :
+  ces cas sont déjà couverts par les entrées précédentes de ce fichier.
+
+**Correctif générique associé** (`extraction/full_table_extractor.py`) :
+`locate_and_extract_full_table` acceptait une page de RACCORDEMENT (1
+colonne "Total", ex. "Annexe n°16") comme source pour le stockage grille
+complète — constaté sur **STAR 2025**, où le pipeline automatique
+substituait silencieusement cette page à la vraie ventilation par branche
+(absente/inexploitable du document). Les pages raccordement sont
+maintenant exclues du choix de la MEILLEURE page pour cette fonction —
+n'affecte QUE la voie automatique (`annexe13_verified.py` court-circuite
+tout ça pour STAR, déjà figé à la main avec ce même repli raccordement,
+en connaissance de cause).
+
+**COMAR 2018 : NE PAS régénérer automatiquement.** Tentative faite puis
+**annulée** aujourd'hui — l'extraction automatique (OCR, page 34) produit
+131 cellules avec plusieurs écarts d'identité comptable, ce qui
+contredit directement la décision déjà prise et documentée plus haut
+("COMAR 2016 et 2018 examinés mais NON intégrés... scans ~72 dpi,
+plusieurs chiffres restent ambigus... risque d'erreur trop élevé pour un
+tableau destiné à la soutenance"). Les cellules insérées ont été
+supprimées pour revenir à l'état bloqué voulu. Si ce choix doit être
+reconsidéré, ce sera une décision explicite, pas un effet de bord d'une
+ré-exécution de pipeline.
