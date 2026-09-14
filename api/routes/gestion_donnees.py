@@ -174,6 +174,62 @@ def statut_validation_annexe13():
         return jsonify(dict(_validation_state))
 
 
+# État de la pipeline de validation Bilan (Actif/Passif) — même schéma
+# thread + verrou que Annexe 13 ci-dessus, sur un état séparé (indépendant,
+# peut tourner en même temps ou pas du tout).
+_validation_bilan_lock = threading.Lock()
+_validation_bilan_state = {"en_cours": False, "demarree_le": None, "progression": None, "derniere": None}
+
+
+def _run_validation_bilan_background(codes, annees):
+    from api.services import tableau_pipeline_service_bilan
+
+    def _progress(done, total):
+        with _validation_bilan_lock:
+            _validation_bilan_state["progression"] = {"fait": done, "total": total}
+    try:
+        summary = tableau_pipeline_service_bilan.process_all(codes, annees, progress_callback=_progress)
+        with _validation_bilan_lock:
+            _validation_bilan_state["derniere"] = {
+                **summary, "terminee_le": datetime.now().isoformat(timespec="seconds"),
+            }
+    except Exception as exc:
+        print(f"[gestion_donnees] échec validation Bilan : {exc}")
+    finally:
+        with _validation_bilan_lock:
+            _validation_bilan_state["en_cours"] = False
+            _validation_bilan_state["progression"] = None
+
+
+@bp.route("/api/gestion-donnees/valider-bilan", methods=["POST"])
+def valider_bilan():
+    """Lance (en tâche de fond) l'extraction + validation Bilan Actif/
+    Passif pour les documents CMF filtrés (tous par défaut) — voir
+    extraction/bilan_full_extractor.py::process_bilan. Même schéma que
+    /valider-annexe13."""
+    codes = request.args.getlist("societe") or None
+    annees_raw = request.args.getlist("annee")
+    try:
+        annees = [int(a) for a in annees_raw] or None
+    except ValueError:
+        return jsonify({"error": "Paramètre 'annee' invalide"}), 400
+
+    with _validation_bilan_lock:
+        if _validation_bilan_state["en_cours"]:
+            return jsonify({"lancee": False, "raison": "deja_en_cours"}), 409
+        _validation_bilan_state["en_cours"] = True
+        _validation_bilan_state["demarree_le"] = datetime.now().isoformat(timespec="seconds")
+        _validation_bilan_state["progression"] = None
+    threading.Thread(target=_run_validation_bilan_background, args=(codes, annees), daemon=True).start()
+    return jsonify({"lancee": True})
+
+
+@bp.route("/api/gestion-donnees/statut-validation-bilan")
+def statut_validation_bilan():
+    with _validation_bilan_lock:
+        return jsonify(dict(_validation_bilan_state))
+
+
 @bp.route("/api/gestion-donnees/documents")
 def documents():
     conn = get_connection()

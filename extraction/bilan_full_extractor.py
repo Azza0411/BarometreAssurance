@@ -315,3 +315,103 @@ def locate_and_extract_bilan(pdf_path, side, max_pages=15):
             if grid is not None:
                 return i + 1, grid
     return None, None
+
+
+# Codes de section TOP-LEVEL par côté (1 seul chiffre après le préfixe,
+# ex. AC1, PA3) — utilisés pour les 3 identités comptables de base
+# vérifiées ci-dessous. Volontairement peu ambitieux pour une 1ère
+# version (voir CAS_PARTICULIERS_BILAN_FULL_TABLE.md) : suffisant pour
+# détecter une extraction structurellement cassée (Σ sections ≠ Total),
+# pas une vérification exhaustive poste par poste comme Annexe 12/13.
+_TOP_ACTIF_RE = re.compile(r"^AC\d$")
+_TOP_PASSIF_RE = re.compile(r"^PA\d$")
+_TOP_CP_RE = re.compile(r"^CP\d$")
+
+
+def _bilan_validations(grid_actif, grid_passif):
+    """3 identités de contrôle, même contrat que
+    `annexe13_pipeline.validate_table` ({regle_code, regle, colonne,
+    attendu, trouve, ecart, statut}) : Σ sections Actif = Total Actif,
+    Σ sections Passif = Total du Passif (si imprimé séparément), et
+    Σ (Capitaux propres + Passif) = Total général (Actif ou combiné)."""
+    results = []
+
+    def _add(rule_code, rule_desc, colonne, attendu, trouve):
+        if attendu is None or trouve is None:
+            results.append({"regle_code": rule_code, "regle": rule_desc, "colonne": colonne,
+                             "attendu": None, "trouve": None, "ecart": None,
+                             "statut": "donnees_manquantes"})
+            return
+        ecart = round(trouve - attendu, 2)
+        results.append({"regle_code": rule_code, "regle": rule_desc, "colonne": colonne,
+                         "attendu": round(attendu, 2), "trouve": round(trouve, 2),
+                         "ecart": ecart, "statut": "ok" if abs(ecart) <= 2 else "ecart"})
+
+    if grid_actif:
+        total = grid_actif["lignes"].get("TOTAL") or grid_actif["lignes"].get("TOTAL_GENERAL")
+        top = {c: v for c, v in grid_actif["lignes"].items() if _TOP_ACTIF_RE.match(c)}
+        for col in grid_actif["colonnes"]:
+            attendu = sum(v.get(col, 0) for v in top.values()) if top else None
+            _add("bilan_actif_total", "Σ sections Actif = Total de l'actif", col,
+                 attendu, total.get(col) if total else None)
+
+    if grid_passif:
+        top_pa = {c: v for c, v in grid_passif["lignes"].items() if _TOP_PASSIF_RE.match(c)}
+        total_pa = grid_passif["lignes"].get("TOTAL")
+        if total_pa:  # certains documents n'imprimment jamais ce total isolé (BIAT, ASTREE)
+            for col in grid_passif["colonnes"]:
+                attendu = sum(v.get(col, 0) for v in top_pa.values()) if top_pa else None
+                _add("bilan_passif_total", "Σ sections Passif = Total du passif", col,
+                     attendu, total_pa.get(col))
+
+        total_general = grid_passif["lignes"].get("TOTAL_GENERAL") or (
+            grid_actif["lignes"].get("TOTAL") if grid_actif else None
+        )
+        if total_general:
+            top_cp = {c: v for c, v in grid_passif["lignes"].items() if _TOP_CP_RE.match(c)}
+            for col in grid_passif["colonnes"]:
+                attendu = (sum(v.get(col, 0) for v in top_pa.values()) if top_pa else 0) + \
+                          (sum(v.get(col, 0) for v in top_cp.values()) if top_cp else 0)
+                _add("bilan_general_total", "Capitaux propres + Total du passif = Total général", col,
+                     attendu or None, total_general.get(col))
+
+    return results
+
+
+def process_bilan(pdf_path):
+    """Pipeline complète pour un document : localise + extrait l'Actif ET
+    le Passif (voir `locate_and_extract_bilan`), fusionne en UNE seule
+    grille (même contrat que `annexe13_pipeline.process_annexe13` :
+    {page, colonnes, lignes, validations}) pour un stockage unique sous
+    tableau='bilan' — la page Correction manuelle affiche Actif et Passif
+    comme un seul tableau plutôt que deux tableaux séparés. Renvoie None
+    si NI l'Actif NI le Passif n'ont pu être extraits (ex. pages
+    scannées/texte cassé — voir CAS_PARTICULIERS_BILAN_FULL_TABLE.md)."""
+    page_actif, grid_actif = locate_and_extract_bilan(pdf_path, "actif")
+    page_passif, grid_passif = locate_and_extract_bilan(pdf_path, "passif")
+    if grid_actif is None and grid_passif is None:
+        return None
+
+    colonnes = []
+    lignes = {}
+
+    def _merge(grid):
+        if not grid:
+            return
+        for col in grid["colonnes"]:
+            if col not in colonnes:
+                colonnes.append(col)
+        for code, vals in grid["lignes"].items():
+            libelle = vals.get("libelle") or code
+            key = f"{code} — {libelle.capitalize()}" if libelle != code else code
+            lignes[key] = {c: v for c, v in vals.items() if c != "libelle"}
+
+    _merge(grid_actif)
+    _merge(grid_passif)
+
+    return {
+        "page": page_actif or page_passif,
+        "colonnes": colonnes,
+        "lignes": lignes,
+        "validations": _bilan_validations(grid_actif, grid_passif),
+    }
