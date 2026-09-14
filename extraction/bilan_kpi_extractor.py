@@ -141,6 +141,13 @@ def _words_with_bracket_negatives_resolved(line):
             text = "-" + text
             pending_negative = False
             changed = True
+        elif pending_negative and re.match(r"^[A-Za-zÀ-ÿ]", text):
+            # Contenu entre parenthèses non numérique ("(vie)", "(non vie)"
+            # — libellé de sous-catégorie, pas une valeur négative) : annule
+            # l'attente, sinon le PROCHAIN vrai nombre de la ligne se
+            # retrouverait négativé à tort (constaté sur "Provisions pour
+            # sinistres (vie)" côté Bilan).
+            pending_negative = False
         resolved.append({**w, "text": text} if changed else w)
     return resolved
 
