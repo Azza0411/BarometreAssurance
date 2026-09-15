@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import Chatbot from "./components/Chatbot";
+import CollecteBanner, { useCollecteStatus, BANNER_HEIGHT } from "./components/CollecteBanner";
 import Sidebar            from "./components/Sidebar";
 import NotificationBell   from "./components/NotificationBell";
 import ApercuMarche       from "./pages/ApercuMarche";
@@ -405,7 +406,7 @@ function NavBrand({ onClick, compact }) {
 }
 
 /* ─── Page Accueil ─── */
-function Accueil() {
+function Accueil({ navbarTop = 0 }) {
   const nav = useNavigate();
   const [phase, setPhase]               = useState("intro");
   const [introFading, setIntroFading]   = useState(false);
@@ -490,7 +491,7 @@ function Accueil() {
           92px au lieu de 72px et pas d'animation d'entrée dédiée - les
           éléments du hero (positionnés en pourcentages de la fenêtre, pas
           relatifs à la hauteur de la navbar) n'en dépendent pas. */}
-      <AppNavbar/>
+      <AppNavbar top={navbarTop}/>
 
       {/* ══ CADRE EY HERO — contenu slide dans le parallélogramme ══ */}
       <div style={{
@@ -747,7 +748,7 @@ function useWindowWidth() {
 }
 
 /* ─── Navbar partagée (toutes les pages hors Accueil) ─── */
-function AppNavbar() {
+function AppNavbar({ top = 0 }) {
   const nav  = useNavigate();
   const loc  = useLocation();
   const [hov, setHov] = useState(null);
@@ -758,11 +759,12 @@ function AppNavbar() {
 
   return (
     <nav style={{
-      position:"fixed", top:0, left:0, right:0, zIndex:100,
+      position:"fixed", top, left:0, right:0, zIndex:100,
       display:"flex", alignItems:"center",
       height:92, background:"#2E2E38",
       boxShadow:"0 1px 0 rgba(255,255,255,.07)",
       fontFamily:"Barlow,system-ui,sans-serif",
+      transition:"top .25s ease",
     }}>
       <NavBrand onClick={() => nav("/accueil")} compact={compact}/>
 
@@ -912,13 +914,21 @@ function PageTransition({ children }) {
 /* ─── Shell ─── */
 function AppShell() {
   const location = useLocation();
+  // Sondé une seule fois ici (pas dans CollecteBanner ni dans chaque
+  // page) : AppNavbar est fixed/top:0 — décaler sa position ET le
+  // bandeau doivent rester sur la MÊME source de vérité, sinon ils
+  // peuvent désynchroniser (bandeau affiché mais navbar pas décalée, ou
+  // l'inverse) pendant les quelques secondes entre deux sondages.
+  const statut = useCollecteStatus();
+  const navbarTop = statut?.en_cours ? BANNER_HEIGHT : 0;
 
   if (location.pathname === "/accueil" || location.pathname === "/") {
     return (
       <>
+        <CollecteBanner statut={statut}/>
         <Routes>
           <Route path="/"        element={<Navigate to="/accueil" replace/>}/>
-          <Route path="/accueil" element={<Accueil/>}/>
+          <Route path="/accueil" element={<Accueil navbarTop={navbarTop}/>}/>
         </Routes>
         <Chatbot/>
       </>
@@ -928,11 +938,13 @@ function AppShell() {
   return (
     <div style={{ height:"100vh", width:"100%", fontFamily:"Barlow,system-ui,sans-serif",
       display:"flex", flexDirection:"column" }}>
-      <AppNavbar/>
+      <CollecteBanner statut={statut}/>
+      <AppNavbar top={navbarTop}/>
       <main style={{
-        marginTop:92, flex:1, overflowY:"auto",
+        marginTop:92 + navbarTop, flex:1, overflowY:"auto",
         background:"#F2F5FB",
         display:"flex", flexDirection:"column",
+        transition:"margin-top .25s ease",
       }}>
         <style>{`
           @keyframes pageEnter {

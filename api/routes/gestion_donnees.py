@@ -34,7 +34,7 @@ _LOG_PATH = os.path.join(
 # dev — voir app.py::app.run(..., use_reloader=False) — donc un simple
 # verrou en mémoire suffit ; pas conçu pour un déploiement multi-worker).
 _collecte_lock = threading.Lock()
-_collecte_state = {"en_cours": False, "demarree_le": None, "annulation_demandee": False}
+_collecte_state = {"en_cours": False, "demarree_le": None, "annulation_demandee": False, "source": None}
 
 
 def _last_pipeline_end_from_log():
@@ -67,22 +67,40 @@ def _run_pipeline_background():
     try:
         pipeline_main()
     except Exception as exc:
-        print(f"[gestion_donnees] échec collecte manuelle : {exc}")
+        print(f"[gestion_donnees] échec collecte : {exc}")
     finally:
         with _collecte_lock:
             _collecte_state["en_cours"] = False
             _collecte_state["annulation_demandee"] = False
 
 
-@bp.route("/api/gestion-donnees/lancer-collecte", methods=["POST"])
-def lancer_collecte():
+def ensure_pipeline_running(source="manuelle"):
+    """Démarre le pipeline complet en tâche de fond s'il ne tourne pas déjà
+    — factorisé hors de `lancer_collecte()` pour que le déclenchement
+    AUTOMATIQUE au premier lancement (voir api/app.py::_first_run_scrape_loop)
+    partage le MÊME état que celui déclenché à la main depuis "Gestion de
+    données" : sans ça, `/api/gestion-donnees/statut-collecte` (et donc
+    tout bandeau qui s'y abonne) ne reflétait jamais la collecte
+    automatique — seul un clic manuel sur "Lancer une nouvelle collecte"
+    la mettait à jour (constaté 2026-09-15, retour utilisateur direct :
+    aucune indication visible qu'une collecte tournait après un premier
+    lancement sur base vide). Renvoie True si une collecte a été démarrée
+    par CET appel, False si une était déjà en cours (idempotent)."""
     with _collecte_lock:
         if _collecte_state["en_cours"]:
-            return jsonify({"lancee": False, "raison": "deja_en_cours"}), 409
+            return False
         _collecte_state["en_cours"] = True
         _collecte_state["demarree_le"] = datetime.now().isoformat(timespec="seconds")
         _collecte_state["annulation_demandee"] = False
+        _collecte_state["source"] = source
     threading.Thread(target=_run_pipeline_background, daemon=True).start()
+    return True
+
+
+@bp.route("/api/gestion-donnees/lancer-collecte", methods=["POST"])
+def lancer_collecte():
+    if not ensure_pipeline_running(source="manuelle"):
+        return jsonify({"lancee": False, "raison": "deja_en_cours"}), 409
     return jsonify({"lancee": True})
 
 
@@ -109,11 +127,13 @@ def statut_collecte():
         en_cours = _collecte_state["en_cours"]
         demarree_le = _collecte_state["demarree_le"]
         annulation_demandee = _collecte_state.get("annulation_demandee", False)
+        source = _collecte_state.get("source")
     derniere = _last_pipeline_end_from_log()
     return jsonify({
         "en_cours": en_cours,
         "demarree_le": demarree_le,
         "annulation_demandee": annulation_demandee,
+        "source": source,
         "derniere_execution": derniere,
     })
 

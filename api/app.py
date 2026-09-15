@@ -141,9 +141,16 @@ def _first_run_scrape_loop():
         if not _database_is_empty():
             return
         print("[premier lancement] Base de données vide — démarrage automatique de la collecte...")
-        from pipelines.run_pipeline import main as run_pipeline_main
-        run_pipeline_main()
-        print("[premier lancement] Collecte terminée — voir reports/ pour le rapport détaillé.")
+        # `ensure_pipeline_running` (pas un appel direct à
+        # pipelines.run_pipeline.main) : partage le MÊME état que la
+        # collecte déclenchée à la main depuis "Gestion de données", pour
+        # que /api/gestion-donnees/statut-collecte (et le bandeau global
+        # qui s'y abonne, voir CollecteBanner.jsx) reflète aussi CETTE
+        # collecte automatique — sinon rien n'indiquait à l'utilisateur
+        # qu'une collecte tournait après un premier lancement sur base
+        # vide (retour utilisateur direct, 2026-09-15).
+        from api.routes.gestion_donnees import ensure_pipeline_running
+        ensure_pipeline_running(source="premier_lancement")
     except Exception as exc:
         print(f"[premier lancement] Échec de la collecte automatique : {exc}")
 
