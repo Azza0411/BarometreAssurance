@@ -412,7 +412,28 @@ th {{ background: #2E2E38; color: #FFE600; }}
     return path
 
 
+def _classify_result(name, ok, result, failed_sources, empty_sources):
+    doc_count = _extract_doc_count(result) if ok else None
+    kpi_count = _extract_kpi_count(result) if ok else None
+    if not ok:
+        failed_sources.append(name)
+        return doc_count, kpi_count
+    if doc_count == 0:
+        empty_sources.append(name)
+    if kpi_count == 0:
+        # kpi_extraction_pipeline.run() traite TOUS les documents CMF deja
+        # en base (pas seulement les nouveaux) : contrairement a
+        # doc_count=0 (rien de nouveau a scraper, peut etre normal), 0
+        # valeur de KPI extraite sur l'ensemble de l'historique trahit
+        # presque toujours une vraie regression (ex: bibliotheque
+        # d'extraction cassee), jamais une "semaine calme".
+        empty_sources.append(f"{name} (extraction KPI)")
+        _log_json("kpi_extraction_totally_empty", source=name)
+    return doc_count, kpi_count
+
+
 def main():
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     from pipelines.control import clear_cancel, is_cancel_requested
 
     started_at = datetime.now()
@@ -423,29 +444,49 @@ def main():
     failed_sources = []
     empty_sources = []
     cancelled = False
-    for name, func in SOURCES:
-        if is_cancel_requested():
-            _log_json("pipeline_cancelled", remaining_source=name)
-            cancelled = True
-            break
-        ok, result, duration = run_with_retry(name, func)
-        doc_count = _extract_doc_count(result) if ok else None
-        kpi_count = _extract_kpi_count(result) if ok else None
-        results.append((name, ok, duration, doc_count, kpi_count))
-        if not ok:
-            failed_sources.append(name)
-            continue
-        if doc_count == 0:
-            empty_sources.append(name)
-        if kpi_count == 0:
-            # kpi_extraction_pipeline.run() traite TOUS les documents CMF deja
-            # en base (pas seulement les nouveaux) : contrairement a
-            # doc_count=0 (rien de nouveau a scraper, peut etre normal), 0
-            # valeur de KPI extraite sur l'ensemble de l'historique trahit
-            # presque toujours une vraie regression (ex: bibliotheque
-            # d'extraction cassee), jamais une "semaine calme".
-            empty_sources.append(f"{name} (extraction KPI)")
-            _log_json("kpi_extraction_totally_empty", source=name)
+
+    # "CMF" reste SEQUENTIEL et en premier : c'est la seule dépendance
+    # réelle entre sources — les 6 pipelines grille complète (Bilan,
+    # Annexe 12/13, Takaful) lisent les PDF que CMF vient de sauvegarder
+    # localement (voir extraction/kpi_extraction_pipeline.py
+    # ::_save_cmf_pdf_local). Toutes les sources RESTANTES sont
+    # indépendantes les unes des autres (sites web différents pour
+    # FTUSA/CGA/INS/BVMT, documents différents pour les grilles
+    # complètes) : les lancer en parallèle plutôt qu'en séquence réduit
+    # le temps total d'attente pour l'utilisateur (voir "de préférence
+    # l'alimentation et récupération de données se fait le plus
+    # rapidement possible", retour utilisateur direct 2026-09-15) sans
+    # rien changer à l'isolation par source déjà en place (chaque source
+    # garde son propre retry/backoff, une erreur dans l'une n'affecte
+    # jamais les autres).
+    cmf_name, cmf_func = SOURCES[0]
+    parallel_sources = SOURCES[1:]
+
+    if is_cancel_requested():
+        cancelled = True
+    else:
+        ok, result, duration = run_with_retry(cmf_name, cmf_func)
+        doc_count, kpi_count = _classify_result(cmf_name, ok, result, failed_sources, empty_sources)
+        results.append((cmf_name, ok, duration, doc_count, kpi_count))
+
+    if not cancelled and is_cancel_requested():
+        _log_json("pipeline_cancelled", remaining_source=parallel_sources[0][0])
+        cancelled = True
+
+    if not cancelled:
+        parallel_results = {}
+        with ThreadPoolExecutor(max_workers=min(len(parallel_sources), 6)) as pool:
+            futures = {pool.submit(run_with_retry, name, func): name for name, func in parallel_sources}
+            for future in as_completed(futures):
+                name = futures[future]
+                parallel_results[name] = future.result()
+        # Ré-ordonné selon SOURCES (pas l'ordre d'achèvement, non
+        # déterministe) pour que le rapport HTML reste lisible/stable
+        # d'une exécution à l'autre.
+        for name, _func in parallel_sources:
+            ok, result, duration = parallel_results[name]
+            doc_count, kpi_count = _classify_result(name, ok, result, failed_sources, empty_sources)
+            results.append((name, ok, duration, doc_count, kpi_count))
 
     # Annulée : on saute les étapes annexes (qualité/veille), pas la peine de
     # les faire porter sur un jeu de sources incomplet.

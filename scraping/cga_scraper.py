@@ -35,7 +35,7 @@ REQUEST_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; InsuranceKPIBot/1.0)"
 # Requêtes réseau
 # ------------------------------------------------------------------ #
 
-# Utilité : requête GET avec 3 tentatives
+# Fonction 1 : requête GET avec 3 tentatives
 def _get_with_retries(url, timeout=30, retries=3):
     """Meme approche que bvmt_scraper/ftusa_scraper : le site peut echouer
     ponctuellement (timeout, 5xx passager), quelques tentatives suffisent."""
@@ -71,12 +71,12 @@ GDRIVE_LINK_RE = re.compile(
 # Résolution des liens (page principale -> page news -> Google Drive)
 # ------------------------------------------------------------------ #
 
-# Utilité : construit l'URL de téléchargement direct depuis un id Google Drive
+# Fonction 2 : construit l'URL de téléchargement direct depuis un id Google Drive
 def _gdrive_download_url(file_id):
     return f"https://drive.google.com/uc?export=download&id={file_id}"  # URL de téléchargement direct
 
 
-# Utilité : récupère les liens PDF (page principale + suivi de lien pour 2023+)
+# Fonction 3 : récupère les liens PDF (page principale + suivi de lien pour 2023+)
 def _fetch_report_links():
     """Renvoie {annee: url_pdf} pour tous les rapports annuels CGA.
 

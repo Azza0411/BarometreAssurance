@@ -2,7 +2,7 @@
 
 ---
 
-Tu es mon copilote pour préparer la soutenance de mon PFE (Projet de Fin d'Études, ingénieur informatique, ESPRIT, en partenariat avec EY Tunisie). Je vais te donner un dossier complet sur le projet — contexte métier, marché cible, architecture technique, fonctionnalités, logique de données, IA/ML, et travaux déjà réalisés. Lis tout avant de répondre quoi que ce soit : je veux que tu comprennes le projet en profondeur, pas seulement sa liste de fonctionnalités, pour ensuite m'aider à construire une soutenance d'ingénieur (démarche, choix techniques justifiés, résultats mesurables) et non un simple résumé de rapport.
+Voici un dossier complet sur un projet de plateforme logicielle — mon PFE (Projet de Fin d'Études, ingénieur informatique, ESPRIT, en partenariat avec EY Tunisie) — pour que tu en aies une connaissance approfondie : contexte métier, marché cible, architecture technique, fonctionnalités, logique de données, IA/ML, méthodologie de travail, et travaux déjà réalisés.
 
 ## 1. Contexte métier et problématique
 
@@ -123,6 +123,21 @@ Point de départ : la plateforme traitait initialement les 2 assureurs Takaful c
 
 Génération de rapports **PDF et Excel** stylés (logo compagnie, mise en forme EY) pour les fiches et analyses, avec positionnement précis des cellules et gestion du contraste logo/fond.
 
-## 11. Ce que j'attends de toi dans la suite de cette conversation
+## 11. Travaux techniques réalisés depuis (deuxième vague — à connaître aussi)
 
-Une fois que tu as intégré tout ce contexte, je vais te demander de m'aider à construire le plan de ma soutenance PFE (ingénieur informatique, pas un plan de rapport) — démarche méthodologique, choix d'architecture justifiés, résultats mesurables, démonstration, perspectives. Ne propose rien tant que je ne te l'ai pas explicitement demandé : pour l'instant, confirme juste que tu as bien intégré l'ensemble de ce dossier et dis-moi si un point métier ou technique te semble encore flou avant qu'on avance.
+Après tout ce qui précède, plusieurs chantiers supplémentaires ont été menés. Ils sont moins "gros" individuellement que la séparation Takaful, mais ensemble ils illustrent bien la méthode de travail du projet (vérification empirique systématique, préférence pour l'échec honnête plutôt que la donnée fausse, correction incrémentale documentée) — du bon matériau pour une slide "démarche" ou "résultats".
+
+**Fiabilisation des notifications.** Constat : des actualités publiées le jour même ne généraient aucune notification. Investigation : la tâche planifiée Windows (déclencheur unique du système) n'avait **jamais tourné une seule fois** depuis son enregistrement (mode "Interactive uniquement", nécessite une session active pile au bon moment — limite qui avait été identifiée en théorie mais dont l'impact réel n'avait jamais été mesuré). Corrigé en déplaçant le déclenchement **à l'intérieur du process Flask lui-même** (thread de fond, vérification au démarrage puis toutes les 30 minutes) — indépendant de tout planificateur externe. Vérifié : une vraie notification générée en direct pour un article venant d'être publié.
+
+**Extension Takaful arabe — Surplus du Fonds des Participants (Al Amanah Takaful).** L'indicateur "Surplus du Fonds des Participants" manquait pour la 3ᵉ compagnie Takaful (rapports en arabe) sur Analyse Comparative. Méthode : lecture visuelle directe des PDF réels (image rendue) pour repérer la structure exacte de la ligne recherchée, puis **utilisation d'une identité comptable (Net = Brut + Cédées) comme garde-fou de validation automatique** — une valeur n'est acceptée que si elle vérifie cette équation, ce qui a permis de détecter et d'écarter un cas ambigu plutôt que d'afficher un chiffre faux. Couverture obtenue : 2 exercices complets sur 9 (le reste reste `None`, honnêtement, faute de texte source exploitable) — un bon exemple de "mieux vaut une couverture partielle fiable qu'une couverture totale non vérifiée".
+
+**Fiabilisation du surlignage PDF (traçabilité).** Plusieurs bugs en cascade sur la fonctionnalité "Localiser dans le PDF", découverts et corrigés un par un par vérification empirique à chaque étape :
+1. Un canvas d'affichage qui restait bloqué à sa taille par défaut au lieu de suivre la taille réelle de la page rendue.
+2. Une page pivotée à 90° dans le PDF (tableau imprimé en paysage) : la librairie d'extraction et la librairie d'affichage n'utilisaient pas le même repère de coordonnées pour une page pivotée — **confirmé et corrigé par un test direct avec la vraie librairie de rendu PDF (pdf.js) en dehors du navigateur**, plutôt que par déduction seule.
+3. Un faux positif où le **titre de la page** ("Annexe N°13 : Résultat technique...") était surligné à la place de la vraie ligne de données, quand celle-ci était introuvable.
+4. Une page à l'encodage de police corrompu (texte vectoriel réel, mais illisible par l'extraction standard) obligeant un repli sur la reconnaissance optique (OCR) — avec ses propres limites documentées plutôt que masquées.
+
+**Correction d'un bug de fond sur l'Enquête de Marché.** Le sélecteur de compagnie sur la page "Fiche client entreprise" ne changeait en réalité **aucun chiffre affiché** — la fonction de calcul ignorait silencieusement le paramètre de compagnie et renvoyait toujours les statistiques du marché entier. Corrigé en exploitant des colonnes du fichier source jusque-là inutilisées (l'assureur réel de chaque répondant). Découverte annexe : l'échantillon par compagnie est très réduit (quelques répondants seulement) — affiché désormais avec un indicateur "échantillon restreint" plutôt que caché.
+
+**Cohérence de l'interface.** Unification définitive de la barre de navigation sur toutes les pages, filtre par compagnie de la page Actualités étendu aux 3 compagnies Takaful (absentes jusque-là), corrections d'affichage (carte de densité géographique, densité de la page Enquête de Marché).
+
