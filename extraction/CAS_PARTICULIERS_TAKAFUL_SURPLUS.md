@@ -327,16 +327,75 @@ plus, reconcilie parfaitement malgré cet écart local). "Total actif" et
 (`extract_al_amanah_takaful_kpis`) : 17 448 993 et 16 248 884
 respectivement.
 
-**Résultat** (`tableau_pipeline_service_bilan.py`, filtré sur
-AL_AMANAH_TAKAFUL) : 3/9 documents "ok" (Actif ET Passif), 1 "partiel"
-(Actif seul, 2022), 5 introuvables — la moitié des documents disponibles
-sont soit scannés (portée exclue), soit un format plus ancien non couvert
-par ce module. Un progrès réel par rapport à l'absence totale de grille
-précédente, mais PAS une couverture complète — à noter pour la suite si
-le besoin business se précise (années scannées nécessiteraient un OCR
-arabe dédié, un chantier bien plus lourd que celui-ci, voir
-`arabic_ocr_extractor.py` pour les limites déjà documentées du modèle
-arabe de Tesseract sur les chiffres).
+**Résultat initial** (texte réel seul) : 3/9 documents "ok".
+
+## 2026-09-15 — AL_AMANAH_TAKAFUL : repli OCR pour les documents scannés
+
+Retour utilisateur direct après vérification navigateur : 2023/2024/2025
+ne montraient aucune donnée ("ça ne marche pas"). Diagnostic : les pages
+du Bilan sont des IMAGES SCANNÉES pour ces 3 années (confirmé via
+`is_scanned_page`), donc invisibles pour
+`al_amanah_bilan_full_extractor.py` (texte réel uniquement) — pas un bug,
+mais une portée non couverte jusque-là.
+
+Nouveau module `extraction/al_amanah_bilan_ocr_extractor.py`, branché en
+REPLI (côté par côté) dans `tableau_pipeline_service_bilan.py` quand le
+texte réel ne trouve rien. Principe à DEUX passes OCR indépendantes par
+ligne (même stratégie que `arabic_ocr_extractor.py::extract_cell` pour
+les quelques KPI ciblés déjà existants, étendue ici à TOUTES les lignes) :
+
+1. OCR modèle ARABE (`_ocr_lines`) pour repérer chaque ligne du tableau et
+   son texte approximatif — fiable pour la PRÉSENCE/POSITION d'une ligne,
+   PAS pour ses chiffres (le modèle arabe confond les chiffres, déjà
+   documenté).
+2. OCR modèle ANGLAIS chiffres-seuls (`ocr_row_numbers`) sur la ZONE
+   NUMÉRIQUE de la même ligne (toujours à gauche du bloc de libellé, même
+   mise en page que la version texte réel) pour lire les valeurs — bien
+   plus fiable.
+
+Classification des lignes par MOTIF COURT plutôt que préfixe exact : le
+hamza initial de "أصل" est instable à l'OCR ("اصلق", "صل تجاري"...), donc
+détecté via la présence du fragment "صل" n'importe où dans le texte
+reconnu (idem "خصم"/"صافية"/"ذاتي" pour Passif/Actifs nets/Capitaux
+propres) plutôt qu'un `startswith` strict.
+
+**Numéro de code de ligne NON reconstruit** (contrairement à la version
+texte réel) : le repérer fiablement demanderait une 3e passe OCR ciblée,
+hors de portée raisonnable pour ce premier jet — les lignes sont
+numérotées séquentiellement (AC_1, AC_2...), le libellé OCR (imparfait
+mais lisible) restant la clé d'identification principale pour
+l'utilisateur.
+
+**Détection du Total** : le motif "مجموع" est lui-même parfois totalement
+méconnaissable par l'OCR (ex. "مجموع الأصول" lu "امإفوعلأض ول" sur
+AL_AMANAH_TAKAFUL_2023 — aucune correspondance possible, même floue).
+Repli positionnel : la ligne la mieux peuplée (≥ 4 colonnes) parmi celles
+qui suivent la DERNIÈRE ligne de détail classée est retenue comme Total,
+sans dépendre de la reconnaissance de son libellé.
+
+**Validation croisée** (AL_AMANAH_TAKAFUL_2023, ligne Total Actif) :
+identité Entreprise + Fonds des adhérents = Combiné vérifiée EXACTEMENT
+sur les 2 exercices (27 610 483 + 125 492 266 = 153 102 749 ; 25 540 570 +
+112 493 110 = 138 033 680 ≈ 138 033 679, écart d'1 dinar d'arrondi) — la
+même 2e passe (chiffres anglais) redonnant les valeurs correctes malgré
+un OCR arabe très dégradé sur cette ligne précise.
+
+**Limitation** : la zone numérique est bornée à la moitié gauche de la
+page (seuil fixe, pas d'ancrage dynamique sur la position réelle du
+bloc de libellé comme côté texte réel) — évite de capter le numéro de
+code de ligne comme une fausse valeur, mais peut perdre la colonne la
+plus à droite (Fonds des adhérents, exercice courant) sur certaines
+lignes (constaté : Total Actif n'a que 5/6 valeurs sur 2023). Pas de
+validation Σ postes = Total (dépendait des codes réglementaires réels,
+absents ici).
+
+**Résultat final** (`tableau_pipeline_service_bilan.py`, texte réel +
+repli OCR, filtré sur AL_AMANAH_TAKAFUL) : **7/9 documents "ok"**
+(2017, 2018, 2020, 2021, 2023, 2024, 2025), 1 "partiel" (2022, Actif
+seul), 1 "page_introuvable" (2019 — format encore différent, ni texte
+réel exploitable ni motif reconnu en OCR). Vérifié dans le navigateur
+(Correction manuelle) sur 2023/2024/2025 : grille affichée, PDF source
+ouvert à la bonne page.
 
 ## Bilan de la demande "chaque annexe utilisée pour un KPI Takaful"
 

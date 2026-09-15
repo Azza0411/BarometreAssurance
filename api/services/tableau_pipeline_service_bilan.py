@@ -54,15 +54,25 @@ def process_one_document(conn, document_id, code, nom_pdf):
     'pdf_absent'). AL_AMANAH_TAKAFUL publie ses états en ARABE — le
     pipeline texte français (`process_bilan`) n'y trouve jamais rien ;
     dispatché vers `al_amanah_bilan_full_extractor.process_al_amanah_bilan`
-    à la place, même contrat de sortie, mêmes clés
-    `bilan_actif`/`bilan_passif` (voir CAS_PARTICULIERS_TAKAFUL_SURPLUS.md,
-    section AL_AMANAH — limité aux documents à texte réel, pas scannés)."""
+    (documents à texte réel) à la place, même contrat de sortie, mêmes
+    clés `bilan_actif`/`bilan_passif`, avec repli côté par côté sur
+    `al_amanah_bilan_ocr_extractor.process_al_amanah_bilan_ocr` (documents
+    SCANNÉS — pas de texte réel du tout) quand un côté n'a rien trouvé —
+    voir CAS_PARTICULIERS_TAKAFUL_SURPLUS.md, section AL_AMANAH."""
     pdf_path = local_pdf_path("CMF", code, nom_pdf)
     if not pdf_path or not os.path.isfile(pdf_path):
         return "pdf_absent"
     if code == "AL_AMANAH_TAKAFUL":
         from extraction.al_amanah_bilan_full_extractor import process_al_amanah_bilan
-        result = process_al_amanah_bilan(pdf_path)
+        from extraction.al_amanah_bilan_ocr_extractor import process_al_amanah_bilan_ocr
+        result = process_al_amanah_bilan(pdf_path) or {}
+        if not result.get("actif") or not result.get("passif"):
+            result_ocr = process_al_amanah_bilan_ocr(pdf_path) or {}
+            result = {
+                "actif": result.get("actif") or result_ocr.get("actif"),
+                "passif": result.get("passif") or result_ocr.get("passif"),
+            }
+        result = result if (result.get("actif") or result.get("passif")) else None
     else:
         result = process_bilan(pdf_path)
     if result is None:
