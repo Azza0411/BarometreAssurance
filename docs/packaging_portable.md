@@ -74,42 +74,57 @@ ouvert sur `http://localhost:8002`, page d'accueil ET routes profondes
 (`/enquete-marche`) fonctionnelles, widget chatbot connecté et
 répondant — tout via UN SEUL point d'entrée.
 
-## Ce qu'il reste à faire pour un "zéro dépendance" complet
+## MySQL portable — construit et vérifié (2026-09-15)
 
-Aujourd'hui, le lanceur suppose encore que Python, une base MySQL
-joignable, et un build frontend existent déjà sur la machine — ce qui
-convient pour un poste de développement, pas encore pour un utilisateur
-final sans rien d'installé. Deux chantiers restants, dans l'ordre de
-priorité :
+`launcher/portable_mysql.py` : au premier lancement, télécharge la
+distribution ZIP officielle MariaDB pour Windows (~90 Mo, aucun
+installeur — https://archive.mariadb.org), l'initialise avec un
+répertoire de données LOCAL au projet (`portable_runtime/`, jamais
+committé), puis démarre `mysqld.exe` sur le port DÉDIÉ 3307 (jamais 3306,
+pour ne jamais entrer en conflit avec un MySQL déjà installé sur la
+machine — l'instance portable ignore volontairement tout MySQL
+préexistant). AUCUN changement de code applicatif n'a été nécessaire :
+`config/db_config.py` était déjà piloté par variables d'environnement.
 
-1. **MySQL portable (zéro installation)** — remplacer la dépendance à un
-   MySQL déjà installé par une instance MariaDB "zip" (distribution
-   officielle sans installeur, `mysqld.exe` lancé directement avec un
-   `--datadir` local bundlé à côté de l'application, sur un port dédié
-   pour ne jamais entrer en conflit avec un MySQL déjà présent). AUCUN
-   changement de code applicatif nécessaire : `config/db_config.py` est
-   déjà piloté par variables d'environnement (`DB_HOST`/`DB_PORT`) — seul
-   `launcher/start_platform.py` doit apprendre à démarrer/initialiser ce
-   `mysqld.exe` avant l'API, et positionner ces variables en conséquence.
-2. **Compilation en un seul exécutable (PyInstaller)** — pour que
-   l'utilisateur final n'ait ni Python ni pip à installer. Complexité
-   spécifique à anticiper : les binaires externes (Tesseract, Ghostscript,
-   le futur `mysqld.exe` portable) ne sont PAS embarqués par PyInstaller
-   (qui ne bundle que les dépendances Python) — il faudra les livrer comme
-   fichiers additionnels à côté de l'exécutable généré (`--add-data`), pas
-   comme un simple `pip install`.
-3. **Build Docker à valider** une fois Docker Desktop disponible (les
-   correctifs de dépendances ci-dessus n'ont été vérifiés que
-   statiquement) — pertinent si un déploiement serveur est un jour
-   envisagé en parallèle du lanceur local, pas bloquant pour celui-ci.
+**Vérifié en conditions réelles, de A à Z, sur ce poste** : suppression
+de toute trace précédente → lancement → téléchargement automatique →
+extraction → initialisation → démarrage de `mysqld.exe` → connexion
+réussie de l'API → base de données VRAIMENT vide au départ (aucune trace
+d'un run précédent) → **le thread d'auto-scraping au démarrage
+(api/app.py::_start_first_run_scrape) s'est déclenché seul et a rempli la
+base (0 → 38 documents en quelques minutes, pipeline toujours en cours
+pour le reste) sans AUCUNE intervention manuelle** → page d'accueil
+accessible et fonctionnelle pendant toute la durée de la collecte.
+
+## Ce qu'il reste pour un "zéro dépendance" complet
+
+Un seul chantier restant : **compiler en un seul exécutable
+(PyInstaller)**, pour que l'utilisateur final n'ait même plus besoin de
+Python installé. Complexité à anticiper : les binaires externes
+(Tesseract, Ghostscript, MariaDB) ne sont PAS embarqués par PyInstaller
+(qui ne bundle que les dépendances Python pures) — il faudra les livrer
+comme fichiers additionnels à côté de l'exécutable généré (`--add-data`),
+pas comme un `pip install`. Tesseract/Ghostscript ne bloquent pas la
+plateforme (dégradation gracieuse pour les seules fonctionnalités qui en
+dépendent — extraction Arabe OCR, camelot) ; MariaDB, en revanche, est
+strictement nécessaire — mais son mécanisme de téléchargement/extraction
+étant déjà un script Python autonome (`portable_mysql.py`), il continuera
+de fonctionner identiquement une fois ce script lui-même compilé.
+
+**Build Docker à valider** une fois Docker Desktop disponible (les
+correctifs de dépendances requirements-api.txt/Dockerfile.api n'ont été
+vérifiés que statiquement) — pertinent si un déploiement serveur est un
+jour envisagé en parallèle du lanceur local, pas bloquant pour celui-ci.
 
 ## Vérifications restantes
 
-- Tester `LancerPlateforme.bat` sur une machine SANS venv déjà préparé
-  (actuellement testé uniquement via l'interpréteur du venv de
-  développement).
-- Construire réellement la brique MySQL portable (téléchargement du zip
-  MariaDB, script d'initialisation, test de démarrage à froid).
+- MySQL portable et auto-scraping au démarrage : **fait, voir section
+  ci-dessus**.
+- Tester `LancerPlateforme.bat` sur une machine SANS venv Python déjà
+  préparé (actuellement testé uniquement via l'interpréteur du venv de
+  développement — Python lui-même reste nécessaire jusqu'à la
+  compilation PyInstaller).
 - Une fois PyInstaller en place, tester le lancement sur une machine
   Windows "propre" (sans Python/Node/MySQL/Tesseract déjà présents) —
-  seul test qui validera vraiment le "zéro dépendance".
+  SEUL test qui validera vraiment le "zéro dépendance" complet promis à
+  l'utilisateur final.

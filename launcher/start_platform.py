@@ -8,23 +8,26 @@ api/app.py::_start_first_run_scrape, déclenché automatiquement par le
 process API lui-même dès qu'il démarre sur une base vide).
 
 Ce script démarre, dans l'ordre :
-  1. L'API Flask (api/app.py, port 8002) — sert AUSSI le frontend buildé
-     (frontend/dist/, voir api/app.py) : un seul processus pour l'API et
-     l'interface, pas besoin de Node/Nginx à l'exécution.
-  2. Le chatbot IA (chatbot_portable/app.py, port 5001) — optionnel,
+  1. La base de données portable (launcher/portable_mysql.py) — sa PROPRE
+     instance MariaDB, zéro installation, port dédié 3307 (jamais 3306,
+     pour ne jamais entrer en conflit avec un MySQL déjà présent sur la
+     machine). Télécharge/initialise au premier lancement uniquement.
+  2. L'API Flask (api/app.py, port 8002), pointée vers cette base via
+     DB_HOST/DB_PORT — sert AUSSI le frontend buildé (frontend/dist/, voir
+     api/app.py) : un seul processus pour l'API et l'interface, pas besoin
+     de Node/Nginx à l'exécution.
+  3. Le chatbot IA (chatbot_portable/app.py, port 5001) — optionnel,
      autonome (SQLite, pas de dépendance MySQL) : une erreur ici ne doit
      jamais empêcher le reste de la plateforme de démarrer.
-  3. Ouvre le navigateur par défaut sur http://localhost:8002 dès que
+  4. Ouvre le navigateur par défaut sur http://localhost:8002 dès que
      l'API répond (polling court, quelques secondes max en pratique).
 
-Suppose actuellement une base MySQL déjà joignable (locale ou portable,
-voir DB_HOST/DB_PORT dans config/db_config.py) et `frontend/dist/` déjà
-buildé (`npm run build`, une fois, au moment de préparer le paquet
-distribuable — PAS à chaque lancement). Le remplacement de MySQL par une
-instance portable (zip MariaDB, aucune installation) est la prochaine
-étape documentée dans docs/packaging_portable.md — ce script n'aura pas
-besoin de changer, seul `config/db_config.py` (déjà piloté par variables
-d'environnement) devra pointer vers le port local de cette instance."""
+Suppose `frontend/dist/` déjà buildé (`npm run build`, une fois, au
+moment de préparer le paquet distribuable — PAS à chaque lancement).
+Reste (voir docs/packaging_portable.md) : compilation PyInstaller pour
+que Python lui-même n'ait plus besoin d'être installé sur la machine
+cible — ce script n'aura pas à changer, seul son mode d'exécution
+(interprété -> exécutable) change."""
 
 import os
 import subprocess
@@ -79,9 +82,21 @@ def _wait_for_port(port, max_seconds=60):
 def main():
     print("FS Market Intelligence — démarrage de la plateforme...")
 
+    # Base de données portable — voir launcher/portable_mysql.py. Gère sa
+    # PROPRE instance MariaDB (port dédié 3307, jamais 3306) plutôt que de
+    # dépendre d'un MySQL déjà installé : comportement identique sur
+    # n'importe quelle machine, aucune installation manuelle nécessaire.
+    import portable_mysql  # module sœur (même dossier launcher/) — voir sys.path[0]
+    try:
+        portable_mysql.start_portable_mysql()
+        db_env = {"DB_HOST": portable_mysql.HOST, "DB_PORT": str(portable_mysql.PORT)}
+    except Exception as exc:
+        print(f"  [ERREUR] Base de données portable indisponible : {exc}")
+        return 1
+
     if not _is_port_open(API_PORT):
         print(f"  Démarrage de l'API (port {API_PORT})...")
-        _start_background("api/app.py")
+        _start_background("api/app.py", extra_env=db_env)
     else:
         print(f"  API déjà en cours d'exécution (port {API_PORT}).")
 

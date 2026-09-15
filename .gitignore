@@ -9,6 +9,11 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
+# ── Lanceur portable (launcher/portable_mysql.py) ───────────────────────────
+# MariaDB téléchargé/initialisé au premier lancement — ~90 Mo de binaires +
+# les fichiers de données réels, jamais committés (voir docs/packaging_portable.md).
+portable_runtime/
+
 # ── Python ──────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
