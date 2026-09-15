@@ -141,3 +141,103 @@ branches) sont volontairement exclus du concept de grille complète — ce
 sont des filtres retirés du sélecteur `TABLEAU_GROUPS` le 2026-09-09 sur
 retour utilisateur direct (voir `api/services/data_management.py`), pas
 un oubli. **Conclusion : couverture conventionnels déjà complète.**
+
+## 2026-09-15 — Annexe 5.1 (État de résultat de l'entreprise Takaful)
+
+Nouveau module `extraction/takaful_resultat_full_extractor.py`. Tableau
+BEAUCOUP plus simple qu'Annexes 3/4 : 2 colonnes seulement (exercice
+courant / précédent), pas de distinction Brut/Cessions. Réutilise le même
+correctif "Sous total N" qu'Annexes 3/4 (numéro de section à ne pas
+confondre avec une valeur — ici certains sous-totaux portent un suffixe
+lettré "1a", naturellement exclu des tokens numériques donc déjà sans
+risque).
+
+Les lignes de RÉSULTAT INTERMÉDIAIRE les plus importantes ("Produit net
+sur activités de gestion des fonds Takaful", "Résultat d'exploitation
+avant/après impôt", "Résultat extraordinaire", "Résultat net de
+l'exercice") n'ont aucun code réglementaire — capturées génériquement par
+leur texte normalisé plutôt que listées une à une (généralisation,
+fonctionne aussi bien sur AT_TAKAFULIA que ZITOUNA_TAKAFUL malgré des
+formulations légèrement différentes).
+
+Bug trouvé et corrigé : la ligne d'en-tête "RUBRIQUE Notes 2023 2022" se
+faisait capturer comme une fausse ligne de données (les millésimes
+ressemblant à des valeurs plausibles à 4 chiffres) — exclue explicitement
+via `_HEADER_LINE_RE`.
+
+Validation (identité comptable en chaîne : avant impôt + CH7 = après
+impôt ; après impôt + Résultat extraordinaire = Résultat net ; Résultat
+net + CH9/PR7 = Résultat net après modification) : reconcilie exactement
+sur la colonne "Exercice courant" de AT_TAKAFULIA 2023, mais PAS sur
+"Exercice précédent" (écart constant de 386 099 entre plusieurs lignes en
+cascade) — après vérification manuelle du texte source, les valeurs
+extraites correspondent EXACTEMENT à ce qui est imprimé sur le PDF ; il
+s'agit donc d'une incohérence du DOCUMENT source lui-même (chiffres
+comparatifs 2022 possiblement restés d'une version antérieure/non
+retraités), pas d'un bug d'extraction — la validation fait exactement son
+travail en la signalant plutôt que la masquer.
+
+Pipeline `tableau_pipeline_service_takaful_resultat.py` (clé
+`takaful_resultat_entreprise`) : 12/21 documents stockés avec succès.
+Route : `POST /api/gestion-donnees/valider-takaful-resultat`.
+
+## 2026-09-15 — Annexes 14/15 (Ventilation du Surplus ou Déficit par catégorie d'assurance)
+
+Nouveau module `extraction/takaful_ventilation_full_extractor.py`.
+Annexe 14 (Familial) : colonnes FIXES "Prévoyance"/"Épargne"/"Total" (pas
+de branches côté Familial — structure DVRB). Annexe 15 (Général) :
+colonnes = branches d'assurance + "Total" à la fin, nombre ET ordre
+variables selon la société (4 branches chez ZITOUNA_TAKAFUL, 10 chez
+AT_TAKAFULIA).
+
+Aucune ligne de ce tableau ne porte de code réglementaire (contrairement
+aux Annexes 1-5.1) : libellés en toutes lettres uniquement.
+
+Approche : en-tête des branches peu fiable à parser directement (étalé
+sur plusieurs lignes physiques, replié de façon incohérente chez
+AT_TAKAFULIA — un fragment orphelin "(Inc/Inv) prévoyance (Inc/Inv)" sur
+sa propre ligne). Comme pour FTUSA (`ftusa_full_extractor.py`), la ligne
+de DONNÉES la plus complète sert d'ANCRE : ses positions x0 donnent
+l'ordre réel des colonnes. Seules les 3 premières colonnes (Automobile/
+Transport/Incendie, ordre constant confirmé sur les 2 sociétés — voir
+`takaful_kpi_extractor.py::_extract_branches_positional`) et la dernière
+("Total") reçoivent un nom fiable ; les colonnes intermédiaires
+(variables en nombre ET en ordre selon le document) reçoivent un nom
+générique "Branche N".
+
+Bug trouvé et corrigé : signe négatif DÉTACHÉ du chiffre qui suit (espace
+entre le "‐" et le nombre, ex. "‐ 941 736") — `NUMERIC_TOKEN_RE` n'accepte
+un signe que COLLÉ aux chiffres, donc ce genre de valeur devenait
+silencieusement POSITIF. Corrigé par `_merge_detached_minus_signs` :
+réattache un "‐" isolé au nombre qui le suit immédiatement, AVANT le
+calcul des clusters — sans ce correctif, une bonne partie des valeurs
+négatives d'Annexe 15 auraient été fausses.
+
+Validation (Σ branches = Total, ligne par ligne) : **ZITOUNA_TAKAFUL
+(4 branches, pas de repli d'en-tête) reconcilie proprement (0 écart sur
+toutes les lignes testées 2023)**. **AT_TAKAFULIA (10 branches, en-tête
+et labels fortement repliés sur plusieurs lignes) montre des écarts sur
+~11/17 lignes** — cause identifiée : un libellé étalé sur 2 lignes
+physiques dont les valeurs sont SUR LA SECONDE ligne (ex. "Part des
+réassureurs ... dans les charges" / "de provisions [valeurs]") se fait
+capturer comme sa propre ligne ("de provisions") plutôt que rattaché au
+libellé complet — répartition des valeurs par colonne correcte, mais la
+ligne resurgit sous un libellé tronqué, faussant la vérification Σ=Total
+pour les lignes concernées. **Limitation acceptée** (pas de correctif de
+recollement multi-lignes développé pour l'instant — le cas simple, sans
+repli d'en-tête, fonctionne parfaitement et couvre déjà la majorité des
+sociétés Takaful potentielles).
+
+Pipeline `tableau_pipeline_service_takaful_ventilation.py` (clés
+`takaful_ventilation_familial`/`takaful_ventilation_general`). Route :
+`POST /api/gestion-donnees/valider-takaful-ventilation`.
+
+## Bilan de la demande "chaque annexe utilisée pour un KPI Takaful"
+
+Catalogue initial (5 annexes) : Bilan Combiné (1/2, déjà fait avant ce
+tour), Annexe 3/4 (Surplus Familial/Général), Annexe 5.1 (État de
+résultat de l'entreprise), Annexes 14/15 (Ventilation par catégorie).
+**Toutes construites** au 2026-09-15. Reste hors périmètre de cette
+tâche (déjà noté plus haut) : Correction manuelle UI / propagation
+dashboards pour ces nouvelles clés (décision déjà prise : "Extraction +
+stockage d'abord").

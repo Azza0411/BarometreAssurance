@@ -285,6 +285,117 @@ def statut_validation_takaful_surplus():
         return jsonify(dict(_validation_takaful_surplus_state))
 
 
+# État de la pipeline de validation Takaful Annexe 5.1 (État de résultat
+# de l'entreprise) — même schéma que Bilan/Takaful Surplus ci-dessus.
+_validation_takaful_resultat_lock = threading.Lock()
+_validation_takaful_resultat_state = {"en_cours": False, "demarree_le": None, "progression": None, "derniere": None}
+
+
+def _run_validation_takaful_resultat_background(codes, annees):
+    from api.services import tableau_pipeline_service_takaful_resultat
+
+    def _progress(done, total):
+        with _validation_takaful_resultat_lock:
+            _validation_takaful_resultat_state["progression"] = {"fait": done, "total": total}
+    try:
+        summary = tableau_pipeline_service_takaful_resultat.process_all(codes, annees, progress_callback=_progress)
+        with _validation_takaful_resultat_lock:
+            _validation_takaful_resultat_state["derniere"] = {
+                **summary, "terminee_le": datetime.now().isoformat(timespec="seconds"),
+            }
+    except Exception as exc:
+        print(f"[gestion_donnees] échec validation Takaful Résultat : {exc}")
+    finally:
+        with _validation_takaful_resultat_lock:
+            _validation_takaful_resultat_state["en_cours"] = False
+            _validation_takaful_resultat_state["progression"] = None
+
+
+@bp.route("/api/gestion-donnees/valider-takaful-resultat", methods=["POST"])
+def valider_takaful_resultat():
+    """Lance (en tâche de fond) l'extraction + stockage de l'Annexe 5.1
+    Takaful (État de résultat de l'entreprise) pour AT_TAKAFULIA et
+    ZITOUNA_TAKAFUL — voir extraction/takaful_resultat_full_extractor.py.
+    Même schéma que /valider-bilan."""
+    codes = request.args.getlist("societe") or None
+    annees_raw = request.args.getlist("annee")
+    try:
+        annees = [int(a) for a in annees_raw] or None
+    except ValueError:
+        return jsonify({"error": "Paramètre 'annee' invalide"}), 400
+
+    with _validation_takaful_resultat_lock:
+        if _validation_takaful_resultat_state["en_cours"]:
+            return jsonify({"lancee": False, "raison": "deja_en_cours"}), 409
+        _validation_takaful_resultat_state["en_cours"] = True
+        _validation_takaful_resultat_state["demarree_le"] = datetime.now().isoformat(timespec="seconds")
+        _validation_takaful_resultat_state["progression"] = None
+    threading.Thread(target=_run_validation_takaful_resultat_background, args=(codes, annees), daemon=True).start()
+    return jsonify({"lancee": True})
+
+
+@bp.route("/api/gestion-donnees/statut-validation-takaful-resultat")
+def statut_validation_takaful_resultat():
+    with _validation_takaful_resultat_lock:
+        return jsonify(dict(_validation_takaful_resultat_state))
+
+
+# État de la pipeline de validation Takaful Annexes 14/15 (Ventilation
+# par catégorie d'assurance) — même schéma que les pipelines Takaful
+# ci-dessus.
+_validation_takaful_ventilation_lock = threading.Lock()
+_validation_takaful_ventilation_state = {"en_cours": False, "demarree_le": None, "progression": None, "derniere": None}
+
+
+def _run_validation_takaful_ventilation_background(codes, annees):
+    from api.services import tableau_pipeline_service_takaful_ventilation
+
+    def _progress(done, total):
+        with _validation_takaful_ventilation_lock:
+            _validation_takaful_ventilation_state["progression"] = {"fait": done, "total": total}
+    try:
+        summary = tableau_pipeline_service_takaful_ventilation.process_all(codes, annees, progress_callback=_progress)
+        with _validation_takaful_ventilation_lock:
+            _validation_takaful_ventilation_state["derniere"] = {
+                **summary, "terminee_le": datetime.now().isoformat(timespec="seconds"),
+            }
+    except Exception as exc:
+        print(f"[gestion_donnees] échec validation Takaful Ventilation : {exc}")
+    finally:
+        with _validation_takaful_ventilation_lock:
+            _validation_takaful_ventilation_state["en_cours"] = False
+            _validation_takaful_ventilation_state["progression"] = None
+
+
+@bp.route("/api/gestion-donnees/valider-takaful-ventilation", methods=["POST"])
+def valider_takaful_ventilation():
+    """Lance (en tâche de fond) l'extraction + stockage des Annexes 14/15
+    Takaful (Ventilation par catégorie d'assurance) pour AT_TAKAFULIA et
+    ZITOUNA_TAKAFUL — voir extraction/takaful_ventilation_full_extractor.py.
+    Même schéma que /valider-bilan."""
+    codes = request.args.getlist("societe") or None
+    annees_raw = request.args.getlist("annee")
+    try:
+        annees = [int(a) for a in annees_raw] or None
+    except ValueError:
+        return jsonify({"error": "Paramètre 'annee' invalide"}), 400
+
+    with _validation_takaful_ventilation_lock:
+        if _validation_takaful_ventilation_state["en_cours"]:
+            return jsonify({"lancee": False, "raison": "deja_en_cours"}), 409
+        _validation_takaful_ventilation_state["en_cours"] = True
+        _validation_takaful_ventilation_state["demarree_le"] = datetime.now().isoformat(timespec="seconds")
+        _validation_takaful_ventilation_state["progression"] = None
+    threading.Thread(target=_run_validation_takaful_ventilation_background, args=(codes, annees), daemon=True).start()
+    return jsonify({"lancee": True})
+
+
+@bp.route("/api/gestion-donnees/statut-validation-takaful-ventilation")
+def statut_validation_takaful_ventilation():
+    with _validation_takaful_ventilation_lock:
+        return jsonify(dict(_validation_takaful_ventilation_state))
+
+
 @bp.route("/api/gestion-donnees/documents")
 def documents():
     conn = get_connection()
