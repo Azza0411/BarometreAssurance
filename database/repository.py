@@ -243,23 +243,32 @@ def init_schema(conn):
 
 
 def get_or_create_source(conn, nom, lien):
+    # INSERT ... ON DUPLICATE KEY UPDATE (pas un SELECT puis INSERT) : la
+    # synchronisation CMF tourne depuis le 2026-09-15 sur plusieurs
+    # navigateurs en parallele (voir pipelines/cmf_pipeline.py), chacun sur
+    # sa propre instance CMFPortalScraper qui appelle cette fonction a
+    # l'initialisation - un simple SELECT-puis-INSERT laisse une fenetre de
+    # course ou 2 threads voient tous les deux "n'existe pas" et tentent
+    # chacun l'INSERT, le second echouant sur la contrainte UNIQUE(nom)
+    # (constate en conditions reelles : "Duplicate entry 'CMF' for key
+    # 'nom'"). LAST_INSERT_ID(id) fait remonter lastrowid meme quand la ligne
+    # existait deja (comportement documente de cette clause MySQL/MariaDB).
     with conn.cursor() as cur:
-        cur.execute("SELECT id FROM sources WHERE nom = %s", (nom,))
-        row = cur.fetchone()
-        if row:
-            return row[0]
-        cur.execute("INSERT INTO sources (nom, lien) VALUES (%s, %s)", (nom, lien))
+        cur.execute(
+            "INSERT INTO sources (nom, lien) VALUES (%s, %s) "
+            "ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)",
+            (nom, lien),
+        )
         return cur.lastrowid
 
 
 def get_or_create_company(conn, code, nom_entreprise):
+    # Meme risque de course que get_or_create_source ci-dessus (meme
+    # cause : plusieurs workers CMF en parallele) - meme remede.
     with conn.cursor() as cur:
-        cur.execute("SELECT id FROM societes WHERE code = %s", (code,))
-        row = cur.fetchone()
-        if row:
-            return row[0]
         cur.execute(
-            "INSERT INTO societes (code, nom_entreprise) VALUES (%s, %s)",
+            "INSERT INTO societes (code, nom_entreprise) VALUES (%s, %s) "
+            "ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)",
             (code, nom_entreprise),
         )
         return cur.lastrowid
