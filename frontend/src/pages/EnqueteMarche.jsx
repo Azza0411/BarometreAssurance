@@ -1284,13 +1284,22 @@ export default function EnqueteMarche() {
   const [loading,    setLoading]    = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  /* Liste de TOUTES les compagnies (même source que FichesEntreprises) */
+  /* Liste des compagnies RÉELLEMENT présentes dans le fichier source de
+     l'enquête (colonnes "Assurance - Compagnie 1" à "5", voir
+     extraction/enquete_extractor.py::list_survey_companies) — PAS toutes
+     les sociétés CMF (ancienne source /api/vue-assurance/companies,
+     retour utilisateur direct 2026-09-15 : la plupart n'avaient aucun
+     répondant, "Fiche client entreprise" affichait "Aucune donnée"
+     pour elles sans que ce soit une erreur, juste une société hors
+     périmètre de CETTE enquête précise). Se met à jour après un upload
+     (refreshKey) — une nouvelle société citée dans un nouveau fichier
+     doit apparaître sans recharger la page. */
   useEffect(() => {
-    fetch(`${API}/api/vue-assurance/companies`)
+    fetch(`${API}/api/enquete-marche/companies`)
       .then(r => r.json())
       .then(list => { setCompanies(list); })
       .catch(() => {});
-  }, []);
+  }, [refreshKey]);
 
   /* Données enquête pour la compagnie sélectionnée — `refreshKey` force un
      nouvel appel après un upload réussi (le fichier source a changé, le
