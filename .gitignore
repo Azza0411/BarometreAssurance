@@ -4,6 +4,13 @@ data/html/
 data/cga/
 data/ftusa/
 
+# ── Fichier source de l'enquête de marché — CONFIDENTIEL, ne doit JAMAIS ────
+# être committé (retiré de tout l'historique git le 2026-09-15 après y avoir
+# été présent par erreur — voir docs/packaging_portable.md pour comment le
+# fournir malgré tout à un build compilé, via launcher/FSMarketIntelligence.spec).
+data/*.xlsx
+data/*.xls
+
 # ── Frontend build & dépendances ────────────────────────────────────────────
 frontend/node_modules/
 frontend/dist/
