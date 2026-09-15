@@ -240,6 +240,30 @@ TABLEAU_GROUPS = [
     # — restent des libellés `tableau` réels dans kpi_values (un export
     # "tous les tableaux" sans filtre les inclut donc toujours), seulement
     # plus proposés comme filtre explicite.
+    # Takaful (2026-09-15) : 5 clés `tableau_cellules` pour les 5 annexes
+    # utilisées par le pipeline KPI narrow Takaful (voir
+    # extraction/CAS_PARTICULIERS_TAKAFUL_SURPLUS.md). `raws` reprend les 2
+    # libellés `kpi_values.tableau` réels de
+    # extraction/kpi_extraction_pipeline.py::KPI_TABLE_LABEL — "Annexes
+    # 3/4/5.1 - Fonds des Participants (Takaful)" est PARTAGÉ par 3 clés
+    # tableau_cellules distinctes (Familial/Général/Entreprise, mêmes
+    # raisons que bilan_actif/bilan_passif ci-dessus : le KPI narrow
+    # historique ne distingue pas l'annexe d'origine, seule
+    # `tableau_cellules` le fait réellement). PAS de " — " dans ces
+    # libellés, même raison que Bilan Actif/Passif ci-dessus : le frontend
+    # tronque sur ce séparateur pour le texte d'onglet, et les 5 libellés
+    # commencent tous par "Takaful" — un " — " les rendrait tous
+    # indistinguables une fois tronqués.
+    ("takaful_surplus_familial", "Takaful Surplus Familial (Annexe 3)",
+     ["Annexes 3/4/5.1 - Fonds des Participants (Takaful)"]),
+    ("takaful_surplus_general", "Takaful Surplus Général (Annexe 4)",
+     ["Annexes 3/4/5.1 - Fonds des Participants (Takaful)"]),
+    ("takaful_resultat_entreprise", "Takaful État de résultat entreprise (Annexe 5.1)",
+     ["Annexes 3/4/5.1 - Fonds des Participants (Takaful)"]),
+    ("takaful_ventilation_familial", "Takaful Ventilation Familial (Annexe 14)",
+     ["Annexes 14/15 - Ventilation par categorie d'assurance (Takaful)"]),
+    ("takaful_ventilation_general", "Takaful Ventilation Général (Annexe 15)",
+     ["Annexes 14/15 - Ventilation par categorie d'assurance (Takaful)"]),
 ]
 _TABLEAU_GROUP_TO_RAW = {key: raws for key, _label, raws in TABLEAU_GROUPS}
 
@@ -331,6 +355,27 @@ def get_filter_options(conn):
         # reposerait que sur le KPI narrow historique (kpi_values, tableau='Bilan'),
         # qui peut être vide alors que la grille complète existe (ou l'inverse).
         for cle in ("bilan_actif", "bilan_passif"):
+            cur.execute(
+                """
+                SELECT DISTINCT c.code
+                FROM tableau_cellules tc
+                JOIN documents d ON d.id = tc.document_id
+                JOIN sources s ON s.id = d.source_id
+                JOIN societes c ON c.id = d.cmf_id
+                WHERE s.nom = 'CMF' AND tc.tableau = %s
+                """,
+                (cle,),
+            )
+            for (code,) in cur.fetchall():
+                societes_par_tableau.setdefault(cle, set()).add(code)
+        # Takaful (2026-09-15) — même principe que Bilan ci-dessus : les 5
+        # clés tableau_cellules Takaful (voir TABLEAU_GROUPS) peuvent avoir
+        # des sociétés que le KPI narrow (kpi_values, raws partagés entre
+        # plusieurs clés) ne reflète pas fidèlement une par une.
+        for cle in (
+            "takaful_surplus_familial", "takaful_surplus_general", "takaful_resultat_entreprise",
+            "takaful_ventilation_familial", "takaful_ventilation_general",
+        ):
             cur.execute(
                 """
                 SELECT DISTINCT c.code
@@ -565,7 +610,11 @@ def locate_source_page(conn, code, annee, tableau):
     le tableau n'a pas encore de pipeline de repérage dédié (bilan, pas
     encore construit), s'il n'y a aucune cellule stockée, ou si la page n'a
     pas pu être retrouvée."""
-    if tableau not in ("annexe12", "annexe13", "bilan_actif", "bilan_passif"):
+    if tableau not in (
+        "annexe12", "annexe13", "bilan_actif", "bilan_passif",
+        "takaful_surplus_familial", "takaful_surplus_general", "takaful_resultat_entreprise",
+        "takaful_ventilation_familial", "takaful_ventilation_general",
+    ):
         return None
     doc_id = get_document_id(conn, code, annee)
     if not doc_id:
@@ -598,9 +647,14 @@ def page_source_info(conn, code, annee, tableau):
     affiché sous l'onglet "Annexe 13" y voit à raison une incohérence s'il
     n'est pas prévenu que c'est délibéré."""
     page_num = locate_source_page(conn, code, annee, tableau)
-    if page_num is None or tableau in ("bilan_actif", "bilan_passif"):
+    if page_num is None or tableau in (
+        "bilan_actif", "bilan_passif",
+        "takaful_surplus_familial", "takaful_surplus_general", "takaful_resultat_entreprise",
+        "takaful_ventilation_familial", "takaful_ventilation_general",
+    ):
         # Le concept de page "raccordement" (Annexe 16 substituée à
-        # l'Annexe 13 par branche) n'existe pas côté Bilan — jamais signalé.
+        # l'Annexe 13 par branche) n'existe pas côté Bilan ni côté Takaful
+        # — jamais signalé.
         return {"page": page_num, "raccordement": False}
     raccordement_re = _ANNEXE13_RACCORDEMENT_RE if tableau == "annexe13" else _ANNEXE12_RACCORDEMENT_RE
     doc_id = get_document_id(conn, code, annee)

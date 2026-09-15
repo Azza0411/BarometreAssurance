@@ -51,11 +51,20 @@ def process_one_document(conn, document_id, code, nom_pdf):
     l'Actif ET du Passif SÉPARÉMENT (chacun sous sa propre clé, voir
     module docstring). Renvoie le statut ('ok' si les deux côtés sont
     trouvés | 'partiel' si un seul | 'page_introuvable' si aucun |
-    'pdf_absent')."""
+    'pdf_absent'). AL_AMANAH_TAKAFUL publie ses états en ARABE — le
+    pipeline texte français (`process_bilan`) n'y trouve jamais rien ;
+    dispatché vers `al_amanah_bilan_full_extractor.process_al_amanah_bilan`
+    à la place, même contrat de sortie, mêmes clés
+    `bilan_actif`/`bilan_passif` (voir CAS_PARTICULIERS_TAKAFUL_SURPLUS.md,
+    section AL_AMANAH — limité aux documents à texte réel, pas scannés)."""
     pdf_path = local_pdf_path("CMF", code, nom_pdf)
     if not pdf_path or not os.path.isfile(pdf_path):
         return "pdf_absent"
-    result = process_bilan(pdf_path)
+    if code == "AL_AMANAH_TAKAFUL":
+        from extraction.al_amanah_bilan_full_extractor import process_al_amanah_bilan
+        result = process_al_amanah_bilan(pdf_path)
+    else:
+        result = process_bilan(pdf_path)
     if result is None:
         return "page_introuvable"
 

@@ -232,6 +232,112 @@ Pipeline `tableau_pipeline_service_takaful_ventilation.py` (clés
 `takaful_ventilation_familial`/`takaful_ventilation_general`). Route :
 `POST /api/gestion-donnees/valider-takaful-ventilation`.
 
+## 2026-09-15 — Correction manuelle branchée sur les 5 nouvelles clés Takaful
+
+`api/services/data_management.py::TABLEAU_GROUPS` étendu avec les 5 clés
+(`takaful_surplus_familial`/`_general`, `takaful_resultat_entreprise`,
+`takaful_ventilation_familial`/`_general`), avec leurs libellés `raws`
+kpi_values correspondants (`extraction/kpi_extraction_pipeline.py
+::KPI_TABLE_LABEL` — "Annexes 3/4/5.1 - Fonds des Participants (Takaful)"
+et "Annexes 14/15 - Ventilation par categorie d'assurance (Takaful)",
+chacun partagé par plusieurs clés `tableau_cellules`, même principe que
+`bilan_actif`/`bilan_passif`). Libellés SANS " — " (même contrainte que
+Bilan Actif/Passif : le frontend tronque sur ce séparateur pour le texte
+d'onglet court, et les 5 libellés commencent tous par "Takaful").
+
+3 points de câblage supplémentaires, nécessaires pour que la page
+correction manuelle affiche correctement le PDF source à côté de la
+grille (sinon un utilisateur y verrait par erreur le message "page de
+raccordement", concept propre à Annexe 12/13) :
+- `locate_source_page` : whitelist étendue (sinon retourne toujours
+  `None`, pas de page affichée du tout — ces 5 clés bénéficient déjà d'un
+  cache de page posé directement par leur pipeline d'extraction, voir
+  `save_cached_tableau_page` dans chaque `tableau_pipeline_service_takaful_*.py`).
+- `page_source_info` : ces 5 clés ajoutées à la liste "pas de concept de
+  raccordement" (comme `bilan_actif`/`bilan_passif`).
+- `get_filter_options` : requête supplémentaire directe sur
+  `tableau_cellules` pour peupler `societes_par_tableau` (même raison que
+  Bilan : le KPI narrow kpi_values peut diverger de ce que la grille
+  complète contient réellement).
+
+Vérifié bout en bout (`get_document_grid`, `page_source_info`) sur
+AT_TAKAFULIA/2023/takaful_surplus_familial.
+
+## 2026-09-15 — AL_AMANAH_TAKAFUL (documents en arabe) : Bilan Actif/Passif
+
+Nouveau module `extraction/al_amanah_bilan_full_extractor.py` — jusqu'ici
+AL_AMANAH_TAKAFUL n'avait AUCUNE grille complète (seulement quelques KPI
+ciblés via recherche floue arabe/OCR, voir
+`takaful_kpi_extractor.py::extract_al_amanah_takaful_kpis`). Réutilise les
+mêmes clés `tableau_cellules` que le Bilan francophone
+(`bilan_actif`/`bilan_passif`) — dispatché depuis
+`tableau_pipeline_service_bilan.py::process_one_document` sur
+`code == "AL_AMANAH_TAKAFUL"`, donc AUCUN branchement supplémentaire
+nécessaire côté Correction manuelle/export (déjà générique).
+
+**Portée** : Bilan Actif/Passif UNIQUEMENT, et UNIQUEMENT pour les
+documents à texte réel (`arabic_ocr_extractor.is_scanned_page` en
+garde-fou — une page scannée est ignorée). Annexes 3/4/5.1/14/15 pour
+cette société restent HORS PÉRIMÈTRE (pas commencées).
+
+**Difficultés rencontrées et résolues** (voir docstring du module pour le
+détail complet) :
+1. Texte arabe extrait par pdfplumber avec caractères parfois inversés et
+   espaces internes parasites (kerning) — réutilise
+   `arabic_ocr_extractor.py::_rtl_label_from_words` (déjà construite pour
+   les KPI ciblés) pour reconstruire un libellé de ligne propre.
+2. Le numéro de code de chaque ligne ("أصل 1", "أصل 12"...) n'est PAS
+   collé au mot-préfixe — un token séparé, mêlé au bloc de libellé une
+   fois le texte reconstruit. Repéré par POSITION (tout token numérique
+   dont x0 tombe dans ou au-delà du début du bloc de libellé est un
+   numéro de code/renvoi, jamais une valeur — les vraies valeurs sont
+   TOUJOURS physiquement à gauche du libellé sur ce gabarit).
+3. `TextNormalizer` (bilan_kpi_extractor._normalizer), taillé pour du
+   texte latin/français, supprime purement et simplement les caractères
+   arabes — inutilisable pour toute détection de page ; abandonnée au
+   profit d'une localisation de page par CONTENU (essai d'extraction sur
+   chaque page, pas de pré-filtre par titre).
+4. Ordre des 6 colonnes DIFFÉRENT du gabarit francophone : [Combiné,
+   Entreprise, Fonds des participants] PAR EXERCICE, exercice le plus
+   ancien à gauche — découvert par recoupement arithmétique
+   (Combiné = Entreprise + Fonds) et confirmé par la position x0 exacte
+   du KPI narrow déjà validé ("Total actif" = 17 448 993 pour
+   AL_AMANAH_TAKAFUL_2020).
+5. Constantes de libellés arabes ("Total actif", "Total capitaux
+   propres"...) : une frappe manuelle au clavier a introduit une erreur
+   d'ordre de caractères invisible à l'œil (aucune correspondance de
+   préfixe, aucune erreur explicite) — corrigé en copiant les chaînes
+   EXACTES depuis la sortie réelle du pipeline plutôt qu'en les retapant.
+6. Une ligne de sous-total intermédiaire ("Total Actifs nets + Capitaux
+   propres") peut porter un renvoi de note mal filtré, gonflant son
+   nombre de colonnes à tort (7 au lieu de 6) — la ligne de référence pour
+   la position des colonnes est restreinte aux deux VRAIS totaux de page
+   (Total Actif, Total Passif), jamais aux sous-totaux intermédiaires.
+
+**Validation** (identité comptable Σ postes = Total, par section, +
+identité générale Actifs nets + Capitaux propres + Passif = Total actif)
+sur AL_AMANAH_TAKAFUL_2020 : Actif reconcilie EXACTEMENT (écart 0 ou 1
+dinar d'arrondi sur les 6 colonnes) ; Capitaux propres et Actifs nets
+reconcilient EXACTEMENT ; Passif seul montre un écart mineur (~0,1-0,2 %)
+sur 5 des 6 colonnes — cause probable : une ligne au code mal concaténé
+("PA76766", renvoi de note résiduel) ou une ligne manquante, pas
+investiguée plus avant (l'identité GÉNÉRALE, qui est celle qui compte le
+plus, reconcilie parfaitement malgré cet écart local). "Total actif" et
+"Capitaux propres" recoupés EXACTEMENT avec le KPI narrow déjà validé
+(`extract_al_amanah_takaful_kpis`) : 17 448 993 et 16 248 884
+respectivement.
+
+**Résultat** (`tableau_pipeline_service_bilan.py`, filtré sur
+AL_AMANAH_TAKAFUL) : 3/9 documents "ok" (Actif ET Passif), 1 "partiel"
+(Actif seul, 2022), 5 introuvables — la moitié des documents disponibles
+sont soit scannés (portée exclue), soit un format plus ancien non couvert
+par ce module. Un progrès réel par rapport à l'absence totale de grille
+précédente, mais PAS une couverture complète — à noter pour la suite si
+le besoin business se précise (années scannées nécessiteraient un OCR
+arabe dédié, un chantier bien plus lourd que celui-ci, voir
+`arabic_ocr_extractor.py` pour les limites déjà documentées du modèle
+arabe de Tesseract sur les chiffres).
+
 ## Bilan de la demande "chaque annexe utilisée pour un KPI Takaful"
 
 Catalogue initial (5 annexes) : Bilan Combiné (1/2, déjà fait avant ce
