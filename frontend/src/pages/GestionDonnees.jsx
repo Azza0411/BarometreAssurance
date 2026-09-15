@@ -368,7 +368,17 @@ function EntrepriseLogoGrid({ societes, selected, onToggle, onOnly, disabledSet,
 /* ═══════════════════════════ Filtre Tableau — puces multi-sélection ═══════════════════════════ */
 function TableauChips({ options, selected, onToggle }) {
   return (
-    <div style={{ flex: "0 0 auto" }}>
+    // `flex: "0 0 auto"` (pas de retrecissement) empechait ce bloc de
+    // jamais descendre sous sa largeur "contenu max" (toutes les puces sur
+    // une seule ligne) — son propre `flexWrap` interne ne se declenchait
+    // donc jamais, meme une fois seul sur sa ligne dans le flex parent :
+    // avec 5 nouvelles cles Takaful a libelle long (2026-09-15), ca
+    // debordait hors de la carte plutot que de retomber a la ligne.
+    // `flex: "1 1 auto"` + `minWidth: 0` (annule le min-width:auto par
+    // defaut d'un flex item, seul override qui autorise vraiment le
+    // retrecissement) laisse ce bloc etre contraint a la largeur
+    // disponible, ce qui fait enfin marcher son flexWrap interne.
+    <div style={{ flex: "1 1 auto", minWidth: 0 }}>
       <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 5 }}>
         Tableau
       </label>
