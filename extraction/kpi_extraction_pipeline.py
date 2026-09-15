@@ -93,6 +93,29 @@ def _save_sectoral_pdf(source: str, annee, content: bytes) -> None:
     os.makedirs(directory, exist_ok=True)
     with open(os.path.join(directory, f"{source.upper()}_{annee}.pdf"), "wb") as f:
         f.write(content)
+
+
+def _save_cmf_pdf_local(code: str, nom_pdf: str, content: bytes) -> None:
+    """Persiste sur disque (data/cmf/<code>/<nom_pdf>) le PDF déjà
+    téléchargé pour l'extraction KPI narrow ci-dessous — zéro coût réseau
+    supplémentaire, juste une écriture locale. Sans ça, AUCUN code n'écrit
+    jamais ce fichier automatiquement (vérifié 2026-09-15) : les pipelines
+    grille complète (bilan_full_extractor.py, annexe12/13_pipeline.py,
+    tableau_pipeline_service_takaful_*.py...), qui lisent le PDF depuis
+    `api.services.data_management.local_pdf_path` plutôt que de le
+    retélécharger, ne trouvaient donc jamais aucun document NOUVEAU tant
+    qu'il n'avait pas été déposé là manuellement au moins une fois. Ignore
+    silencieusement un fichier déjà présent (jamais écrasé — un document
+    déjà extrait avec succès par la grille complète ne doit pas être
+    réécrit à chaque passage du pipeline planifié)."""
+    from api.services.data_management import local_pdf_path
+
+    path = local_pdf_path("CMF", code, nom_pdf)
+    if not path or os.path.isfile(path):
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(content)
 FAILURE_REPORT_PATH = os.path.join(OUTPUT_DIR, "echecs_extraction.xlsx")
 
 TAKAFUL_EXTRACTABLE_COMPANIES = {"AL_AMANAH_TAKAFUL", "AT_TAKAFULIA", "ZITOUNA_TAKAFUL"}
@@ -530,6 +553,7 @@ def run(force=False):
         print(f"[STEP] {code} {annee} : {lien}")
         try:
             response = _get_with_retries(lien, timeout=30)
+            _save_cmf_pdf_local(code, nom_pdf, response.content)
             with pdfplumber.open(io.BytesIO(response.content)) as pdf:
                 kpis = _extract_all_kpis(pdf, company_code=code)
                 missing = [name for name in KPI_NAMES if kpis.get(name) is None]

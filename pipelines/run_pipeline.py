@@ -48,6 +48,13 @@ def _extract_doc_count(result):
         return result
     if isinstance(result, dict) and isinstance(result.get("sync"), dict):
         return sum(v for v in result["sync"].values() if isinstance(v, int))
+    if isinstance(result, dict) and "ok" in result and "total" in result:
+        # Grille complète (tableau_pipeline_service_*.process_all) : {"total",
+        # "ok", "partiel", "page_introuvable", "pdf_absent", "erreur"} - le
+        # nombre de documents "traités avec au moins un résultat" (ok +
+        # partiel) est plus parlant ici que le total brut de la table
+        # documents (qui inclut les PDF jamais téléchargés localement).
+        return result["ok"] + result.get("partiel", 0)
     return None
 
 
@@ -108,6 +115,40 @@ def _run_cmf():
     return cmf_main()
 
 
+def _run_bilan_full():
+    """Grille complète Bilan Actif/Passif (tableau_cellules) — nécessite les
+    PDF CMF déjà présents localement (voir _save_cmf_pdf_local, appelé par
+    _run_cmf juste avant dans SOURCES) : toujours placé APRÈS "CMF" pour
+    qu'un document tout juste synchronisé soit déjà sur disque."""
+    from api.services.tableau_pipeline_service_bilan import process_all
+    return process_all()
+
+
+def _run_annexe12_full():
+    from api.services.tableau_pipeline_service_annexe12 import process_all
+    return process_all()
+
+
+def _run_annexe13_full():
+    from api.services.tableau_pipeline_service import process_all
+    return process_all()
+
+
+def _run_takaful_surplus_full():
+    from api.services.tableau_pipeline_service_takaful_surplus import process_all
+    return process_all()
+
+
+def _run_takaful_resultat_full():
+    from api.services.tableau_pipeline_service_takaful_resultat import process_all
+    return process_all()
+
+
+def _run_takaful_ventilation_full():
+    from api.services.tableau_pipeline_service_takaful_ventilation import process_all
+    return process_all()
+
+
 def _run_ftusa():
     from scraping.ftusa_scraper import sync_documents
     return sync_documents()
@@ -130,6 +171,21 @@ def _run_bvmt():
 
 SOURCES = [
     ("CMF", _run_cmf),
+    # Grilles complètes (tableau_cellules, Correction manuelle) — ajoutées
+    # 2026-09-15 : avant cela, RIEN ne les relançait automatiquement sur un
+    # document tout juste synchronisé par "CMF" ci-dessus (seule
+    # l'extraction KPI narrow, kpi_values, était rafraîchie par le pipeline
+    # planifié ; la grille complète restait figée tant que quelqu'un ne
+    # relançait pas process_all() à la main). Chacune est une entrée SOURCE
+    # séparée (pas un seul appel groupé) pour la même raison que
+    # FTUSA/CGA/INS/BVMT ci-dessous : une régression dans l'une ne doit
+    # jamais empêcher les autres de tourner.
+    ("Bilan (grille complète)", _run_bilan_full),
+    ("Annexe 12 (grille complète)", _run_annexe12_full),
+    ("Annexe 13 (grille complète)", _run_annexe13_full),
+    ("Takaful Surplus (grille complète)", _run_takaful_surplus_full),
+    ("Takaful Résultat entreprise (grille complète)", _run_takaful_resultat_full),
+    ("Takaful Ventilation (grille complète)", _run_takaful_ventilation_full),
     ("FTUSA", _run_ftusa),
     ("CGA", _run_cga),
     ("INS", _run_ins),

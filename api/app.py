@@ -21,11 +21,11 @@ import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
 from api.routes import apercu_marche, comparative, vue_assurance, enquete, veille, qualite, export, notifications, gestion_donnees
-from database.repository import ensure_database, get_connection, init_schema
+from database.repository import ensure_database, get_connection, init_schema, list_all_documents
 
 # Applique tout schema.sql/migration en attente au démarrage — sans ça, une
 # table ajoutée par une session d'extraction (ex: anomalies_detectees,
@@ -55,6 +55,29 @@ app.register_blueprint(gestion_donnees.bp)
 @app.errorhandler(ValueError)
 def _handle_value_error(exc):
     return jsonify({"error": str(exc)}), 400
+
+
+# ── Frontend statique (lanceur portable) ────────────────────────────────────
+# En développement, le frontend tourne sur son propre serveur Vite (port
+# 5173, npm run dev) — cette route ne s'active QUE si `frontend/dist/`
+# existe (produit par `npm run build`), pour ne jamais gêner ce workflow.
+# Sert la SPA directement depuis ce même process Flask (un seul programme à
+# lancer, pas de Node/Nginx nécessaire à l'exécution) — pièce centrale du
+# lanceur portable "un clic" : voir docs/packaging_portable.md.
+_FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+
+if os.path.isdir(_FRONTEND_DIST):
+    @app.route("/", defaults={"path": ""})
+    @app.route("/<path:path>")
+    def _serve_frontend(path):
+        full_path = os.path.join(_FRONTEND_DIST, path)
+        if path and os.path.isfile(full_path):
+            return send_from_directory(_FRONTEND_DIST, path)
+        # Route inconnue (ex: /apercu-marche, une route React Router) : on
+        # retombe sur index.html, exactement comme nginx.conf `try_files
+        # ... /index.html` — la SPA se charge et résout elle-même la route
+        # côté client.
+        return send_from_directory(_FRONTEND_DIST, "index.html")
 
 
 # ── Veille (notifications actualités/réglementation) en tâche de fond ──────
@@ -90,6 +113,46 @@ def _start_veille_watcher():
 
 
 _start_veille_watcher()
+
+
+# ── Auto-scraping au premier lancement (lanceur portable) ──────────────────
+# Pièce centrale du lanceur "un clic, zéro commande" (voir
+# docs/packaging_portable.md) : un utilisateur qui ouvre la plateforme sur
+# une base de données toute neuve (aucun document CMF encore synchronisé)
+# ne doit RIEN avoir à taper pour déclencher la collecte — elle démarre
+# d'elle-même, en tâche de fond, dès que ce process Flask tourne. Ne se
+# déclenche QUE si la base est réellement vide (pas à chaque redémarrage :
+# un utilisateur qui relance l'appli après une collecte déjà réussie ne
+# doit pas en relancer une autre à son insu — voir /gestion-donnees pour un
+# rafraîchissement manuel explicite). Tourne en thread non-bloquant : la
+# plateforme reste utilisable (avec des pages vides jusqu'à ce que les
+# premières données arrivent) plutôt que de retarder le démarrage de
+# plusieurs dizaines de minutes.
+def _database_is_empty():
+    conn = get_connection()
+    try:
+        return len(list_all_documents(conn)) == 0
+    finally:
+        conn.close()
+
+
+def _first_run_scrape_loop():
+    try:
+        if not _database_is_empty():
+            return
+        print("[premier lancement] Base de données vide — démarrage automatique de la collecte...")
+        from pipelines.run_pipeline import main as run_pipeline_main
+        run_pipeline_main()
+        print("[premier lancement] Collecte terminée — voir reports/ pour le rapport détaillé.")
+    except Exception as exc:
+        print(f"[premier lancement] Échec de la collecte automatique : {exc}")
+
+
+def _start_first_run_scrape():
+    threading.Thread(target=_first_run_scrape_loop, daemon=True).start()
+
+
+_start_first_run_scrape()
 
 
 if __name__ == "__main__":

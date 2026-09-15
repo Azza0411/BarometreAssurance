@@ -8,3 +8,5 @@ camelot-py>=1.0.0  # extraction/full_table_extractor.py (grille complète Annexe
 reportlab>=4.3.0
 openpyxl>=3.1.0
 gunicorn>=21.2.0
+rapidfuzz>=3.13.0    # extraction/arabic_ocr_extractor.py (correspondance floue de libellés arabes OCRisés — AL_AMANAH_TAKAFUL)
+pytesseract>=0.3.10  # extraction/arabic_ocr_extractor.py + bilan_kpi_extractor._ocr_words (OCR pages scannées) — nécessite le binaire tesseract-ocr installé sur le système
