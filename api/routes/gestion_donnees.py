@@ -230,6 +230,61 @@ def statut_validation_bilan():
         return jsonify(dict(_validation_bilan_state))
 
 
+# État de la pipeline de validation Takaful Annexes 3/4 (Surplus Familial/
+# Général) — même schéma que Bilan ci-dessus, état indépendant.
+_validation_takaful_surplus_lock = threading.Lock()
+_validation_takaful_surplus_state = {"en_cours": False, "demarree_le": None, "progression": None, "derniere": None}
+
+
+def _run_validation_takaful_surplus_background(codes, annees):
+    from api.services import tableau_pipeline_service_takaful_surplus
+
+    def _progress(done, total):
+        with _validation_takaful_surplus_lock:
+            _validation_takaful_surplus_state["progression"] = {"fait": done, "total": total}
+    try:
+        summary = tableau_pipeline_service_takaful_surplus.process_all(codes, annees, progress_callback=_progress)
+        with _validation_takaful_surplus_lock:
+            _validation_takaful_surplus_state["derniere"] = {
+                **summary, "terminee_le": datetime.now().isoformat(timespec="seconds"),
+            }
+    except Exception as exc:
+        print(f"[gestion_donnees] échec validation Takaful Surplus : {exc}")
+    finally:
+        with _validation_takaful_surplus_lock:
+            _validation_takaful_surplus_state["en_cours"] = False
+            _validation_takaful_surplus_state["progression"] = None
+
+
+@bp.route("/api/gestion-donnees/valider-takaful-surplus", methods=["POST"])
+def valider_takaful_surplus():
+    """Lance (en tâche de fond) l'extraction + stockage des Annexes 3/4
+    Takaful (Surplus Familial/Général) pour AT_TAKAFULIA et ZITOUNA_TAKAFUL
+    — voir extraction/takaful_surplus_full_extractor.py. Même schéma que
+    /valider-bilan."""
+    codes = request.args.getlist("societe") or None
+    annees_raw = request.args.getlist("annee")
+    try:
+        annees = [int(a) for a in annees_raw] or None
+    except ValueError:
+        return jsonify({"error": "Paramètre 'annee' invalide"}), 400
+
+    with _validation_takaful_surplus_lock:
+        if _validation_takaful_surplus_state["en_cours"]:
+            return jsonify({"lancee": False, "raison": "deja_en_cours"}), 409
+        _validation_takaful_surplus_state["en_cours"] = True
+        _validation_takaful_surplus_state["demarree_le"] = datetime.now().isoformat(timespec="seconds")
+        _validation_takaful_surplus_state["progression"] = None
+    threading.Thread(target=_run_validation_takaful_surplus_background, args=(codes, annees), daemon=True).start()
+    return jsonify({"lancee": True})
+
+
+@bp.route("/api/gestion-donnees/statut-validation-takaful-surplus")
+def statut_validation_takaful_surplus():
+    with _validation_takaful_surplus_lock:
+        return jsonify(dict(_validation_takaful_surplus_state))
+
+
 @bp.route("/api/gestion-donnees/documents")
 def documents():
     conn = get_connection()
