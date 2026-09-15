@@ -25,7 +25,14 @@ import time
 import urllib.request
 import zipfile
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# `os.getcwd()` plutôt que `__file__` : sous PyInstaller (onedir ou
+# onefile), `__file__` d'un module importé peut résoudre vers l'intérieur
+# de l'archive/dossier temporaire interne, pas le dossier réel de
+# l'exécutable. Les deux points d'entrée (start_platform.py en
+# développement, main.py une fois compilé) font déjà un `os.chdir()` vers
+# le VRAI dossier de l'application avant tout autre import — s'appuyer
+# sur le répertoire courant est donc fiable dans les deux cas.
+BASE_DIR = os.getcwd()
 RUNTIME_DIR = os.path.join(BASE_DIR, "portable_runtime")
 MARIADB_DIR = os.path.join(RUNTIME_DIR, "mariadb")
 DATA_DIR = os.path.join(RUNTIME_DIR, "mariadb_data")

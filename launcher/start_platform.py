@@ -36,6 +36,7 @@ import time
 import webbrowser
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(BASE_DIR)  # cohérent avec launcher/main.py — voir portable_mysql.BASE_DIR
 API_PORT = 8002
 CHATBOT_PORT = 5001
 API_URL = f"http://localhost:{API_PORT}"

@@ -96,25 +96,70 @@ base (0 → 38 documents en quelques minutes, pipeline toujours en cours
 pour le reste) sans AUCUNE intervention manuelle** → page d'accueil
 accessible et fonctionnelle pendant toute la durée de la collecte.
 
-## Ce qu'il reste pour un "zéro dépendance" complet
+## Compilation en un seul exécutable — fait et vérifié (2026-09-15)
 
-Un seul chantier restant : **compiler en un seul exécutable
-(PyInstaller)**, pour que l'utilisateur final n'ait même plus besoin de
-Python installé. Complexité à anticiper : les binaires externes
-(Tesseract, Ghostscript, MariaDB) ne sont PAS embarqués par PyInstaller
-(qui ne bundle que les dépendances Python pures) — il faudra les livrer
-comme fichiers additionnels à côté de l'exécutable généré (`--add-data`),
-pas comme un `pip install`. Tesseract/Ghostscript ne bloquent pas la
-plateforme (dégradation gracieuse pour les seules fonctionnalités qui en
-dépendent — extraction Arabe OCR, camelot) ; MariaDB, en revanche, est
-strictement nécessaire — mais son mécanisme de téléchargement/extraction
-étant déjà un script Python autonome (`portable_mysql.py`), il continuera
-de fonctionner identiquement une fois ce script lui-même compilé.
+**C'est fait. La plateforme se lance désormais en double-cliquant
+`dist/FSMarketIntelligence/FSMarketIntelligence.exe` — sans Python, sans
+Node, sans MySQL installés sur la machine.**
 
-**Build Docker à valider** une fois Docker Desktop disponible (les
-correctifs de dépendances requirements-api.txt/Dockerfile.api n'ont été
-vérifiés que statiquement) — pertinent si un déploiement serveur est un
-jour envisagé en parallèle du lanceur local, pas bloquant pour celui-ci.
+`launcher/main.py` : point d'entrée unique pour l'exécutable — contrairement
+à `start_platform.py` (qui lance l'API et le chatbot comme des process
+Python séparés via `sys.executable`, impossible une fois compilé), tout
+tourne ici dans le MÊME processus, en threads (`werkzeug.serving.make_server`),
+API et chatbot compris. `launcher/FSMarketIntelligence.spec` capture la
+recette de build complète (chemins relatifs au dépôt, pas codés en dur) ;
+`build_exe.bat` l'enveloppe pour le développeur (build frontend + compilation,
+une seule commande).
+
+**Trois obstacles rencontrés et résolus pendant la compilation** :
+1. **`ModuleNotFoundError: No module named 'api'`** — l'analyseur PyInstaller
+   ne suit que les imports visibles depuis le SCRIPT d'entrée
+   (`launcher/main.py`) ; sans le dossier racine du projet dans `pathex`,
+   il ne voit jamais `api.app`/`chatbot_portable.app` (importés
+   paresseusement à l'exécution) et ne les embarque pas du tout. Corrigé
+   en ajoutant `pathex=[PROJECT_ROOT]`.
+2. **`PermissionError` systématique sur `ucrtbase.dll`** lors de la copie
+   finale — reproduit à l'identique sur deux emplacements disque
+   différents (donc pas un souci de chemin/synchronisation OneDrive) :
+   un filtre système bloque l'écriture de tout fichier portant ce nom
+   exact. `ucrtbase.dll`/`vcruntime140*.dll` sont de toute façon déjà
+   présentes sur tout Windows 10/11 — retirées de la liste des binaires
+   à copier plutôt que de contourner cette protection.
+3. **`FileNotFoundError` sur un chemin `jedi/third_party/django-stubs/...`**
+   trop long une fois combiné à un répertoire de build profondément
+   imbriqué (limite Windows MAX_PATH) — `jedi`/`IPython`/`notebook`
+   (jamais utilisés par ce projet, détectés par erreur) exclus.
+
+**Vérifié de bout en bout sur le build FINAL** (celui du dépôt, pas un
+brouillon jetable) : double-clic → téléchargement/init MariaDB au premier
+lancement → API + chatbot démarrés dans le même processus → page d'accueil
+fonctionnelle → widget chatbot connecté et répondant (prévisions Prophet/
+XGBoost incluses) → **onglet "Fiche client entreprise" affichant les VRAIS
+chiffres de l'enquête (16 répondants STAR, exactement la valeur déjà
+recoupée manuellement contre le fichier Excel)** — confirme que le fichier
+Excel de l'enquête, embarqué dans le paquet (voir ci-dessous), est bien lu.
+
+**Taille** : ~600 Mo pour le dossier `dist/FSMarketIntelligence/` (pandas/
+numpy/xgboost/prophet/pdfplumber/camelot/selenium à eux seuls expliquent
+l'essentiel) + ~90 Mo téléchargés au premier lancement (MariaDB).
+
+**Ce qui doit être fait manuellement lors d'un changement de code** :
+relancer `build_exe.bat` — pas automatique, c'est une étape du
+développeur, pas de l'utilisateur final. **Ce qui doit être fait pour
+changer les données d'enquête** : remplacer/ajouter le fichier
+`data/Survey*.xlsx` AVANT de lancer `build_exe.bat` (le spec embarque
+tout `.xlsx` présent à la racine de `data/` au moment de la compilation
+— pas de synchronisation automatique après coup, contrairement aux
+données CMF/FTUSA/CGA qui, elles, se re-scrapent seules).
+
+## Build Docker (optionnel, non prioritaire)
+
+À valider une fois Docker Desktop disponible (les correctifs de
+dépendances requirements-api.txt/Dockerfile.api n'ont été vérifiés que
+statiquement) — pertinent seulement si un déploiement serveur est un jour
+envisagé EN PLUS du lanceur local ; **le lanceur compilé ci-dessus répond
+déjà pleinement à la demande initiale** (double-clic, zéro dépendance,
+zéro commande).
 
 ## Vérifications restantes
 
