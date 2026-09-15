@@ -397,6 +397,53 @@ réel exploitable ni motif reconnu en OCR). Vérifié dans le navigateur
 (Correction manuelle) sur 2023/2024/2025 : grille affichée, PDF source
 ouvert à la bonne page.
 
+### Bug trouvé et corrigé après recoupement avec le KPI narrow existant
+
+Le KPI narrow déjà validé (`extract_al_amanah_takaful_kpis`) donne
+"Capitaux propres" = 23 794 138 pour AL_AMANAH_TAKAFUL_2023. Un premier
+jet de ce module ne gardait qu'UNE seule ligne "Total" par page côté
+Passif (la plus large en nombre de colonnes reconnues), en écartant les
+autres — mais la page Passif porte PLUSIEURS lignes "مجموع..." distinctes
+(Total Actifs nets, Total Capitaux propres, Total Passif, Total général),
+et ce choix a retenu à tort "Total Actifs nets" (2 789 849, sans rapport)
+plutôt que "Total Capitaux propres" (la bonne réponse : recoupée
+EXACTEMENT au chiffre près sauf 1 digit OCR — 23 754 138 lu au lieu de
+23 794 138) simplement parce que l'OCR avait reconnu une colonne de moins
+sur cette dernière. **Corrigé** : toutes les lignes "Total" sont
+maintenant conservées (`TOTAL_1`, `TOTAL_2`... par ordre d'apparition sur
+la page) plutôt qu'une seule sélectionnée au jugé — aucune n'est
+supprimée à tort, au prix de ne pas savoir laquelle est LE total
+attendu sans que l'utilisateur ouvre le PDF à côté pour vérifier
+(acceptable : c'est exactement le rôle de la vue PDF déjà affichée en
+Correction manuelle).
+
+Ajouté au passage : un filtre de plausibilité (`MAX_PLAUSIBLE_VALUE`,
+déjà utilisé partout ailleurs dans le projet) — un groupe de chiffres mal
+segmenté par l'OCR peut fusionner plusieurs valeurs en un seul nombre
+absurde (constaté : un "16 chiffres" sur la ligne Total Passif de ce même
+document) ; ce filtre l'écarte plutôt que de le stocker tel quel.
+
+### Limitation connue : affectation de colonne imprécise sur les lignes creuses
+
+Contrairement à la version texte réel (voir `_assign_columns` dans
+`al_amanah_bilan_full_extractor.py`, qui ancre les valeurs sur la
+position x réelle de chaque colonne), ce module OCR affecte les valeurs
+lues à leurs colonnes par POSITION ORDINALE simple (1re valeur trouvée ->
+1re colonne, etc.). Pour une ligne où TOUTES les colonnes sont peuplées,
+c'est correct ; pour une ligne CREUSE (colonnes du milieu vides SANS même
+un token reconnu, ex. la colonne "Fonds des adhérents" absente pour une
+ligne Capitaux propres), les valeurs suivantes remontent à tort dans les
+colonnes précédentes — constaté sur "Total Capitaux propres" 2023 (la
+valeur "23 754 138", en réalité l'exercice courant "Combiné", atterrit
+dans la colonne "Fonds des adhérents (N-1)"). Un ancrage par position x
+des groupes de chiffres OCR (comme côté texte réel) corrigerait cela,
+mais demande d'étendre `arabic_ocr_extractor.ocr_row_numbers` pour
+renvoyer aussi la position x de chaque valeur — non fait dans ce premier
+jet. Les VALEURS elles-mêmes restent correctes (recoupées avec le KPI
+narrow existant), seule leur étiquette de colonne peut être fausse sur
+les lignes creuses — visible et corrigeable à l'œil via Correction
+manuelle (le PDF source est affiché juste à côté).
+
 ## Bilan de la demande "chaque annexe utilisée pour un KPI Takaful"
 
 Catalogue initial (5 annexes) : Bilan Combiné (1/2, déjà fait avant ce

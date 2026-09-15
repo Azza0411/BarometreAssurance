@@ -39,6 +39,7 @@ elle-même est capturée et fiable."""
 import re
 
 from extraction.arabic_ocr_extractor import render_page, _ocr_lines, ocr_row_numbers, is_scanned_page
+from extraction.bilan_kpi_extractor import MAX_PLAUSIBLE_VALUE
 
 _AC_PATTERN_RE = re.compile(r"صل")   # "أصل" (Actif) — le hamza initial "أ" est souvent perdu/déformé par l'OCR, "صل" reste le fragment le plus stable
 _PA_PATTERN_RE = re.compile(r"خصم|خصو")  # "خصم" (Passif, ligne de détail) / "خصوم" (dans "مجموع الخصوم")
@@ -82,23 +83,33 @@ def _extract_side_grid(image, side, min_rows=_MIN_ROWS):
     value_x_range = (0, int(image.width * _VALUE_ZONE_FRACTION))
 
     wanted_kinds = {"AC"} if side == "actif" else {"AN", "CP", "PA"}
-    lignes, total_row, last_detail_y = {}, None, 0
-    unclassified = []
+    lignes, last_detail_y = {}, 0
+    total_candidates, unclassified = [], []
     seq = {"AC": 0, "AN": 0, "CP": 0, "PA": 0}
     for text, box in lines:
         kind = _row_kind(text)
         y_range = (box[1], box[3])
         values = ocr_row_numbers(image, y_range, value_x_range)
-        row = {_COLUMN_NAMES[i]: v for i, v in enumerate(values) if i < len(_COLUMN_NAMES) and v is not None}
+        # Un groupe de chiffres mal segmenté par l'OCR peut fusionner
+        # plusieurs valeurs en un seul nombre absurde (ex. 16 chiffres) —
+        # écarté plutôt que stocké tel quel.
+        row = {
+            _COLUMN_NAMES[i]: v for i, v in enumerate(values)
+            if i < len(_COLUMN_NAMES) and v is not None and abs(v) <= MAX_PLAUSIBLE_VALUE
+        }
 
         if kind == "total" and row:
-            # Peut apparaître plusieurs fois par page (Total Actif seul,
-            # ou Total Actifs nets/Capitaux propres/Passif côté Passif) —
-            # on ne garde QUE la ligne "Total" la plus large en nombre de
-            # colonnes (les sous-totaux intermédiaires ont souvent moins
-            # de colonnes peuplées).
-            if total_row is None or len(row) > len(total_row):
-                total_row = row
+            # Une page Passif porte PLUSIEURS lignes "مجموع..." distinctes
+            # et sémantiquement différentes (Total Actifs nets, Total
+            # Capitaux propres, Total Passif, Total général) — les garder
+            # TOUTES plutôt que de n'en choisir qu'une "au plus large
+            # nombre de colonnes" : ce choix s'est révélé FAUX en pratique
+            # (constaté sur AL_AMANAH_TAKAFUL_2023 : la ligne retenue à
+            # tort était "Total Actifs nets", pas le total attendu, alors
+            # que "Total Capitaux propres" — la bonne réponse, recoupée
+            # avec le KPI narrow déjà validé, 23 794 138 — avait
+            # simplement une colonne de moins reconnue par l'OCR).
+            total_candidates.append((box[1], row))
             continue
         if kind in wanted_kinds and row:
             seq[kind] += 1
@@ -108,21 +119,20 @@ def _extract_side_grid(image, side, min_rows=_MIN_ROWS):
             last_detail_y = max(last_detail_y, box[1])
         elif kind is None and row:
             # Non classée par le motif arabe (ex: "مجموع..." parfois
-            # méconnaissable après OCR, voir docstring) — candidate de
-            # repli pour le Total : la ligne la mieux peuplée après la
-            # DERNIÈRE ligne de détail classée (le Total est toujours en
-            # bas de tableau, après tous les postes).
+            # totalement méconnaissable après OCR, voir docstring) —
+            # candidate de repli pour un total manqué : ligne suffisamment
+            # peuplée après la DERNIÈRE ligne de détail classée (un total
+            # est toujours en bas de tableau, après tous les postes).
             unclassified.append((box[1], row))
 
-    if total_row is None:
-        candidates = [(y, row) for y, row in unclassified if y >= last_detail_y and len(row) >= 4]
-        if candidates:
-            total_row = max(candidates, key=lambda item: len(item[1]))[1]
+    if not total_candidates:
+        total_candidates = [(y, row) for y, row in unclassified if y >= last_detail_y and len(row) >= 4]
 
     if len(lignes) < min_rows:
         return None
-    if total_row:
-        lignes["TOTAL"] = {**total_row, "libelle": "Total"}
+    for i, (_y, row) in enumerate(sorted(total_candidates, key=lambda item: item[0]), 1):
+        key = "TOTAL" if len(total_candidates) == 1 else f"TOTAL_{i}"
+        lignes[key] = {**row, "libelle": "Total" if key == "TOTAL" else f"Total {i}"}
     return {"colonnes": _COLUMN_NAMES, "lignes": lignes}
 
 
