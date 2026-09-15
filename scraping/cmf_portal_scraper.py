@@ -24,6 +24,7 @@ from selenium.common.exceptions import (
     NoSuchElementException,
     StaleElementReferenceException,
     TimeoutException,
+    WebDriverException,
 )
 
 from database.repository import (
@@ -74,6 +75,15 @@ class CMFPortalScraper:
         options.add_argument(f"user-agent={REQUEST_HEADERS['User-Agent']}")  # même UA que requests
 
         self.driver = webdriver.Chrome(options=options)  # lance Chrome piloté
+        # Sans ces deux bornes, une navigation ou un script qui ne répond
+        # jamais (Chrome planté en cours de route) bloque le thread
+        # indéfiniment, sans lever la moindre exception — constaté 2026-09-15 :
+        # plus de 15 minutes de silence total, aucune erreur journalisée,
+        # plus aucun processus Chrome vivant. WebDriverWait(20s) ne protège
+        # que les attentes explicites (find_element...), pas driver.get()
+        # lui-même.
+        self.driver.set_page_load_timeout(30)
+        self.driver.set_script_timeout(30)
         self.wait = WebDriverWait(self.driver, 20)  # attente max 20s
 
         # Fenêtre des "10 dernières années" : l'année en cours n'a en général pas
@@ -339,7 +349,11 @@ class CMFPortalScraper:
                 self.select_company(company_key)  # étape 2 : sélectionner la société
                 self.click_search()  # étape 3 : lancer la recherche
                 return self.extract_and_store(company_key)  # étape 4 : filtrer + dédupliquer + enregistrer
-            except TimeoutException as exc:
+            except (TimeoutException, WebDriverException) as exc:
+                # WebDriverException en plus de TimeoutException : couvre un
+                # Chrome qui plante en cours de route (pas seulement une page
+                # lente) — sans ça, l'exception "session non joignable" d'un
+                # navigateur mort n'était jamais retentée.
                 last_exc = exc  # mémorise l'erreur
                 print(f"[WARN] Tentative {attempt}/{retries} echouee pour {company_key} (page CMF) : {exc}")  # avertissement
                 if attempt < retries:
