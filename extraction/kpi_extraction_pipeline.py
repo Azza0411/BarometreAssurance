@@ -172,6 +172,50 @@ KPI_TABLE_LABEL.update(
 )
 
 
+def _backfill_missing_local_pdfs(conn, already_done):
+    """Télécharge (SANS reparser) le PDF local manquant de tout document CMF
+    déjà extrait avec succès (dans `already_done`) — pas seulement les
+    documents traités par la boucle principale ci-dessous, qui SAUTE
+    justement ces documents-là.
+
+    Corrige un decalage constate le 2026-09-16 sur une base de donnees
+    deja peuplee avant l'existence de `_save_cmf_pdf_local` (ajoutee le
+    2026-09-15) : des centaines de documents avaient deja leurs valeurs de
+    KPI en base (donc `already_done`, jamais retraites) mais AUCUN fichier
+    PDF local — "PDF collectes" (api/services/data_management.
+    get_reliability_stats) restait bloque a 0% indefiniment meme apres une
+    collecte reussie, puisque cette metrique lit le disque, pas la base.
+    Ne re-extrait rien (aucun appel a pdfplumber/aux extracteurs KPI) :
+    juste un telechargement + ecriture fichier, donc rapide meme sur
+    plusieurs centaines de documents deja connus."""
+    from api.services.data_management import local_pdf_path
+
+    documents = [
+        doc for doc in list_all_documents(conn)
+        if doc[1] == "CMF" and doc[0] in already_done
+    ]
+    missing = [
+        doc for doc in documents
+        if not (local_pdf_path("CMF", doc[2], doc[4]) and os.path.isfile(local_pdf_path("CMF", doc[2], doc[4])))
+    ]
+    if not missing:
+        return 0
+    print(f"\n===== RATTRAPAGE PDF LOCAUX MANQUANTS : {len(missing)} document(s) deja extrait(s) =====\n")
+    saved = 0
+    for document_id, _source_nom, code, _nom_entreprise, nom_pdf, annee, lien in missing:
+        if is_cancel_requested():
+            print("[ANNULE] Rattrapage PDF locaux interrompu par l'utilisateur.")
+            break
+        try:
+            response = _get_with_retries(lien, timeout=30)
+            _save_cmf_pdf_local(code, nom_pdf, response.content)
+            saved += 1
+        except Exception as exc:
+            print(f"  [WARN] Rattrapage PDF local echoue pour {code} {annee} : {exc}")
+    print(f"===== RATTRAPAGE TERMINE : {saved}/{len(missing)} PDF local(aux) sauvegarde(s) =====\n")
+    return saved
+
+
 def _get_with_retries(url, timeout, retries=3):
     """Meme approche que les scrapers de collecte (ex: scraping/ftusa_scraper.py) :
     un blip reseau ponctuel ne doit pas faire perdre les KPI d'un document
@@ -538,6 +582,8 @@ def run(force=False):
     conn = get_connection()
     init_schema(conn)
     already_done = set() if force else get_document_ids_with_kpi(conn)
+    if already_done:
+        _backfill_missing_local_pdfs(conn, already_done)
     documents = [doc for doc in list_all_documents(conn) if doc[1] == "CMF" and doc[0] not in already_done]
 
     print(f"\n===== EXTRACTION KPI : {len(documents)} document(s) a traiter "
