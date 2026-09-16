@@ -50,16 +50,18 @@ export function useCollecteStatus() {
   return statut;
 }
 
-/* Vrai tant que le bandeau doit rester affiché — pas juste `en_cours` :
-   dès que l'exercice le plus récent est en base (donnees_recentes_pretes,
-   voir pipelines/progress.py::mark_quick_ready), la plateforme est
-   considérée utilisable même si le pipeline continue en arrière-plan
-   (complément de l'historique) — retour utilisateur direct 2026-09-16,
-   insistant : "le user n'attend que 5 minutes". App.jsx utilise la même
-   fonction pour décaler la navbar, afin que bandeau et mise en page
-   restent toujours synchronisés. */
+/* Vrai tant que le bandeau doit rester affiché : simplement `en_cours`.
+   Retour utilisateur direct 2026-09-16 : le bandeau avait été masqué dès
+   que les sources prioritaires étaient prêtes (voir git history) - "je
+   remarque que le bandeau a été retiré, ce que je n'ai pas demandé. Je
+   veux voir la progression". Le bandeau reste donc visible du DÉBUT à la
+   TOUTE FIN de la collecte (y compris le complément des grilles
+   complètes en arrière-plan), affichant l'étape en cours via
+   statut.phase_label — jamais masqué avant la fin réelle. App.jsx utilise
+   la même fonction pour décaler la navbar, afin que bandeau et mise en
+   page restent toujours synchronisés. */
 export function isBandeauVisible(statut) {
-  return !!statut?.en_cours && !statut?.donnees_recentes_pretes;
+  return !!statut?.en_cours;
 }
 
 /* Bandeau global fixe (toutes pages, y compris Accueil) — position:fixed
@@ -69,9 +71,8 @@ export function isBandeauVisible(statut) {
    BANNER_HEIGHT quand ce bandeau est visible (voir son usage de
    useCollecteStatus) pour que rien ne se chevauche. Sans indication,
    des pages entières de "—" (voir capture d'écran utilisateur) sont
-   indissociables d'une application cassée ; ce bandeau disparaît de
-   lui-même dès que la collecte se termine OU dès que la plateforme
-   devient utilisable (poll suivant). */
+   indissociables d'une application cassée ; ce bandeau disparaît
+   uniquement quand la collecte est intégralement terminée. */
 export default function CollecteBanner({ statut }) {
   if (!isBandeauVisible(statut)) return null;
 

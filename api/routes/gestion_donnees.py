@@ -147,13 +147,15 @@ def statut_collecte():
         "derniere_execution": derniere,
         "phase": phase["code"],
         "phase_label": phase["label"],
-        # Vrai dès que l'exercice le plus récent (toutes sociétés) est en
-        # base, même si `en_cours` reste vrai (complément de l'historique
-        # en arrière-plan, voir pipelines/cmf_pipeline.py::main()) — le
-        # bandeau de collecte (CollecteBanner.jsx) se base là-dessus pour
-        # disparaître dès que la plateforme est réellement utilisable,
-        # sans attendre la fin de tout le pipeline.
-        "donnees_recentes_pretes": is_quick_ready(),
+        # Vrai dès que les sources prioritaires pour Aperçu marché/Analyse
+        # comparative/Vue par assurance (CMF + FTUSA/CGA/INS/BVMT) sont en
+        # base, même si `en_cours` reste vrai (complément des grilles
+        # complètes en arrière-plan, voir pipelines/run_pipeline.py::main(),
+        # PRIORITY_SOURCE_NAMES). Ne masque plus le bandeau de collecte
+        # (CollecteBanner.jsx reste affiché jusqu'à la fin réelle, décision
+        # du 2026-09-16) — utilisé seulement par "Gestion de données" pour
+        # nuancer son message pendant le complément.
+        "sources_prioritaires_pretes": is_quick_ready(),
     })
 
 

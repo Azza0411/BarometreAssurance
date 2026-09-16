@@ -18,9 +18,9 @@ _quick_ready = {"value": False}
 
 PHASE_LABELS = {
     "scraping": "Récupération des documents (scraping)…",
-    "extraction_kpi": "Calcul des indicateurs (KPI) en cours — année la plus récente…",
-    "extraction_kpi_historique": "Complément de l'historique en arrière-plan…",
-    "grilles": "Extraction des tableaux détaillés en cours…",
+    "extraction_kpi": "Calcul des indicateurs (KPI) en cours…",
+    "sources_prioritaires": "Récupération des données sectorielles (FTUSA, CGA, INS, BVMT)…",
+    "grilles": "Complément des tableaux détaillés en arrière-plan (Correction manuelle)…",
     "qualite": "Contrôle de la qualité des données…",
     "veille": "Vérification des actualités et textes réglementaires…",
 }
@@ -42,16 +42,17 @@ def get_phase():
     return {"code": code, "label": PHASE_LABELS.get(code)}
 
 
-# Bascule séparée de `_phase` ci-dessus : signale que les données de
-# l'exercice le plus récent (toutes sociétés) sont déjà en base et que la
-# plateforme est donc utilisable, MÊME SI le pipeline continue encore en
-# tâche de fond (complément de l'historique 2015-2025, grilles complètes,
-# autres sources — voir cmf_pipeline.py::main()). Sans cette distinction,
-# l'utilisateur attendrait la fin de TOUT le pipeline (plusieurs heures
-# avec l'historique complet + OCR) avant de considérer la plateforme
-# prête, alors que l'essentiel (dernier exercice) est disponible en
-# quelques minutes — retour utilisateur direct 2026-09-16 : "on doit
-# trouver une solution pour que le user n'attende que 5 minutes".
+# Bascule séparée de `_phase` ci-dessus : signale que les sources
+# PRIORITAIRES pour Aperçu marché/Analyse comparative/Vue par assurance —
+# CMF (5 ans, narrow KPI, Takaful inclus) + FTUSA + CGA + INS + BVMT —
+# sont là, et que la plateforme est donc utilisable pour ces 3 pages,
+# MÊME SI le pipeline continue en tâche de fond (les 6 grilles complètes,
+# qui n'alimentent que "Correction manuelle" — voir
+# pipelines/run_pipeline.py::main(), PRIORITY_SOURCE_NAMES). Décision du
+# 2026-09-16 : le bandeau de collecte reste affiché jusqu'à la fin RÉELLE
+# (voir CollecteBanner.jsx) — ce flag ne masque plus rien côté UI, il ne
+# sert plus qu'à distinguer, sur la page Gestion de données, "l'essentiel
+# est prêt, il ne reste que le détail" de "rien n'est encore prêt".
 def mark_quick_ready():
     with _lock:
         _quick_ready["value"] = True

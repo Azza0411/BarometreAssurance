@@ -138,15 +138,16 @@ function CollecteBar() {
   const derniere = statut?.derniere_execution;
   const enCours = statut?.en_cours;
   const annulationDemandee = statut?.annulation_demandee;
-  // Distinct de `enCours` seul : une fois les données récentes prêtes
-  // (voir pipelines/progress.py::mark_quick_ready), le pipeline continue
-  // en tâche de fond (complément de l'historique, plusieurs heures avec
-  // l'OCR) mais la plateforme est déjà utilisable. Sans cette
-  // distinction, cette page affichait "Collecte en cours…" pendant TOUTE
-  // la durée du complément d'historique, sans jamais dire que
-  // l'essentiel était déjà disponible — retour utilisateur direct
+  // Distinct de `enCours` seul : une fois les sources prioritaires prêtes
+  // (CMF + FTUSA/CGA/INS/BVMT — voir pipelines/progress.py::
+  // mark_quick_ready), le pipeline continue en tâche de fond (les 6
+  // grilles complètes, qui n'alimentent que "Correction manuelle") mais
+  // Aperçu marché/Analyse comparative/Vue par assurance sont déjà
+  // utilisables. Sans cette distinction, cette page affichait "Collecte
+  // en cours…" pendant TOUTE la durée du complément, sans jamais dire
+  // que l'essentiel était déjà disponible — retour utilisateur direct
   // 2026-09-16 : "ça a l'air de ne jamais se terminer !!!".
-  const donneesRecentesPretes = statut?.donnees_recentes_pretes;
+  const sourcesPrioritairesPretes = statut?.sources_prioritaires_pretes;
   const phaseLabel = statut?.phase_label;
 
   return (
@@ -161,13 +162,13 @@ function CollecteBar() {
             {enCours ? (
               annulationDemandee
                 ? <span>Annulation en cours — arrêt au prochain document/société traité…</span>
-                : donneesRecentesPretes ? (
+                : sourcesPrioritairesPretes ? (
                   <span>
-                    <span style={{ color: "#16A34A", fontWeight: 700 }}>Données récentes disponibles</span>
-                    {" — la plateforme est utilisable. "}
-                    Complément de l'historique en arrière-plan
+                    <span style={{ color: "#16A34A", fontWeight: 700 }}>Sources prioritaires disponibles</span>
+                    {" — Aperçu marché, Analyse comparative et Vue par assurance sont utilisables. "}
+                    Complément des tableaux détaillés (Correction manuelle) en arrière-plan
                     {phaseLabel && <span style={{ color: "#9CA3AF" }}> ({phaseLabel})</span>}
-                    {" — peut prendre plusieurs heures selon le nombre de documents restants."}
+                    {" — peut prendre du temps selon le nombre de documents restants."}
                   </span>
                 ) : (
                   <span>Collecte en cours{phaseLabel ? ` — ${phaseLabel}` : " — seuls les documents nouveaux ou jamais traités sont extraits…"}</span>
@@ -202,7 +203,7 @@ function CollecteBar() {
             onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
             {(enCours || lancement) && <Spinner />}
             {enCours
-              ? (donneesRecentesPretes ? "Historique en cours de complément…" : "Collecte en cours…")
+              ? (sourcesPrioritairesPretes ? "Tableaux détaillés en cours de complément…" : "Collecte en cours…")
               : "Lancer une nouvelle collecte"}
           </button>
         </div>

@@ -7,8 +7,14 @@ appeler — `sys.executable` y désigne l'exécutable lui-même, pas un
 interpréteur générique.
 
 Composants démarrés, dans l'ordre :
-  1. Base de données portable (launcher/portable_mysql.py) — process
-     externe (mysqld.exe), inchangé par rapport à start_platform.py.
+  1. Vérification qu'un MySQL est déjà accessible (127.0.0.1:3306 par
+     défaut, voir config/db_config.py) — décision explicite du
+     2026-09-16 : ne plus télécharger/gérer de MariaDB portable
+     (l'ancien launcher/portable_mysql.py, retiré), au profit d'une
+     dépendance directe à un MySQL déjà installé sur la machine (ex:
+     XAMPP) et démarré PAR L'UTILISATEUR avant de lancer cet exécutable.
+     Message d'erreur clair si injoignable, plutôt qu'un téléchargement
+     silencieux ou un plantage.
   2. L'API Flask (api/app.py) — importée puis servie via werkzeug
      `make_server` dans un thread (pas `app.run()`, qui bloquerait).
   3. Le chatbot IA (chatbot_portable/app.py) — même principe, best-effort
@@ -70,20 +76,39 @@ def _is_port_open(port, host="127.0.0.1", timeout=0.5):
         return False
 
 
+def _wait_for_mysql(host, port, max_wait_seconds=30):
+    """Attend qu'un MySQL réponde sur host:port — un utilisateur qui vient
+    juste de cliquer sur "Démarrer" dans le panneau XAMPP a besoin de
+    quelques secondes avant que le service soit réellement prêt ; on
+    retente poliment plutôt que d'échouer sur la première tentative."""
+    deadline = time.monotonic() + max_wait_seconds
+    while time.monotonic() < deadline:
+        if _is_port_open(port, host=host, timeout=1.0):
+            return True
+        time.sleep(1)
+    return False
+
+
 def main():
     print("FS Market Intelligence — démarrage de la plateforme...")
     print(f"  Dossier de l'application : {BASE_DIR}")
 
-    sys.path.insert(0, os.path.join(BASE_DIR, "launcher"))
-    import portable_mysql
-    try:
-        portable_mysql.start_portable_mysql()
-        os.environ["DB_HOST"] = portable_mysql.HOST
-        os.environ["DB_PORT"] = str(portable_mysql.PORT)
-    except Exception as exc:
-        print(f"  [ERREUR] Base de données portable indisponible : {exc}")
+    # Dépendance directe à un MySQL déjà installé (ex: XAMPP) — décision
+    # explicite du 2026-09-16 (voir docstring en tête de fichier) : plus
+    # de MariaDB portable téléchargée automatiquement. L'utilisateur DOIT
+    # démarrer MySQL lui-même avant de lancer cet exécutable.
+    db_host = os.environ.get("DB_HOST", "127.0.0.1")
+    db_port = int(os.environ.get("DB_PORT", "3306"))
+    print(f"  Vérification de MySQL ({db_host}:{db_port})...")
+    if not _wait_for_mysql(db_host, db_port):
+        print(
+            f"\n  [ERREUR] MySQL n'est pas accessible sur {db_host}:{db_port}.\n"
+            "  Démarrez MySQL (par exemple via le panneau de contrôle XAMPP,\n"
+            "  bouton \"Start\" sur la ligne MySQL) puis relancez cette application.\n"
+        )
         input("Appuyez sur Entrée pour fermer...")
         return 1
+    print("  MySQL accessible.")
 
     if not _is_port_open(API_PORT):
         print(f"  Démarrage de l'API (port {API_PORT})...")

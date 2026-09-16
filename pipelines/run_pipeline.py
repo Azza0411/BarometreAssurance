@@ -192,6 +192,20 @@ SOURCES = [
     ("BVMT", _run_bvmt),
 ]
 
+# Noms (doivent correspondre exactement à SOURCES ci-dessus) des sources
+# RÉELLEMENT utilisées par les 3 pages prioritaires — Aperçu marché (Profil
+# pays + Distribution des agences, Conventionnelle ET Takaful), Analyse
+# comparative, Vue par assurance — voir l'audit du 2026-09-16 (CMF, déjà
+# séquentiel en premier, inclut l'extraction Takaful narrow des 3 sociétés
+# Takaful-extractibles, donc les DEUX familles sont déjà couvertes sans
+# entrée séparée ici). Les 6 grilles complètes restantes n'alimentent QUE
+# "Correction manuelle" (tableau_cellules) — jamais ces 3 pages — donc
+# reportées après, pour rendre la plateforme utilisable plus tôt (retour
+# utilisateur direct, insistant : "on va restreindre notre terrain de
+# travail... et prioriser les données qui vont nous servir à calculer les
+# KPI qui vont être affichés" sur ces 3 pages).
+PRIORITY_SOURCE_NAMES = {"FTUSA", "CGA", "INS", "BVMT"}
+
 
 def _check_quality():
     """Verifie la completude des KPI sur la derniere annee CMF disponible, et
@@ -432,10 +446,30 @@ def _classify_result(name, ok, result, failed_sources, empty_sources):
     return doc_count, kpi_count
 
 
-def main():
+def _run_parallel_batch(sources, results, failed_sources, empty_sources):
+    """Exécute un lot de sources en parallèle et fusionne leurs résultats
+    dans `results`, ré-ordonnés selon `sources` (pas l'ordre d'achèvement,
+    non déterministe) pour que le rapport HTML reste lisible/stable d'une
+    exécution à l'autre. Factorisée pour être appelée deux fois par
+    main() — une fois pour les sources prioritaires, une fois pour les
+    grilles complètes reportées (voir PRIORITY_SOURCE_NAMES)."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    parallel_results = {}
+    with ThreadPoolExecutor(max_workers=min(len(sources), 6)) as pool:
+        futures = {pool.submit(run_with_retry, name, func): name for name, func in sources}
+        for future in as_completed(futures):
+            name = futures[future]
+            parallel_results[name] = future.result()
+    for name, _func in sources:
+        ok, result, duration = parallel_results[name]
+        doc_count, kpi_count = _classify_result(name, ok, result, failed_sources, empty_sources)
+        results.append((name, ok, duration, doc_count, kpi_count))
+
+
+def main():
     from pipelines.control import clear_cancel, is_cancel_requested
-    from pipelines.progress import set_phase, clear_phase, clear_quick_ready
+    from pipelines.progress import set_phase, clear_phase, mark_quick_ready, clear_quick_ready
 
     started_at = datetime.now()
     _log_json("pipeline_start")
@@ -451,18 +485,23 @@ def main():
     # réelle entre sources — les 6 pipelines grille complète (Bilan,
     # Annexe 12/13, Takaful) lisent les PDF que CMF vient de sauvegarder
     # localement (voir extraction/kpi_extraction_pipeline.py
-    # ::_save_cmf_pdf_local). Toutes les sources RESTANTES sont
-    # indépendantes les unes des autres (sites web différents pour
-    # FTUSA/CGA/INS/BVMT, documents différents pour les grilles
-    # complètes) : les lancer en parallèle plutôt qu'en séquence réduit
-    # le temps total d'attente pour l'utilisateur (voir "de préférence
-    # l'alimentation et récupération de données se fait le plus
-    # rapidement possible", retour utilisateur direct 2026-09-15) sans
-    # rien changer à l'isolation par source déjà en place (chaque source
-    # garde son propre retry/backoff, une erreur dans l'une n'affecte
-    # jamais les autres).
+    # ::_save_cmf_pdf_local).
+    #
+    # Les sources restantes sont scindées en 2 lots, EXÉCUTÉS L'UN APRÈS
+    # L'AUTRE (pas un seul gros lot parallèle comme avant le 2026-09-16) :
+    #   1. PRIORITAIRE (FTUSA/CGA/INS/BVMT) : seules sources, avec CMF,
+    #      réellement lues par Aperçu marché/Analyse comparative/Vue par
+    #      assurance (voir PRIORITY_SOURCE_NAMES) — une fois ce lot fini,
+    #      la plateforme a tout ce qu'il faut pour ces 3 pages.
+    #   2. REPORTÉ (les 6 grilles complètes) : n'alimentent QUE
+    #      "Correction manuelle" (tableau_cellules), jamais ces 3 pages —
+    #      continuent en arrière-plan après le signal "prêt", sans jamais
+    #      retarder l'utilisabilité de la plateforme (retour utilisateur
+    #      direct, insistant : la plateforme doit être utilisable même si
+    #      "le scraping du reste des données n'est pas encore terminé").
     cmf_name, cmf_func = SOURCES[0]
-    parallel_sources = SOURCES[1:]
+    priority_sources = [s for s in SOURCES[1:] if s[0] in PRIORITY_SOURCE_NAMES]
+    deferred_sources = [s for s in SOURCES[1:] if s[0] not in PRIORITY_SOURCE_NAMES]
 
     if is_cancel_requested():
         cancelled = True
@@ -472,24 +511,26 @@ def main():
         results.append((cmf_name, ok, duration, doc_count, kpi_count))
 
     if not cancelled and is_cancel_requested():
-        _log_json("pipeline_cancelled", remaining_source=parallel_sources[0][0])
+        _log_json("pipeline_cancelled", remaining_source=priority_sources[0][0])
+        cancelled = True
+
+    if not cancelled:
+        set_phase("sources_prioritaires")
+        _run_parallel_batch(priority_sources, results, failed_sources, empty_sources)
+        # Signal "prêt" : CMF (5 ans, 24 sociétés, Takaful narrow inclus) +
+        # FTUSA/CGA/INS/BVMT sont là — tout ce dont Aperçu marché/Analyse
+        # comparative/Vue par assurance ont besoin. Émis même si une de
+        # ces sources a échoué (voir failed_sources) : ne jamais bloquer
+        # indéfiniment le signal "prêt" sur une panne isolée.
+        mark_quick_ready()
+
+    if not cancelled and is_cancel_requested():
+        _log_json("pipeline_cancelled", remaining_source=deferred_sources[0][0])
         cancelled = True
 
     if not cancelled:
         set_phase("grilles")
-        parallel_results = {}
-        with ThreadPoolExecutor(max_workers=min(len(parallel_sources), 6)) as pool:
-            futures = {pool.submit(run_with_retry, name, func): name for name, func in parallel_sources}
-            for future in as_completed(futures):
-                name = futures[future]
-                parallel_results[name] = future.result()
-        # Ré-ordonné selon SOURCES (pas l'ordre d'achèvement, non
-        # déterministe) pour que le rapport HTML reste lisible/stable
-        # d'une exécution à l'autre.
-        for name, _func in parallel_sources:
-            ok, result, duration = parallel_results[name]
-            doc_count, kpi_count = _classify_result(name, ok, result, failed_sources, empty_sources)
-            results.append((name, ok, duration, doc_count, kpi_count))
+        _run_parallel_batch(deferred_sources, results, failed_sources, empty_sources)
 
     # Annulée : on saute les étapes annexes (qualité/veille), pas la peine de
     # les faire porter sur un jeu de sources incomplet.
