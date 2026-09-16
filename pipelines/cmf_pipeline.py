@@ -35,11 +35,12 @@ from pipelines.progress import set_phase
 # ~CMF_WORKERS (retour utilisateur direct 2026-09-15 : "ça prend trop de
 # temps à collecter les pdfs" — la synchronisation CMF, strictement
 # séquentielle jusqu'ici, était le principal goulot du premier lancement).
-# Relevé à 6 le 2026-09-16 (retour utilisateur : encore trop lent) — reste
-# raisonnable au regard des 24 sociétés à répartir (4 par navigateur en
-# moyenne) sans multiplier excessivement les requêtes simultanées vers le
-# portail CMF (risque de blocage/rate-limit à un nombre plus élevé).
-CMF_WORKERS = 6
+# Relevé à 6, puis 8 le 2026-09-16 (retour utilisateur, insistant : la
+# vitesse de RÉCUPÉRATION prime sur tout le reste, même si rien n'est
+# encore stocké/affiché à ce stade) — 3 sociétés par navigateur en
+# moyenne sur 24. Au-delà, le risque de blocage/rate-limit côté portail
+# CMF devient plus probable qu'un vrai gain (non mesuré au-delà de 8).
+CMF_WORKERS = 8
 
 # Délai maximal accordé à UNE société avant abandon. Sans cette borne, un
 # Chrome qui plante silencieusement en cours de route bloque le thread pour

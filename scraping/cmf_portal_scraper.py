@@ -73,6 +73,19 @@ class CMFPortalScraper:
         options.add_argument("--no-sandbox")  # environnements restreints
         options.add_argument("--disable-dev-shm-usage")  # évite un crash mémoire
         options.add_argument(f"user-agent={REQUEST_HEADERS['User-Agent']}")  # même UA que requests
+        # Ne bloque JAMAIS sur le chargement des images/CSS de la page CMF -
+        # on ne scrape que du texte et des attributs href, jamais un rendu
+        # visuel. "eager" fait revenir driver.get() dès le DOM prêt (au lieu
+        # d'attendre TOUTES les sous-ressources, y compris les images) ;
+        # bloquer les images elimine cette attente reseau meme quand le DOM
+        # les referme encore. Retour utilisateur direct 2026-09-16 : "on
+        # etait sense scraper plus rapidement" - la page CMF est rechargee
+        # entierement a CHAQUE societe (24 fois par navigateur), donc chaque
+        # milliseconde economisee par chargement est multipliee par 24.
+        options.page_load_strategy = "eager"
+        options.add_experimental_option(
+            "prefs", {"profile.managed_default_content_settings.images": 2}
+        )
 
         self.driver = webdriver.Chrome(options=options)  # lance Chrome piloté
         # Sans ces deux bornes, une navigation ou un script qui ne répond
