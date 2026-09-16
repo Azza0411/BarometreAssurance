@@ -131,7 +131,7 @@ def annuler_collecte():
 
 @bp.route("/api/gestion-donnees/statut-collecte")
 def statut_collecte():
-    from pipelines.progress import get_phase
+    from pipelines.progress import get_phase, is_quick_ready
     with _collecte_lock:
         en_cours = _collecte_state["en_cours"]
         demarree_le = _collecte_state["demarree_le"]
@@ -147,6 +147,13 @@ def statut_collecte():
         "derniere_execution": derniere,
         "phase": phase["code"],
         "phase_label": phase["label"],
+        # Vrai dès que l'exercice le plus récent (toutes sociétés) est en
+        # base, même si `en_cours` reste vrai (complément de l'historique
+        # en arrière-plan, voir pipelines/cmf_pipeline.py::main()) — le
+        # bandeau de collecte (CollecteBanner.jsx) se base là-dessus pour
+        # disparaître dès que la plateforme est réellement utilisable,
+        # sans attendre la fin de tout le pipeline.
+        "donnees_recentes_pretes": is_quick_ready(),
     })
 
 

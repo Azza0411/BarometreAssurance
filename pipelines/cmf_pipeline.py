@@ -19,6 +19,7 @@ import queue
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -26,7 +27,15 @@ from scraping.cmf_portal_scraper import CMFPortalScraper
 from config.company_registry import COMPANY_REGISTRY
 from extraction.kpi_extraction_pipeline import run as run_kpi_extraction
 from pipelines.control import is_cancel_requested
-from pipelines.progress import set_phase
+from pipelines.progress import set_phase, mark_quick_ready
+
+# Nombre d'années récentes traitées en priorité par l'extraction KPI
+# (voir main() ci-dessous) — 2 plutôt que 1 seule : l'exercice le plus
+# récent d'une société n'est pas toujours encore publié au moment de la
+# collecte (ex: en cours d'année civile), donc se limiter à UNE seule
+# année pourrait laisser certaines sociétés sans aucune donnée récente
+# tant que l'historique complet n'a pas suivi.
+RECENT_YEARS_COUNT = 2
 
 # Nombre de navigateurs Chrome headless lancés en parallèle pour la
 # synchronisation CMF (24 sociétés) — chacun traite un sous-ensemble
@@ -151,12 +160,43 @@ def sync_documents(headless=True):
 
 
 def main(headless=True):
+    """Découpé en 2 passes d'extraction KPI (pas juste sync + extraction) :
+    retour utilisateur direct 2026-09-16, insistant — la plateforme doit
+    devenir utilisable en ~5 minutes, pas seulement après le traitement
+    complet de tout l'historique (qui, avec l'OCR sur les PDF scannés,
+    peut prendre plusieurs heures — mesuré : 4h15 pour 223 documents lors
+    du test du 2026-09-15).
+
+    Passe 1 (rapide) : extrait UNIQUEMENT les `RECENT_YEARS_COUNT`
+    dernières années, toutes sociétés confondues (~24-48 documents au
+    lieu de ~223) — l'essentiel de ce qu'un utilisateur consulte en
+    premier (Aperçu marché, Analyse comparative). Une fois cette passe
+    terminée, `mark_quick_ready()` signale que la plateforme est
+    utilisable : le bandeau de collecte peut disparaître même si le
+    pipeline continue derrière.
+
+    Passe 2 (arrière-plan) : `run_kpi_extraction()` sans filtre d'année
+    revient sur TOUS les documents CMF non déjà traités — grâce au
+    filtrage `already_done` déjà en place (voir kpi_extraction_pipeline.
+    run, force=False), elle ne retraite JAMAIS les documents de la passe
+    1 : elle complète naturellement le reste de l'historique
+    (2015-jusqu'à l'avant-dernière année) sans double travail."""
     print("\n===== DEBUT DU PIPELINE CMF =====\n")
     set_phase("scraping")
     sync_summary = sync_documents(headless=headless)
     if is_cancel_requested():
         return {"sync": sync_summary, "kpi": None}
+
+    current_year = datetime.now().year
+    recent_years = {current_year - i for i in range(RECENT_YEARS_COUNT)}
+
     set_phase("extraction_kpi")
+    kpi_summary_recent = run_kpi_extraction(years=recent_years)
+    mark_quick_ready()
+
+    if is_cancel_requested():
+        return {"sync": sync_summary, "kpi": kpi_summary_recent}
+    set_phase("extraction_kpi_historique")
     kpi_summary = run_kpi_extraction()
     return {"sync": sync_summary, "kpi": kpi_summary}
 

@@ -31,8 +31,10 @@ Pour chaque document :
 
 import io
 import os
+import queue
 import re
 import sys
+import threading
 import time
 
 import pdfplumber
@@ -563,7 +565,52 @@ def _run_cga(conn, already_done=None):
     }
 
 
-def run(force=False):
+DOCUMENT_HARD_TIMEOUT_S = 45
+
+
+def _process_one_document(conn, code, annee, nom_pdf, lien):
+    """Télécharge + extrait les KPI d'UN document (partie risquée de la
+    boucle de `run()`, isolée pour pouvoir être bornée dans le temps —
+    voir l'appel via un thread daemon ci-dessous). Ne renvoie jamais
+    d'exception : le résultat porte soit les données extraites, soit
+    l'erreur, pour laisser l'appelant décider (compteurs, rapport
+    d'échecs) sans dupliquer cette logique ici."""
+    try:
+        response = _get_with_retries(lien, timeout=30)
+        _save_cmf_pdf_local(code, nom_pdf, response.content)
+        with pdfplumber.open(io.BytesIO(response.content)) as pdf:
+            kpis = _extract_all_kpis(pdf, company_code=code)
+            missing = [name for name in KPI_NAMES if kpis.get(name) is None]
+            cause = _classify_cause(pdf, code) if missing else None
+            ecart = _check_balance(pdf, kpis)
+            yoy_flags = check_yoy_consistency(conn, code, annee, kpis)
+        return {"ok": True, "kpis": kpis, "missing": missing, "cause": cause, "ecart": ecart, "yoy_flags": yoy_flags}
+    except Exception as exc:
+        return {"ok": False, "error": exc}
+
+
+def _process_one_document_with_watchdog(conn, code, annee, nom_pdf, lien, timeout=DOCUMENT_HARD_TIMEOUT_S):
+    """Borne `_process_one_document` dans le temps — un document (OCR sur
+    un scan abîmé, PDF anormalement lourd...) qui bloque indéfiniment ne
+    doit jamais geler tout le pipeline derrière lui, même dans la passe
+    "rapide" (voir run(years=...)) où le but explicite est un délai total
+    maîtrisé. Thread `daemon=True` + `queue` (pas ThreadPoolExecutor,
+    dont les threads internes NE sont PAS daemon — piège déjà rencontré
+    et documenté dans pipelines/cmf_pipeline.py::_run_company_with_watchdog,
+    même remède ici)."""
+    result_q = queue.Queue(maxsize=1)
+
+    def _target():
+        result_q.put(_process_one_document(conn, code, annee, nom_pdf, lien))
+
+    threading.Thread(target=_target, daemon=True).start()
+    try:
+        return result_q.get(timeout=timeout), False
+    except queue.Empty:
+        return {"ok": False, "error": TimeoutError(f"delai de {timeout}s depasse")}, True
+
+
+def run(force=False, years=None):
     """Lance l'extraction KPI pour tous les documents CMF déjà en base, puis
     les sous-pipelines FTUSA/BVMT/BVMT-bulletin/CGA et la modélisation.
 
@@ -576,7 +623,15 @@ def run(force=False):
     ou jamais traités avec succès sont (re)traités. `force=True` retraite
     tout l'historique sans exception (utile après une amélioration d'un
     extracteur, pour rattraper d'anciens échecs sur du contenu inchangé) —
-    à déclencher explicitement, jamais par défaut."""
+    à déclencher explicitement, jamais par défaut.
+
+    `years` (ensemble d'années, optionnel) : restreint aux documents de
+    ces exercices seulement — utilisé par cmf_pipeline.main() pour une
+    PREMIÈRE passe rapide (année la plus récente uniquement, ~24
+    documents au lieu de ~223) avant de traiter tout l'historique en
+    tâche de fond, pour que la plateforme devienne utilisable en
+    quelques minutes plutôt qu'après le traitement complet (retour
+    utilisateur direct 2026-09-16 : "le user n'attend que 5 minutes")."""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     ensure_database()
     conn = get_connection()
@@ -584,7 +639,10 @@ def run(force=False):
     already_done = set() if force else get_document_ids_with_kpi(conn)
     if already_done:
         _backfill_missing_local_pdfs(conn, already_done)
-    documents = [doc for doc in list_all_documents(conn) if doc[1] == "CMF" and doc[0] not in already_done]
+    documents = [
+        doc for doc in list_all_documents(conn)
+        if doc[1] == "CMF" and doc[0] not in already_done and (years is None or doc[5] in years)
+    ]
 
     print(f"\n===== EXTRACTION KPI : {len(documents)} document(s) a traiter "
           f"({len(already_done)} deja extraits, sautes), {len(KPI_NAMES)} KPI =====\n")
@@ -597,43 +655,41 @@ def run(force=False):
             print("[ANNULE] Extraction KPI CMF interrompue par l'utilisateur.")
             break
         print(f"[STEP] {code} {annee} : {lien}")
-        try:
-            response = _get_with_retries(lien, timeout=30)
-            _save_cmf_pdf_local(code, nom_pdf, response.content)
-            with pdfplumber.open(io.BytesIO(response.content)) as pdf:
-                kpis = _extract_all_kpis(pdf, company_code=code)
-                missing = [name for name in KPI_NAMES if kpis.get(name) is None]
-                cause = _classify_cause(pdf, code) if missing else None
-
-                ecart = _check_balance(pdf, kpis)
-                if ecart:
-                    print(f"  [WARN] Desequilibre Bilan : Total actif != Capitaux propres + Passif (ecart={ecart:,.3f} TND)")
-                    details = {"total_actif": kpis.get("Total actif"), "ecart": round(ecart, 3)}
-                    log_json(_logger, "balance_check_failed", company=code, annee=annee, **details)
-                    save_anomaly(
-                        conn, source="extraction_balance", gravite="erreur",
-                        code=code, annee=annee, kpi="Total actif", details=details,
-                    )
-                    balance_mismatches += 1
-
-                for flag in check_yoy_consistency(conn, code, annee, kpis):
-                    print(
-                        f"  [WARN] Variation YoY suspecte {flag['kpi']} : "
-                        f"{flag['valeur_precedente']:,.0f} ({flag['annee_precedente']}) -> "
-                        f"{flag['valeur_actuelle']:,.0f} ({annee}) [{flag['variation_pct']:+.1f}%]"
-                    )
-                    log_json(_logger, "yoy_anomaly", company=code, annee=annee, **flag)
-                    save_anomaly(
-                        conn, source="extraction_yoy", gravite="avertissement",
-                        code=code, annee=annee, kpi=flag["kpi"], details=flag,
-                    )
-                    yoy_anomalies += 1
-        except Exception as exc:
+        result, timed_out = _process_one_document_with_watchdog(conn, code, annee, nom_pdf, lien)
+        if timed_out:
+            print(f"  [ERROR] {code} {annee} : delai de {DOCUMENT_HARD_TIMEOUT_S}s depasse, document saute.")
+        if not result["ok"]:
+            exc = result["error"]
             print(f"  [ERROR] Echec de telechargement/lecture : {exc}")
             download_errors += 1
             for name in KPI_NAMES:
                 failures[name].append((code, nom_entreprise, annee, nom_pdf, lien, f"Erreur : {exc}"))
             continue
+
+        kpis, missing, cause = result["kpis"], result["missing"], result["cause"]
+        ecart = result["ecart"]
+        if ecart:
+            print(f"  [WARN] Desequilibre Bilan : Total actif != Capitaux propres + Passif (ecart={ecart:,.3f} TND)")
+            details = {"total_actif": kpis.get("Total actif"), "ecart": round(ecart, 3)}
+            log_json(_logger, "balance_check_failed", company=code, annee=annee, **details)
+            save_anomaly(
+                conn, source="extraction_balance", gravite="erreur",
+                code=code, annee=annee, kpi="Total actif", details=details,
+            )
+            balance_mismatches += 1
+
+        for flag in result["yoy_flags"]:
+            print(
+                f"  [WARN] Variation YoY suspecte {flag['kpi']} : "
+                f"{flag['valeur_precedente']:,.0f} ({flag['annee_precedente']}) -> "
+                f"{flag['valeur_actuelle']:,.0f} ({annee}) [{flag['variation_pct']:+.1f}%]"
+            )
+            log_json(_logger, "yoy_anomaly", company=code, annee=annee, **flag)
+            save_anomaly(
+                conn, source="extraction_yoy", gravite="avertissement",
+                code=code, annee=annee, kpi=flag["kpi"], details=flag,
+            )
+            yoy_anomalies += 1
 
         for name in missing:
             failures[name].append((code, nom_entreprise, annee, nom_pdf, lien, cause))

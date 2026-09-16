@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import Chatbot from "./components/Chatbot";
-import CollecteBanner, { useCollecteStatus, BANNER_HEIGHT } from "./components/CollecteBanner";
+import CollecteBanner, { useCollecteStatus, BANNER_HEIGHT, isBandeauVisible } from "./components/CollecteBanner";
 import Sidebar            from "./components/Sidebar";
 import NotificationBell   from "./components/NotificationBell";
 import ApercuMarche       from "./pages/ApercuMarche";
@@ -920,7 +920,7 @@ function AppShell() {
   // peuvent désynchroniser (bandeau affiché mais navbar pas décalée, ou
   // l'inverse) pendant les quelques secondes entre deux sondages.
   const statut = useCollecteStatus();
-  const navbarTop = statut?.en_cours ? BANNER_HEIGHT : 0;
+  const navbarTop = isBandeauVisible(statut) ? BANNER_HEIGHT : 0;
 
   if (location.pathname === "/accueil" || location.pathname === "/") {
     return (

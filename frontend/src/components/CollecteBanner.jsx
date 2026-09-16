@@ -50,6 +50,18 @@ export function useCollecteStatus() {
   return statut;
 }
 
+/* Vrai tant que le bandeau doit rester affiché — pas juste `en_cours` :
+   dès que l'exercice le plus récent est en base (donnees_recentes_pretes,
+   voir pipelines/progress.py::mark_quick_ready), la plateforme est
+   considérée utilisable même si le pipeline continue en arrière-plan
+   (complément de l'historique) — retour utilisateur direct 2026-09-16,
+   insistant : "le user n'attend que 5 minutes". App.jsx utilise la même
+   fonction pour décaler la navbar, afin que bandeau et mise en page
+   restent toujours synchronisés. */
+export function isBandeauVisible(statut) {
+  return !!statut?.en_cours && !statut?.donnees_recentes_pretes;
+}
+
 /* Bandeau global fixe (toutes pages, y compris Accueil) — position:fixed
    plutôt qu'un élément de flux normal : AppNavbar est déjà fixed/top:0,
    un bandeau "normal" serait donc masqué derrière elle plutôt que de
@@ -58,9 +70,10 @@ export function useCollecteStatus() {
    useCollecteStatus) pour que rien ne se chevauche. Sans indication,
    des pages entières de "—" (voir capture d'écran utilisateur) sont
    indissociables d'une application cassée ; ce bandeau disparaît de
-   lui-même dès que la collecte se termine (poll suivant). */
+   lui-même dès que la collecte se termine OU dès que la plateforme
+   devient utilisable (poll suivant). */
 export default function CollecteBanner({ statut }) {
-  if (!statut?.en_cours) return null;
+  if (!isBandeauVisible(statut)) return null;
 
   const duree = formatDuree(statut.demarree_le);
   const label = SOURCE_LABEL[statut.source] || "Collecte des données en cours";

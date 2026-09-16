@@ -435,11 +435,12 @@ def _classify_result(name, ok, result, failed_sources, empty_sources):
 def main():
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from pipelines.control import clear_cancel, is_cancel_requested
-    from pipelines.progress import set_phase, clear_phase
+    from pipelines.progress import set_phase, clear_phase, clear_quick_ready
 
     started_at = datetime.now()
     _log_json("pipeline_start")
     clear_cancel()  # une éventuelle annulation d'un run précédent ne doit jamais affecter celui-ci
+    clear_quick_ready()  # un run précédent ne doit jamais faire croire la plateforme "prête" avant celui-ci
 
     results = []
     failed_sources = []
