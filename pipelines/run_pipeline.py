@@ -555,6 +555,26 @@ def main():
     if not cancelled:
         set_phase("sources_prioritaires")
         _run_parallel_batch(priority_sources, results, failed_sources, empty_sources)
+        # Modélisation (KPI calculés : Total agences, région la plus
+        # concentrée, taux de pénétration, ratios sectoriels...) — DOIT
+        # tourner ICI, après CMF + FTUSA/CGA/INS/BVMT, jamais avant : c'est
+        # la même cause que le bug FTUSA/CGA (0 KPI extrait, voir
+        # _run_ftusa/_run_cga ci-dessus). L'appel historique, resté dans
+        # extraction/kpi_extraction_pipeline.py::run() (tail de l'étape
+        # CMF), s'exécute alors que CGA/FTUSA n'existent pas encore en
+        # base — Distribution des agences (Total agences, Par région,
+        # Carte réseau national) et le taux de pénétration restaient
+        # vides malgré des données CGA/FTUSA bien présentes. Rejouer
+        # calculated_kpi_extractor.run() ici est sans risque (INSERT ...
+        # ON DUPLICATE KEY UPDATE, voir save_kpi_value) : il écrase juste
+        # avec des valeurs plus completes.
+        from extraction.calculated_kpi_extractor import run as _run_calculated_kpis
+        from database.repository import get_connection as _get_conn
+        _conn_calc = _get_conn()
+        try:
+            _run_calculated_kpis(_conn_calc)
+        finally:
+            _conn_calc.close()
         # Signal "prêt" : CMF (5 ans, 24 sociétés, Takaful narrow inclus) +
         # FTUSA/CGA/INS/BVMT sont là — tout ce dont Aperçu marché/Analyse
         # comparative/Vue par assurance ont besoin. Émis même si une de

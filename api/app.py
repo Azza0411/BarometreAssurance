@@ -162,6 +162,48 @@ def _start_first_run_scrape():
 _start_first_run_scrape()
 
 
+# ── Rattrapage léger des PDF locaux manquants (base déjà remplie) ──────────
+# Distinct de _first_run_scrape_loop ci-dessus (qui ne se déclenche QUE si
+# la base est vide) : ici, la base a DÉJÀ toutes ses métadonnées/KPI, mais
+# le dossier local `_internal/data/` (PDF bruts, utilisés par "PDF
+# collectés %" et les grilles complètes) peut être vide — typiquement
+# après une mise à jour de l'exe (le nouveau build ne réutilise pas
+# l'ancien dossier data/ accumulé au fil des collectes). Sans ce
+# rattrapage, "PDF collectés %" restait bloqué à 0% indéfiniment après
+# une mise à jour, puisque rien ne redéclenche jamais
+# _backfill_missing_local_pdfs tant que la base n'est pas vide (retour
+# utilisateur direct, 2026-09-16). Ne retélécharge QUE les PDF absents
+# pour des documents déjà extraits avec succès (pas de re-scraping, pas
+# de re-extraction KPI) — rapide, sans impact sur des données déjà
+# correctes.
+def _backfill_startup_loop():
+    try:
+        if _database_is_empty():
+            return  # géré par _first_run_scrape_loop ci-dessus
+        from api.routes.gestion_donnees import _collecte_lock, _collecte_state
+        with _collecte_lock:
+            if _collecte_state["en_cours"]:
+                return  # une collecte (auto ou manuelle) s'en occupe déjà
+        from database.repository import get_document_ids_with_kpi
+        from extraction.kpi_extraction_pipeline import _backfill_missing_local_pdfs
+        conn = get_connection()
+        try:
+            already_done = get_document_ids_with_kpi(conn)
+            if already_done:
+                _backfill_missing_local_pdfs(conn, already_done)
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"[rattrapage PDF locaux] Échec : {exc}")
+
+
+def _start_backfill_startup():
+    threading.Thread(target=_backfill_startup_loop, daemon=True).start()
+
+
+_start_backfill_startup()
+
+
 if __name__ == "__main__":
     # use_reloader=False : le rechargeur automatique de Werkzeug (watchdog)
     # respawn un processus enfant qui, sur certaines machines Windows,
