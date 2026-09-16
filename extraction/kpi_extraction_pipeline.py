@@ -174,6 +174,46 @@ KPI_TABLE_LABEL.update(
 )
 
 
+# Nombre de telechargements de rattrapage menes en parallele (voir
+# _backfill_missing_local_pdfs) - retour utilisateur direct 2026-09-16 :
+# "paralleliser le rattrapage des PDF pour accelerer", ce rattrapage etant
+# strictement sequentiel jusqu'ici (jusqu'a ~200 documents deja connus,
+# certains PDF de plusieurs Mo, sans aucun parallelisme). Meme ordre de
+# grandeur que CMF_WORKERS (pipelines/cmf_pipeline.py) : assez pour un vrai
+# gain, pas assez pour risquer de faire reagir le serveur CMF.
+BACKFILL_WORKERS = 8
+
+
+def _backfill_one_document(code, annee, nom_pdf, lien):
+    """Telecharge et sauvegarde localement UN document (sans reparser) —
+    borne dans le temps via un thread daemon (meme motif que
+    _process_one_document_with_watchdog) - constate en conditions reelles
+    le 2026-09-16 : ce telechargement peut rester bloque bien au-dela des
+    30s+3 tentatives attendues de _get_with_retries (ex: connexion qui ne
+    repond jamais sans jamais expirer cote socket). Renvoie True si
+    sauvegarde, False sinon (echec ou delai depasse - deja journalise)."""
+    result_q = queue.Queue(maxsize=1)
+
+    def _target():
+        try:
+            response = _get_with_retries(lien, timeout=30)
+            _save_cmf_pdf_local(code, nom_pdf, response.content)
+            result_q.put(("ok", None))
+        except Exception as exc:
+            result_q.put(("error", exc))
+
+    threading.Thread(target=_target, daemon=True).start()
+    try:
+        kind, exc = result_q.get(timeout=DOCUMENT_HARD_TIMEOUT_S)
+    except queue.Empty:
+        print(f"  [WARN] Rattrapage PDF local : {code} {annee} delai de {DOCUMENT_HARD_TIMEOUT_S}s depasse, document saute.")
+        return False
+    if kind == "error":
+        print(f"  [WARN] Rattrapage PDF local echoue pour {code} {annee} : {exc}")
+        return False
+    return True
+
+
 def _backfill_missing_local_pdfs(conn, already_done):
     """Télécharge (SANS reparser) le PDF local manquant de tout document CMF
     déjà extrait avec succès (dans `already_done`) — pas seulement les
@@ -188,9 +228,16 @@ def _backfill_missing_local_pdfs(conn, already_done):
     get_reliability_stats) restait bloque a 0% indefiniment meme apres une
     collecte reussie, puisque cette metrique lit le disque, pas la base.
     Ne re-extrait rien (aucun appel a pdfplumber/aux extracteurs KPI) :
-    juste un telechargement + ecriture fichier, donc rapide meme sur
-    plusieurs centaines de documents deja connus."""
+    juste un telechargement + ecriture fichier.
+
+    Paralleliste sur BACKFILL_WORKERS threads (2026-09-16, retour
+    utilisateur : cette etape, purement sequentielle jusqu'ici, dominait
+    le temps total sur une base deja peuplee sans cache PDF local - chaque
+    telechargement est independant, borne dans le temps (voir
+    _backfill_one_document), donc sans risque a paralleliser comme la
+    synchronisation CMF (pipelines/cmf_pipeline.py::CMF_WORKERS)."""
     from api.services.data_management import local_pdf_path
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     documents = [
         doc for doc in list_all_documents(conn)
@@ -204,38 +251,18 @@ def _backfill_missing_local_pdfs(conn, already_done):
         return 0
     print(f"\n===== RATTRAPAGE PDF LOCAUX MANQUANTS : {len(missing)} document(s) deja extrait(s) =====\n")
     saved = 0
-    for document_id, _source_nom, code, _nom_entreprise, nom_pdf, annee, lien in missing:
-        if is_cancel_requested():
-            print("[ANNULE] Rattrapage PDF locaux interrompu par l'utilisateur.")
-            break
-        # Borne dans le temps via un thread daemon (meme motif que
-        # _process_one_document_with_watchdog) - constate en conditions
-        # reelles le 2026-09-16 : ce telechargement peut rester bloque
-        # bien au-dela des 30s+3 tentatives attendues de _get_with_retries
-        # (ex: connexion qui ne repond jamais sans jamais expirer cote
-        # socket), gelant tout le rattrapage - donc toute la collecte -
-        # sur UN SEUL document, malgre le timeout deja passe a
-        # _get_with_retries.
-        result_q = queue.Queue(maxsize=1)
-
-        def _target(lien=lien, code=code, nom_pdf=nom_pdf):
-            try:
-                response = _get_with_retries(lien, timeout=30)
-                _save_cmf_pdf_local(code, nom_pdf, response.content)
-                result_q.put(("ok", None))
-            except Exception as exc:
-                result_q.put(("error", exc))
-
-        threading.Thread(target=_target, daemon=True).start()
-        try:
-            kind, exc = result_q.get(timeout=DOCUMENT_HARD_TIMEOUT_S)
-        except queue.Empty:
-            print(f"  [WARN] Rattrapage PDF local : {code} {annee} delai de {DOCUMENT_HARD_TIMEOUT_S}s depasse, document saute.")
-            continue
-        if kind == "error":
-            print(f"  [WARN] Rattrapage PDF local echoue pour {code} {annee} : {exc}")
-            continue
-        saved += 1
+    workers = min(BACKFILL_WORKERS, len(missing))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {}
+        for document_id, _source_nom, code, _nom_entreprise, nom_pdf, annee, lien in missing:
+            if is_cancel_requested():
+                print("[ANNULE] Rattrapage PDF locaux interrompu par l'utilisateur (nouvelles soumissions arretees).")
+                break
+            future = pool.submit(_backfill_one_document, code, annee, nom_pdf, lien)
+            futures[future] = (code, annee)
+        for future in as_completed(futures):
+            if future.result():
+                saved += 1
     print(f"===== RATTRAPAGE TERMINE : {saved}/{len(missing)} PDF local(aux) sauvegarde(s) =====\n")
     return saved
 
