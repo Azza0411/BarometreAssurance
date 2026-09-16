@@ -64,6 +64,13 @@ export default function CollecteBanner({ statut }) {
 
   const duree = formatDuree(statut.demarree_le);
   const label = SOURCE_LABEL[statut.source] || "Collecte des données en cours";
+  // Message d'étape (scraping, calcul des KPI...) affiché en plus du
+  // libellé de source — retour utilisateur direct 2026-09-16 : "on voit
+  // que le scraping a commencé, ensuite on voit que le calcul des KPI a
+  // également commencé" — un "collecte en cours" générique ne dit rien de
+  // la progression réelle pendant l'initialisation (voir
+  // pipelines/progress.py, statut.phase_label vient de là).
+  const etape = statut.phase_label;
 
   return (
     <div style={{
@@ -80,6 +87,9 @@ export default function CollecteBanner({ statut }) {
       <span>
         {label}
         {duree && <span style={{ color: "rgba(255,255,255,.6)" }}> · {duree}</span>}
+        {etape && (
+          <span style={{ color: Y, fontWeight: 700 }}> — {etape}</span>
+        )}
         {" — "}
         <span style={{ color: "rgba(255,255,255,.75)" }}>
           certaines pages peuvent afficher des données incomplètes pendant ce temps.

@@ -64,11 +64,19 @@ def _last_pipeline_end_from_log():
 
 def _run_pipeline_background():
     from pipelines.run_pipeline import main as pipeline_main
+    from pipelines.progress import clear_phase
     try:
         pipeline_main()
     except Exception as exc:
         print(f"[gestion_donnees] échec collecte : {exc}")
     finally:
+        # Filet de sécurité : main() efface déjà la phase à la fin de son
+        # déroulement normal, mais une exception NON prévue avant ce point
+        # (plutôt qu'une source individuelle en échec, déjà capturée par
+        # run_with_retry) laisserait sinon le dernier message de phase
+        # affiché pour toujours, alors que la collecte est bel et bien
+        # terminée (en_cours repasse à False juste en dessous).
+        clear_phase()
         with _collecte_lock:
             _collecte_state["en_cours"] = False
             _collecte_state["annulation_demandee"] = False
@@ -123,18 +131,22 @@ def annuler_collecte():
 
 @bp.route("/api/gestion-donnees/statut-collecte")
 def statut_collecte():
+    from pipelines.progress import get_phase
     with _collecte_lock:
         en_cours = _collecte_state["en_cours"]
         demarree_le = _collecte_state["demarree_le"]
         annulation_demandee = _collecte_state.get("annulation_demandee", False)
         source = _collecte_state.get("source")
     derniere = _last_pipeline_end_from_log()
+    phase = get_phase() if en_cours else {"code": None, "label": None}
     return jsonify({
         "en_cours": en_cours,
         "demarree_le": demarree_le,
         "annulation_demandee": annulation_demandee,
         "source": source,
         "derniere_execution": derniere,
+        "phase": phase["code"],
+        "phase_label": phase["label"],
     })
 
 

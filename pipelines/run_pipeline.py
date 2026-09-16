@@ -435,6 +435,7 @@ def _classify_result(name, ok, result, failed_sources, empty_sources):
 def main():
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from pipelines.control import clear_cancel, is_cancel_requested
+    from pipelines.progress import set_phase, clear_phase
 
     started_at = datetime.now()
     _log_json("pipeline_start")
@@ -474,6 +475,7 @@ def main():
         cancelled = True
 
     if not cancelled:
+        set_phase("grilles")
         parallel_results = {}
         with ThreadPoolExecutor(max_workers=min(len(parallel_sources), 6)) as pool:
             futures = {pool.submit(run_with_retry, name, func): name for name, func in parallel_sources}
@@ -490,12 +492,17 @@ def main():
 
     # Annulée : on saute les étapes annexes (qualité/veille), pas la peine de
     # les faire porter sur un jeu de sources incomplet.
+    if not cancelled:
+        set_phase("qualite")
     quality = _check_quality() if not cancelled else None
+    if not cancelled:
+        set_phase("veille")
     veille = _run_veille() if not cancelled else None
     if not cancelled:
         _save_notifications(results, failed_sources, quality, veille)
     ended_at = datetime.now()
     report_path = _write_html_report(results, quality, started_at, ended_at)
+    clear_phase()
 
     _log_json(
         "pipeline_end",

@@ -26,6 +26,7 @@ from scraping.cmf_portal_scraper import CMFPortalScraper
 from config.company_registry import COMPANY_REGISTRY
 from extraction.kpi_extraction_pipeline import run as run_kpi_extraction
 from pipelines.control import is_cancel_requested
+from pipelines.progress import set_phase
 
 # Nombre de navigateurs Chrome headless lancés en parallèle pour la
 # synchronisation CMF (24 sociétés) — chacun traite un sous-ensemble
@@ -146,9 +147,11 @@ def sync_documents(headless=True):
 
 def main(headless=True):
     print("\n===== DEBUT DU PIPELINE CMF =====\n")
+    set_phase("scraping")
     sync_summary = sync_documents(headless=headless)
     if is_cancel_requested():
         return {"sync": sync_summary, "kpi": None}
+    set_phase("extraction_kpi")
     kpi_summary = run_kpi_extraction()
     return {"sync": sync_summary, "kpi": kpi_summary}
 
