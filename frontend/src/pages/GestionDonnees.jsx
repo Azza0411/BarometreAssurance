@@ -138,6 +138,16 @@ function CollecteBar() {
   const derniere = statut?.derniere_execution;
   const enCours = statut?.en_cours;
   const annulationDemandee = statut?.annulation_demandee;
+  // Distinct de `enCours` seul : une fois les données récentes prêtes
+  // (voir pipelines/progress.py::mark_quick_ready), le pipeline continue
+  // en tâche de fond (complément de l'historique, plusieurs heures avec
+  // l'OCR) mais la plateforme est déjà utilisable. Sans cette
+  // distinction, cette page affichait "Collecte en cours…" pendant TOUTE
+  // la durée du complément d'historique, sans jamais dire que
+  // l'essentiel était déjà disponible — retour utilisateur direct
+  // 2026-09-16 : "ça a l'air de ne jamais se terminer !!!".
+  const donneesRecentesPretes = statut?.donnees_recentes_pretes;
+  const phaseLabel = statut?.phase_label;
 
   return (
     <Card style={{ padding: "14px 20px" }}>
@@ -151,7 +161,17 @@ function CollecteBar() {
             {enCours ? (
               annulationDemandee
                 ? <span>Annulation en cours — arrêt au prochain document/société traité…</span>
-                : <span>Collecte en cours — seuls les documents nouveaux ou jamais traités sont extraits…</span>
+                : donneesRecentesPretes ? (
+                  <span>
+                    <span style={{ color: "#16A34A", fontWeight: 700 }}>Données récentes disponibles</span>
+                    {" — la plateforme est utilisable. "}
+                    Complément de l'historique en arrière-plan
+                    {phaseLabel && <span style={{ color: "#9CA3AF" }}> ({phaseLabel})</span>}
+                    {" — peut prendre plusieurs heures selon le nombre de documents restants."}
+                  </span>
+                ) : (
+                  <span>Collecte en cours{phaseLabel ? ` — ${phaseLabel}` : " — seuls les documents nouveaux ou jamais traités sont extraits…"}</span>
+                )
             ) : derniere ? (
               <span>
                 Dernière exécution : <b>{derniere.ts?.replace("T", " ").slice(0, 16)}</b>
@@ -181,7 +201,9 @@ function CollecteBar() {
             onMouseEnter={e => !(enCours || lancement) && (e.currentTarget.style.background = ACCENT_BG)}
             onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
             {(enCours || lancement) && <Spinner />}
-            {enCours ? "Collecte en cours…" : "Lancer une nouvelle collecte"}
+            {enCours
+              ? (donneesRecentesPretes ? "Historique en cours de complément…" : "Collecte en cours…")
+              : "Lancer une nouvelle collecte"}
           </button>
         </div>
       </div>
