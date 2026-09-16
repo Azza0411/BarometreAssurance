@@ -208,12 +208,34 @@ def _backfill_missing_local_pdfs(conn, already_done):
         if is_cancel_requested():
             print("[ANNULE] Rattrapage PDF locaux interrompu par l'utilisateur.")
             break
+        # Borne dans le temps via un thread daemon (meme motif que
+        # _process_one_document_with_watchdog) - constate en conditions
+        # reelles le 2026-09-16 : ce telechargement peut rester bloque
+        # bien au-dela des 30s+3 tentatives attendues de _get_with_retries
+        # (ex: connexion qui ne repond jamais sans jamais expirer cote
+        # socket), gelant tout le rattrapage - donc toute la collecte -
+        # sur UN SEUL document, malgre le timeout deja passe a
+        # _get_with_retries.
+        result_q = queue.Queue(maxsize=1)
+
+        def _target(lien=lien, code=code, nom_pdf=nom_pdf):
+            try:
+                response = _get_with_retries(lien, timeout=30)
+                _save_cmf_pdf_local(code, nom_pdf, response.content)
+                result_q.put(("ok", None))
+            except Exception as exc:
+                result_q.put(("error", exc))
+
+        threading.Thread(target=_target, daemon=True).start()
         try:
-            response = _get_with_retries(lien, timeout=30)
-            _save_cmf_pdf_local(code, nom_pdf, response.content)
-            saved += 1
-        except Exception as exc:
+            kind, exc = result_q.get(timeout=DOCUMENT_HARD_TIMEOUT_S)
+        except queue.Empty:
+            print(f"  [WARN] Rattrapage PDF local : {code} {annee} delai de {DOCUMENT_HARD_TIMEOUT_S}s depasse, document saute.")
+            continue
+        if kind == "error":
             print(f"  [WARN] Rattrapage PDF local echoue pour {code} {annee} : {exc}")
+            continue
+        saved += 1
     print(f"===== RATTRAPAGE TERMINE : {saved}/{len(missing)} PDF local(aux) sauvegarde(s) =====\n")
     return saved
 
