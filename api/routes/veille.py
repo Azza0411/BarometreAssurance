@@ -577,19 +577,30 @@ def _build_veille():
 def sync_new_items():
     """Scrape actualités + veille réglementaire et diffe contre les tables
     *_vues (database.repository) pour détecter ce qui est réellement
-    nouveau depuis le dernier passage. Appelé UNIQUEMENT par
-    pipelines/run_pipeline.py (jamais par une route HTTP) : /api/actualites
-    et /api/veille-reglementaire restent des scrapes live à cache 1h,
-    inchangés - cette fonction alimente seulement la cloche de notification.
-    Renvoie {"actualites": [...nouvelles...], "reglementation": [...nouveaux...]}."""
+    nouveau depuis le dernier passage. Appelé par
+    pipelines/run_pipeline.py ET par le watcher de fond démarré au
+    lancement de l'app (api/app.py::_start_veille_watcher) pour alimenter
+    la cloche de notification.
+
+    Alimente AUSSI le cache mémoire de /api/actualites et
+    /api/veille-reglementaire avec le résultat de CE MÊME scrape (retour
+    utilisateur direct 2026-09-16 : les pages Veille semblaient lentes à
+    l'ouverture) — sans ça, ce scrape tournait déjà automatiquement au
+    démarrage (_start_veille_watcher s'exécute immédiatement, avant même
+    qu'un utilisateur clique sur une page Veille) mais son résultat était
+    jeté après le diff, forçant un SECOND scrape complet, identique, au
+    premier clic utilisateur sur ces pages. Renvoie {"actualites":
+    [...nouvelles...], "reglementation": [...nouveaux...]}."""
     from database.repository import get_connection, diff_and_mark_actualites, diff_and_mark_reglementation  # import local, évite un cycle
 
     conn = get_connection()  # connexion dédiée à cette synchro
     try:
-        actus = _scrape_ilboursa() + _scrape_atlas()  # re-scrape complet, sans cache
+        actus = _build_actualites()  # même forme (dédoublonnée/triée) que /api/actualites
+        _SCRAPE_CACHE["actualites"] = (time.time(), actus)
         nouvelles_actus = diff_and_mark_actualites(conn, actus)  # marque les nouveaux
 
         regls = _build_veille()  # re-scrape complet des 4 sources
+        _SCRAPE_CACHE["veille_reglementaire"] = (time.time(), regls)
         nouveaux_regls = diff_and_mark_reglementation(conn, regls)  # marque les nouveaux
 
         return {"actualites": nouvelles_actus, "reglementation": nouveaux_regls}
@@ -601,28 +612,33 @@ def sync_new_items():
 # Routes Flask (plomberie HTTP — pas du scraping, sert le cache/résultats)
 # ------------------------------------------------------------------ #
 
+def _build_actualites():
+    # Factorisée hors de get_actualites() : sync_new_items() (appelée par
+    # le watcher de fond au démarrage, voir plus bas) doit produire EXACTEMENT
+    # la même forme (dédoublonnée par url, triée par date décroissante) pour
+    # préchauffer le cache de cette route sans décalage de format.
+    results = _scrape_ilboursa() + _scrape_atlas()
+    seen    = set()
+    deduped = []
+    for a in results:
+        k = a["url"]
+        if k not in seen:
+            seen.add(k)
+            deduped.append(a)
+
+    def sort_key(a):
+        p = a["date"].split("/")
+        if len(p) == 3:
+            return f"{p[2]}{p[1]}{p[0]}"
+        return a["date"] + "0101"
+
+    deduped.sort(key=sort_key, reverse=True)
+    return deduped
+
+
 @bp.route("/api/actualites", methods=["GET"])
 def get_actualites():
-    def _scrape():
-        results = _scrape_ilboursa() + _scrape_atlas()
-        seen    = set()
-        deduped = []
-        for a in results:
-            k = a["url"]
-            if k not in seen:
-                seen.add(k)
-                deduped.append(a)
-
-        def sort_key(a):
-            p = a["date"].split("/")
-            if len(p) == 3:
-                return f"{p[2]}{p[1]}{p[0]}"
-            return a["date"] + "0101"
-
-        deduped.sort(key=sort_key, reverse=True)
-        return deduped
-
-    return jsonify(_cached("actualites", _scrape))
+    return jsonify(_cached("actualites", _build_actualites))
 
 
 @bp.route("/api/veille-reglementaire", methods=["GET"])
