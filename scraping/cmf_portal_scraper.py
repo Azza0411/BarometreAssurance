@@ -6,7 +6,7 @@ Automatise :
   1. la sélection d'une société via le widget dynamique "Chosen",
   2. le clic sur "Rechercher",
   3. l'extraction des lignes de résultats (année / type de document / lien PDF),
-  4. le filtrage des états financiers annuels au 31/12 sur les 10 dernières années,
+  4. le filtrage des états financiers annuels au 31/12 sur les 5 dernières années,
   5. l'enregistrement des métadonnées (nom, année, lien) en base MySQL
      (tables `societes` et `documents` — aucun PDF n'est téléchargé sur disque).
 """
@@ -40,6 +40,10 @@ from database.repository import (
 
 CMF_URL = "https://www.cmf.tn/consultation-des-tats-financier-des-soci-t-s-faisant-ape"
 SELECT_FIELD_ID = "edit-field-societesape-value"  # id du menu de sélection
+
+# Nombre d'années d'historique collectées par société (10 -> 5 le
+# 2026-09-16, retour utilisateur direct : alléger la collecte).
+YEARS_WINDOW = 5
 
 # Le champ "période" contient par exemple "Etats financiers au 31/12" ou
 # "Etats financiers intermédiaires au 30/06". On ne garde que les annuels au 31/12.
@@ -99,11 +103,15 @@ class CMFPortalScraper:
         self.driver.set_script_timeout(30)
         self.wait = WebDriverWait(self.driver, 20)  # attente max 20s
 
-        # Fenêtre des "10 dernières années" : l'année en cours n'a en général pas
-        # encore d'état financier publié (ex: en 2026, on part de 2015 pour
-        # obtenir les 10 derniers exercices réellement disponibles, 2015-2025).
+        # Fenêtre des "5 dernières années" (réduite de 10 à 5 le 2026-09-16,
+        # retour utilisateur direct : alléger la collecte, moins de PDF -
+        # notamment les plus anciens, souvent les plus mal scannés/lents en
+        # OCR - à télécharger et extraire) : l'année en cours n'a en général
+        # pas encore d'état financier publié (ex: en 2026, on part de 2020
+        # pour obtenir les 5 derniers exercices réellement disponibles,
+        # 2020-2025).
         current_year = datetime.now().year  # année actuelle
-        self.min_year = current_year - 11  # borne basse
+        self.min_year = current_year - YEARS_WINDOW - 1  # borne basse
         self.max_year = current_year  # borne haute
 
         ensure_database()  # crée la base si besoin
@@ -269,11 +277,11 @@ class CMFPortalScraper:
             return False  # document intermédiaire, exclu
         return bool(ANNUAL_31_12_PATTERN.search(text))  # vrai si "31/12" présent
 
-    # ------------------  Fonction 10 : parcourt toutes les pages, applique le filtre, garde 10-11 ans -------------------
+    # ------------------  Fonction 10 : parcourt toutes les pages, applique le filtre, garde 5-6 ans -------------------
     def collect_annual_statements(self, max_pages=30):
         """Parcourt toutes les pages de résultats et renvoie {annee: pdf_url}
-        pour les états financiers annuels au 31/12 dans la fenêtre des 10
-        dernières années."""
+        pour les états financiers annuels au 31/12 dans la fenêtre des
+        YEARS_WINDOW dernières années."""
         collected = {}  # résultat : année -> lien
         for _ in range(max_pages):  # garde-fou anti-boucle
             for entry in self._parse_current_page():  # lignes de la page
@@ -320,7 +328,7 @@ class CMFPortalScraper:
 
     # ------------------  Fonction 12 : déduplique et enregistre les métadonnées en base -------------------
     def extract_and_store(self, company_key):
-        print("[STEP] Extraction des lignes et enregistrement en base (10 dernières années)...")  # trace console
+        print(f"[STEP] Extraction des lignes et enregistrement en base ({YEARS_WINDOW} dernières années)...")  # trace console
         statements = self.collect_annual_statements()  # {annee: pdf_url} filtré
 
         cmf_name = self.registry[company_key]["cmf_name"]  # nom de la société

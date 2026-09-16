@@ -2,7 +2,7 @@
 Pipeline complet CMF, en deux étapes :
 
   1. Synchronisation : pour chaque société du registre, recherche les états
-     financiers annuels au 31/12 des 10 dernières années et enregistre les
+     financiers annuels au 31/12 des 5 dernières années et enregistre les
      métadonnées manquantes (nom, année, lien) en base MySQL (tables `cmf`
      et `documents` — aucun PDF n'est téléchargé sur disque à cette étape).
   2. Extraction KPI : pour chaque document en base, extrait "Capitaux
