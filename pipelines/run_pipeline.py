@@ -48,6 +48,10 @@ def _extract_doc_count(result):
         return result
     if isinstance(result, dict) and isinstance(result.get("sync"), dict):
         return sum(v for v in result["sync"].values() if isinstance(v, int))
+    if isinstance(result, dict) and isinstance(result.get("sync"), int):
+        # FTUSA/CGA (voir _run_ftusa/_run_cga) : sync_documents() renvoie
+        # directement un compte (pas de societe par societe comme CMF).
+        return result["sync"]
     if isinstance(result, dict) and "ok" in result and "total" in result:
         # Grille complète (tableau_pipeline_service_*.process_all) : {"total",
         # "ok", "partiel", "page_introuvable", "pdf_absent", "erreur"} - le
@@ -150,13 +154,47 @@ def _run_takaful_ventilation_full():
 
 
 def _run_ftusa():
+    """Synchronisation PUIS extraction KPI FTUSA, dans cet ordre et dans le
+    MÊME appel — contrairement à CMF (voir _run_cmf/cmf_pipeline.py), dont
+    l'extraction KPI appelle en fin de course
+    extraction.kpi_extraction_pipeline._run_ftusa/_run_cga en pensant
+    trouver les documents déjà synchronisés (c'était vrai avant la
+    restructuration du 2026-09-16, quand toutes les sources tournaient
+    dans UN SEUL lot parallèle). Depuis que CMF passe seul et en premier
+    (séquentiel), cet appel s'exécute alors que FTUSA/CGA n'ont pas encore
+    la moindre ligne dans `documents` — 0 document trouvé, 0 KPI extrait,
+    silencieusement (pas d'erreur, juste un résumé vide) : régression
+    découverte le 2026-09-16 sur une base fraîchement réinitialisée (page
+    Aperçu marché entièrement à "Données non publiées"). Corrigé en
+    enchaînant nous-mêmes sync puis extraction ici, au bon moment de la
+    séquence (voir PRIORITY_SOURCE_NAMES : FTUSA tourne après CMF)."""
     from scraping.ftusa_scraper import sync_documents
-    return sync_documents()
+    from extraction.kpi_extraction_pipeline import _run_ftusa as _extract_ftusa
+    from database.repository import get_connection, get_document_ids_with_kpi
+
+    sync_count = sync_documents()
+    conn = get_connection()
+    try:
+        kpi_stats = _extract_ftusa(conn, already_done=get_document_ids_with_kpi(conn))
+    finally:
+        conn.close()
+    return {"sync": sync_count, "kpi": kpi_stats}
 
 
 def _run_cga():
+    """Synchronisation PUIS extraction KPI CGA — même correctif que
+    _run_ftusa ci-dessus, même cause."""
     from scraping.cga_scraper import sync_documents
-    return sync_documents()
+    from extraction.kpi_extraction_pipeline import _run_cga as _extract_cga
+    from database.repository import get_connection, get_document_ids_with_kpi
+
+    sync_count = sync_documents()
+    conn = get_connection()
+    try:
+        kpi_stats = _extract_cga(conn, already_done=get_document_ids_with_kpi(conn))
+    finally:
+        conn.close()
+    return {"sync": sync_count, "kpi": kpi_stats}
 
 
 def _run_ins():
