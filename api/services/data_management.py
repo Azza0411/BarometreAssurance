@@ -632,7 +632,16 @@ def locate_source_page(conn, code, annee, tableau):
             page_num = _find_page_matching_grid_values(path, grid)
         except Exception:
             page_num = None
-    save_cached_tableau_page(conn, doc_id, tableau, page_num)
+    # Ne met en cache un échec (None) QUE si le PDF était réellement
+    # disponible pour la recherche — sinon "introuvable" resterait figé
+    # pour toujours (voir TABLEAU_PAGE_MISS) même une fois le PDF local
+    # redevenu présent (ex: après un rattrapage — voir
+    # api/app.py::_backfill_startup_loop). Découvert le 2026-09-17 :
+    # STAR/2025/annexe12 était resté "introuvable" en cache depuis un
+    # appel fait pendant que le cache PDF local avait été vidé par un
+    # rebuild PyInstaller, bien après que le PDF ait été retéléchargé.
+    if path:
+        save_cached_tableau_page(conn, doc_id, tableau, page_num)
     return page_num
 
 
