@@ -66,6 +66,18 @@ def _handle_value_error(exc):
 # lanceur portable "un clic" : voir docs/packaging_portable.md.
 _FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
 
+# Le module `mimetypes` de Python (utilisé par send_from_directory pour
+# deviner le Content-Type par extension) ne connaît pas `.mjs` sur cette
+# machine (dépend du registre Windows / de la config système) — sans cet
+# enregistrement explicite, le worker PDF.js (pdf.worker.min-*.mjs) était
+# servi en `text/plain`, ce que le navigateur refuse d'exécuter comme
+# module JS ("Strict MIME type checking"), cassant TOUT le visualiseur PDF
+# de l'application (Qualité des données, Correction manuelle...) —
+# constaté 2026-09-17, "Cellule surlignée" affiché mais la page PDF
+# elle-même restait vide.
+import mimetypes
+mimetypes.add_type("text/javascript", ".mjs")
+
 if os.path.isdir(_FRONTEND_DIST):
     @app.route("/", defaults={"path": ""})
     @app.route("/<path:path>")
