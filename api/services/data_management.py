@@ -1035,6 +1035,115 @@ def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, r
     return row, len(headers)
 
 
+def _write_multi_year_grid_block(ws, row, grids_by_annee, row_order=_ROW_DISPLAY_ORDER, row_order_fallback=None, preserve_order=False):
+    """Grille complète FUSIONNANT toutes les années en un seul tableau —
+    UNE ligne par poste, les années groupées en en-têtes de colonnes côte
+    à côte (comme les blocs KPI simples), plutôt qu'un tableau complet
+    répété une fois par année (empilé verticalement). Corrige la
+    structuration jugée non lisible sur plusieurs années (retour
+    utilisateur direct, 2026-09-17 : "la mise en place des tableaux comme
+    ça pour beaucoup d'années n'est pas structuré" — comparer une ligne
+    d'une année à l'autre imposait de faire défiler tout le tableau de
+    l'année précédente).
+
+    Chaque année garde ses PROPRES colonnes (elles varient réellement
+    d'une année à l'autre pour un même tableau — ex. Bilan Actif de STAR :
+    47 lignes en 2022, 19 en 2025) : une ligne absente une année donnée
+    laisse simplement ses cellules vides pour cette année, sans décaler ni
+    supprimer les colonnes des autres années."""
+    annees = sorted(grids_by_annee.keys())
+    grids = {a: grids_by_annee[a] for a in annees if grids_by_annee[a] and grids_by_annee[a].get("lignes")}
+    if not grids:
+        return row, 1
+
+    subtitle_cell = ws.cell(row=row, column=1, value=f"{annees[0]}–{annees[-1]} — tableau complet, toutes années")
+    subtitle_cell.font = Font(italic=True, size=10, color=DARK, name="Calibri")
+    row += 1
+
+    # Ordre des lignes : référentiel canonique si dispo (Annexe 12/13),
+    # sinon ordre de PREMIÈRE apparition en balayant les années dans
+    # l'ordre chronologique (préserve l'ordre réel du PDF le plus ancien
+    # disponible, complété par les postes qui n'apparaissent que plus tard).
+    fallback = row_order_fallback if row_order_fallback is not None else len(row_order)
+    if preserve_order:
+        all_labels = []
+        seen = set()
+        for a in annees:
+            g = grids.get(a)
+            if not g:
+                continue
+            for label in g["lignes"]:
+                if label not in seen:
+                    seen.add(label)
+                    all_labels.append(label)
+    else:
+        all_labels_set = {label for g in grids.values() for label in g["lignes"]}
+        all_labels = [label for label, _ in sorted(
+            ((label, None) for label in all_labels_set),
+            key=lambda kv: (row_order.get(kv[0], fallback), kv[0]),
+        )]
+
+    header_style = dict(
+        fill=PatternFill(start_color=_REF_HEADER, end_color=_REF_HEADER, fill_type="solid"),
+        font=Font(color=_REF_HEADER_TEXT, bold=True, name="Arial", size=10),
+        alignment=Alignment(horizontal="center", vertical="center"),
+    )
+    # Ligne 1 : "LIBELLÉ" (fusionné verticalement sur les 2 lignes d'en-tête)
+    # + un groupe fusionné HORIZONTALEMENT par année, sur la portée réelle
+    # de SES colonnes. Ligne 2 : le nom propre de chaque colonne de chaque
+    # année (ex. "Net"/"Net (N-1)", ou les branches Annexe 13).
+    ws.merge_cells(start_row=row, start_column=1, end_row=row + 1, end_column=1)
+    cell = ws.cell(row=row, column=1, value="LIBELLÉ")
+    cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
+    cell.border = _thin_border()
+    ws.cell(row=row + 1, column=1).border = _thin_border()
+
+    col = 2
+    year_col_span = {}  # annee -> (col_debut, [colonnes])
+    for a in annees:
+        g = grids.get(a)
+        cols = g["colonnes"] if g else []
+        if not cols:
+            continue
+        year_col_span[a] = (col, cols)
+        end_col = col + len(cols) - 1
+        ws.merge_cells(start_row=row, start_column=col, end_row=row, end_column=end_col)
+        for c in range(col, end_col + 1):
+            cell = ws.cell(row=row, column=c, value=str(a) if c == col else None)
+            cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
+            cell.border = _thin_border()
+        for i, colname in enumerate(cols):
+            cell = ws.cell(row=row + 1, column=col + i, value=colname.upper())
+            cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
+            cell.border = _thin_border()
+        col = end_col + 1
+    last_col = max(col - 1, 2)
+    row += 2
+
+    for i, label in enumerate(all_labels):
+        fill = PatternFill(start_color=_REF_ZEBRA, end_color=_REF_ZEBRA, fill_type="solid") if i % 2 == 1 else None
+        cell = ws.cell(row=row, column=1, value=(label or "").upper())
+        cell.border = _thin_border()
+        cell.font = Font(name="Arial", size=10, color=DARK)
+        cell.alignment = Alignment(horizontal="left", vertical="center")
+        if fill:
+            cell.fill = fill
+        for a, (col_debut, cols) in year_col_span.items():
+            values = grids[a]["lignes"].get(label, {}) if a in grids else {}
+            for j, colname in enumerate(cols):
+                val = values.get(colname)
+                c = ws.cell(row=row, column=col_debut + j, value=val)
+                c.number_format = "#,##0"
+                c.border = _thin_border()
+                c.font = Font(name="Arial", size=10, color=DARK)
+                c.alignment = Alignment(horizontal="center", vertical="center")
+                if fill:
+                    c.fill = fill
+        row += 1
+    row += 2
+    return row, last_col
+
+
 def _write_narrow_fallback_block(ws, row, annee, narrow_annexe13):
     vals = {kpi: v[annee] for kpi, v in narrow_annexe13.items() if annee in v}
     ws.cell(
@@ -1290,7 +1399,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                 [1 + len({a for kpi_annees in soc["blocs"][name].values() for a in kpi_annees.keys()})
                  for name in blocs_a_rendre] +
                 [n for key in grids_a_rendre
-                 for n in (1 + max((len(g["colonnes"]) for g in soc["grids"].get(key, {}).values() if g and g.get("lignes")), default=0), 2)]
+                 for n in (1 + sum(len(g["colonnes"]) for g in soc["grids"].get(key, {}).values() if g and g.get("lignes")), 2)]
             )
 
         def _write_narrow_block(ws, row, display_tableau, bloc):
@@ -1326,8 +1435,13 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             return row, len(cols)
 
         def _write_grid_section(ws, row, n_cols, key, grids):
+            """UNE seule grille fusionnant toutes les années disponibles
+            (voir _write_multi_year_grid_block) — pas un tableau complet
+            répété par année. Si UNE SEULE année est disponible, le
+            résultat est visuellement identique à l'ancien rendu par
+            année (aucune perte pour le cas le plus simple)."""
             spec = _FULL_GRID_SPECS[key]
-            annees_a_rendre = sorted(grids.keys())
+            annees_a_rendre = sorted(a for a, g in grids.items() if g and g.get("lignes"))
             if not annees_a_rendre:
                 return row, n_cols
             ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=max(n_cols, 2))
@@ -1335,17 +1449,12 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             title_cell.font = Font(bold=True, size=12, color=DARK, name="Calibri")
             title_cell.alignment = Alignment(horizontal="center", vertical="center")
             row += 1
-            for annee in annees_a_rendre:
-                grid = grids[annee]
-                if grid and grid.get("lignes"):
-                    row, used_cols = _write_full_grid_block(
-                        ws, row, annee, grid,
-                        row_order=spec["row_order"], row_order_fallback=spec["row_order_fallback"],
-                        preserve_order=spec["preserve_order"],
-                    )
-                else:
-                    row, used_cols = _write_narrow_fallback_block(ws, row, annee, {})
-                n_cols = max(n_cols, used_cols)
+            row, used_cols = _write_multi_year_grid_block(
+                ws, row, grids,
+                row_order=spec["row_order"], row_order_fallback=spec["row_order_fallback"],
+                preserve_order=spec["preserve_order"],
+            )
+            n_cols = max(n_cols, used_cols)
             return row, n_cols
 
         def _write_logo_and_finish(ws, code, n_cols):
