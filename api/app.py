@@ -162,20 +162,29 @@ def _start_first_run_scrape():
 _start_first_run_scrape()
 
 
-# ── Rattrapage léger des PDF locaux manquants (base déjà remplie) ──────────
+# ── Rattrapage léger au démarrage (base déjà remplie) ──────────────────────
 # Distinct de _first_run_scrape_loop ci-dessus (qui ne se déclenche QUE si
-# la base est vide) : ici, la base a DÉJÀ toutes ses métadonnées/KPI, mais
-# le dossier local `_internal/data/` (PDF bruts, utilisés par "PDF
-# collectés %" et les grilles complètes) peut être vide — typiquement
-# après une mise à jour de l'exe (le nouveau build ne réutilise pas
-# l'ancien dossier data/ accumulé au fil des collectes). Sans ce
-# rattrapage, "PDF collectés %" restait bloqué à 0% indéfiniment après
-# une mise à jour, puisque rien ne redéclenche jamais
-# _backfill_missing_local_pdfs tant que la base n'est pas vide (retour
-# utilisateur direct, 2026-09-16). Ne retélécharge QUE les PDF absents
-# pour des documents déjà extraits avec succès (pas de re-scraping, pas
-# de re-extraction KPI) — rapide, sans impact sur des données déjà
-# correctes.
+# la base est vide) : ici, la base a DÉJÀ des métadonnées/KPI pour la
+# plupart des documents, mais deux cas restent à rattraper automatiquement,
+# sans jamais relancer une vraie collecte (banner, sync FTUSA/CGA/INS/BVMT,
+# grilles) :
+#   1. PDF local manquant pour un document DÉJÀ extrait avec succès
+#      (typiquement après une mise à jour de l'exe — le nouveau build ne
+#      réutilise pas l'ancien dossier data/ accumulé) — sans ça, "PDF
+#      collectés %" restait bloqué à 0% indéfiniment (retour utilisateur
+#      direct, 2026-09-16).
+#   2. Documents CMF qui n'ont JAMAIS eu de KPI extrait avec succès (ex.
+#      AL_AMANAH_TAKAFUL 2022-2025 sur un exe donné dont le cache local a
+#      été vidé avant leur première extraction) — le cas (1) seul ne les
+#      couvre pas, puisqu'ils ne sont pas dans `already_done` (retour
+#      utilisateur direct, 2026-09-17 : "étends le rattrapage automatique
+#      aux documents jamais réussis").
+# `extraction.kpi_extraction_pipeline.run()` (force=False, défaut) couvre
+# déjà les deux : il backfill les PDF de `already_done` PUIS retélécharge/
+# réextrait tout document CMF absent de `already_done` — les documents
+# déjà réussis ne sont jamais retraités, donc ce rattrapage reste rapide
+# une fois la base à jour (seuls les échecs persistants, en général peu
+# nombreux, sont retentés à chaque démarrage).
 def _backfill_startup_loop():
     try:
         if _database_is_empty():
@@ -184,17 +193,10 @@ def _backfill_startup_loop():
         with _collecte_lock:
             if _collecte_state["en_cours"]:
                 return  # une collecte (auto ou manuelle) s'en occupe déjà
-        from database.repository import get_document_ids_with_kpi
-        from extraction.kpi_extraction_pipeline import _backfill_missing_local_pdfs
-        conn = get_connection()
-        try:
-            already_done = get_document_ids_with_kpi(conn)
-            if already_done:
-                _backfill_missing_local_pdfs(conn, already_done)
-        finally:
-            conn.close()
+        from extraction.kpi_extraction_pipeline import run as run_kpi_extraction
+        run_kpi_extraction()
     except Exception as exc:
-        print(f"[rattrapage PDF locaux] Échec : {exc}")
+        print(f"[rattrapage au demarrage] Échec : {exc}")
 
 
 def _start_backfill_startup():
