@@ -1104,15 +1104,17 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
         )]
 
     # Couleur des noms de colonnes en bleu (retour utilisateur direct,
-    # 2026-09-17), fond inchangé — seul le TEXTE des en-têtes de colonne
-    # passe en bleu, pas "LIBELLÉ" ni l'éventuel bandeau année (repères
-    # visuels distincts entre eux).
+    # 2026-09-17, précisé ensuite : "la couleur des CELLULES [...] pas du
+    # texte") — le FOND des cellules d'en-tête de colonne passe en bleu
+    # (texte blanc conservé pour le contraste), pas "LIBELLÉ" ni
+    # l'éventuel bandeau année (repères visuels distincts entre eux).
     header_style = dict(
         fill=PatternFill(start_color=_REF_HEADER, end_color=_REF_HEADER, fill_type="solid"),
         font=Font(color=_REF_HEADER_TEXT, bold=True, name="Arial", size=10),
         alignment=Alignment(horizontal="center", vertical="center"),
     )
-    col_header_font = Font(color="BFDBFE", bold=True, name="Arial", size=10)
+    col_header_fill = PatternFill(start_color="2563EB", end_color="2563EB", fill_type="solid")
+    col_header_font = Font(color=_REF_HEADER_TEXT, bold=True, name="Arial", size=10)
 
     if len(annees) == 1:
         # Une seule année : le titre porte déjà l'année (voir plus haut) —
@@ -1126,8 +1128,9 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
         year_col_span = {a: (2, cols)}
         for i, colname in enumerate(cols):
             cell = ws.cell(row=row, column=2 + i, value=colname.upper())
-            cell.fill, cell.alignment = header_style["fill"], header_style["alignment"]
+            cell.fill = col_header_fill
             cell.font = col_header_font
+            cell.alignment = header_style["alignment"]
             cell.border = _thin_border()
         last_col = max(1 + len(cols), 2)
         row += 1
@@ -1158,8 +1161,9 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
                 cell.border = _thin_border()
             for i, colname in enumerate(cols):
                 cell = ws.cell(row=row + 1, column=col + i, value=colname.upper())
-                cell.fill, cell.alignment = header_style["fill"], header_style["alignment"]
+                cell.fill = col_header_fill
                 cell.font = col_header_font
+                cell.alignment = header_style["alignment"]
                 cell.border = _thin_border()
             col = end_col + 1
         last_col = max(col - 1, 2)
