@@ -184,7 +184,30 @@ function ProfilPays({ data, annee, chartH, winW, famille }) {
       type:"gradient",
       gradient:{ shade:"light", type:"vertical", shadeIntensity:.05, opacityFrom:.25, opacityTo:0, stops:[0,100] },
     },
-    markers: { size:0, hover:{size:5} },
+    // size:0 (pas 3-4 en continu) laisse la ligne lisse sans point apparent
+    // à chaque année — SAUF quand une seule année a une valeur entourée de
+    // `null` des deux côtés (ex: 2021 Takaful, seule année où les 3
+    // opérateurs ont tous déposé — voir _takaful_sector_snapshot) : sans
+    // voisin non-null, ApexCharts ne trace aucune ligne/aire de part et
+    // d'autre et un marker de taille 0 rend ce point totalement invisible,
+    // indistinguable d'une vraie absence de donnée (constaté 2026-09-17).
+    // `discrete` force un marker visible sur CE point précis uniquement.
+    markers: {
+      size: 0,
+      hover: { size: 5 },
+      discrete: [0, 1, 2].flatMap((seriesIndex) => {
+        const key = seriesIndex === 0 ? "vie" : seriesIndex === 1 ? "non_vie" : "total";
+        return evData
+          .map((d, i) => ({ d, i }))
+          .filter(({ d, i }) => {
+            if (d[key] == null) return false;
+            const prevNull = i === 0 || evData[i - 1][key] == null;
+            const nextNull = i === evData.length - 1 || evData[i + 1][key] == null;
+            return prevNull && nextNull;
+          })
+          .map(({ i }) => ({ seriesIndex, dataPointIndex: i, size: 5, strokeColor: "#fff" }));
+      }),
+    },
     dataLabels: { enabled:false },
     xaxis: {
       categories: years,
@@ -388,7 +411,17 @@ function ProfilPays({ data, annee, chartH, winW, famille }) {
           {takaful ? "Évolution des contributions émises (MDT)" : "Évolution des primes émises (MDT) — Vie · Non-Vie"}
         </div>
         <div style={{ flex:1, minHeight:0 }}>
-          <ReactApexChart options={evOpts} series={evSeries} type="area" height="100%"/>
+          {/* key forcé au remontage complet (famille + années réellement
+             sans donnée) : react-apexcharts ne repropage pas fiablement
+             un changement de `options.annotations.xaxis` par simple diff
+             de props (même bug déjà contourné ainsi sur le donut plus bas,
+             `donut-region-...`) — sans ce key, l'annotation "Données non
+             disponibles" reste figée sur l'ÉTAT INITIAL du composant
+             (evData=[] avant la 1re réponse API), affichée sur TOUTES les
+             années au lieu des seules vraiment sans donnée (constaté
+             2026-09-17 : 2021 Takaful, dont le total est bien renseigné en
+             base, restait pourtant marqué "non disponible" à l'écran). */}
+          <ReactApexChart key={`evolution-${famille}-${missingYears.join(",")}`} options={evOpts} series={evSeries} type="area" height="100%"/>
         </div>
       </Card>
 
