@@ -189,9 +189,25 @@ def _assign_columns(clusters, header_x, n_cols):
     l'en-tête est le plus proche en x0 — jamais par position ordinale pure,
     pour ne pas décaler les colonnes suivantes quand une cellule est vide.
     Repli sur l'ordre d'apparition si les en-têtes n'ont pas pu être
-    localisés (`header_x` vide)."""
+    localisés (`header_x` vide).
+
+    Repli POSITIONNEL (i-ème cluster -> i-ème colonne) quand le nombre de
+    clusters trouvés égale exactement le nombre de colonnes attendues —
+    découvert le 2026-09-17 (ATTIJARI, ligne de sous-total AC5 : Amort.=0,
+    Net=1 105 004) : le rapprochement par x0 compare le bord GAUCHE de
+    chaque cluster (`_extract_numeric_clusters`, x0 du 1er jeton) à celui
+    de l'en-tête ; un très GRAND nombre juste après une colonne à "0" (donc
+    bien plus large que sa voisine de gauche) démarre visuellement plus à
+    gauche que sa propre colonne et se retrouve alors plus proche, en x0,
+    de l'en-tête voisin — décalant 2 colonnes l'une sur l'autre alors
+    qu'aucune cellule n'est vide. Quand le compte de clusters correspond
+    exactement au nombre de colonnes, l'ordre de lecture gauche->droite
+    suffit et ne peut pas se tromper ; le rapprochement par x0 reste le
+    seul recours quand une cellule EST vraiment vide (compte différent)."""
     if not header_x:
         return {i: v for i, (v, _x0) in enumerate(clusters) if i < n_cols}
+    if len(clusters) == len(header_x):
+        return {i: v for i, (v, _x0) in enumerate(clusters)}
     result = {}
     for value, x0 in clusters:
         idx = min(range(len(header_x)), key=lambda i: abs(header_x[i] - x0))
