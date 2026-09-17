@@ -1051,12 +1051,13 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, row_order=_ROW_DISPLAY
     47 lignes en 2022, 19 en 2025) : une ligne absente une année donnée
     laisse simplement ses cellules vides pour cette année, sans décaler ni
     supprimer les colonnes des autres années."""
-    annees = sorted(grids_by_annee.keys())
-    grids = {a: grids_by_annee[a] for a in annees if grids_by_annee[a] and grids_by_annee[a].get("lignes")}
+    grids = {a: g for a, g in grids_by_annee.items() if g and g.get("lignes")}
     if not grids:
         return row, 1
+    annees = sorted(grids.keys())
 
-    subtitle_cell = ws.cell(row=row, column=1, value=f"{annees[0]}–{annees[-1]} — tableau complet, toutes années")
+    periode = str(annees[0]) if len(annees) == 1 else f"{annees[0]}–{annees[-1]}"
+    subtitle_cell = ws.cell(row=row, column=1, value=f"{periode} — tableau complet")
     subtitle_cell.font = Font(italic=True, size=10, color=DARK, name="Calibri")
     row += 1
 
@@ -1249,6 +1250,17 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
     # donnée apparaîtrait deux fois, une fois résumée et une fois en
     # entier (source de confusion, retour utilisateur direct).
     superseded_raws = {raw for k in active_full_grid_keys for raw in _TABLEAU_GROUP_TO_RAW.get(k, [])}
+    # "Presentation de la societe" (metadonnees scrapees : adresse,
+    # effectif...) et "Calcul interne" (ratios que NOUS calculons, ROE/
+    # ROA/combine...) ne sont PAS des tableaux du PDF source — jamais
+    # demandes pour cet export, exclus definitivement (retour utilisateur
+    # direct, 2026-09-17 : "je ne vous ai jamais demande de mettre la
+    # presentation de la societe [...] et les ratios calcules en
+    # interne"). "Etat de resultat" EST un vrai tableau PDF mais n'a pas
+    # encore d'extracteur de grille complete (voir TODO plus haut) - en
+    # attendant, exclu ici aussi plutot que d'afficher un sous-ensemble
+    # KPI qui ferait croire, a tort, que c'est le tableau complet.
+    superseded_raws |= {"Presentation de la societe", "Calcul interne", "Etat de resultat (technique / global)"}
 
     conn = get_connection()
     try:
@@ -1484,56 +1496,29 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             # neutraliser un rendu natif d'Excel.
             ws.sheet_view.selection = [Selection(pane="topLeft", activeCell="A1", sqref="A1")]
 
-        # Une seule société sélectionnée ET plus d'un tableau avec du
-        # contenu réel → une feuille PAR TABLEAU plutôt qu'une seule
-        # feuille à rallonge (règle confirmée avec l'utilisatrice,
-        # 2026-09-17). Le nombre de "tableaux avec du contenu" ne peut être
-        # évalué qu'une fois `par_societe` construit (juste au-dessus).
-        split_by_tableau = False
-        if len(par_societe) == 1:
-            only_code = next(iter(par_societe))
-            soc0 = par_societe[only_code]
-            n_tableaux = len(soc0["blocs"]) + sum(1 for k in active_full_grid_keys if soc0["grids"].get(k))
-            split_by_tableau = n_tableaux > 1
-
-        if not split_by_tableau:
-            for code in sorted(par_societe.keys()):
-                soc = par_societe[code]
-                sheet_name = _safe_sheet_name(code, used_names)
-                ws = wb.create_sheet(sheet_name)
-                blocs_a_rendre = sorted(soc["blocs"].keys())
-                grids_a_rendre = [k for k in active_full_grid_keys if soc["grids"].get(k)]
-                n_cols = _sheet_n_cols(soc, blocs_a_rendre, grids_a_rendre)
-                _write_sheet_title(ws, n_cols, f"{soc['nom'] or code} ({code})", "FS Market Intelligence — Export de données")
-                row = 4
-                for display_tableau in blocs_a_rendre:
-                    row, used_cols = _write_narrow_block(ws, row, display_tableau, soc["blocs"][display_tableau])
-                    n_cols = max(n_cols, used_cols)
-                for key in grids_a_rendre:
-                    row, n_cols = _write_grid_section(ws, row, n_cols, key, soc["grids"][key])
-                _write_logo_and_finish(ws, code, n_cols)
-        else:
-            code = next(iter(par_societe))
+        # TOUJOURS une feuille PAR SOCIÉTÉ, quel que soit le nombre de
+        # tableaux sélectionnés — c'est la structure originale, confirmée
+        # explicitement par l'utilisatrice (retour direct, 2026-09-17,
+        # après une tentative de "feuille par tableau" non demandée et non
+        # voulue) : "le fichier Excel réparti par sheet et chaque sheet
+        # contient le traitement d'une société. Dans chaque sheet, on va
+        # trouver l'annexe 13 et le bilan actif [...] de la société en
+        # question."
+        for code in sorted(par_societe.keys()):
             soc = par_societe[code]
-            nom_affiche = f"{soc['nom'] or code} ({code})"
-            for display_tableau in sorted(soc["blocs"].keys()):
-                sheet_name = _safe_sheet_name(display_tableau, used_names)
-                ws = wb.create_sheet(sheet_name)
-                n_cols = _sheet_n_cols(soc, [display_tableau], [])
-                _write_sheet_title(ws, n_cols, nom_affiche, display_tableau)
-                row, used_cols = _write_narrow_block(ws, 4, display_tableau, soc["blocs"][display_tableau])
+            sheet_name = _safe_sheet_name(code, used_names)
+            ws = wb.create_sheet(sheet_name)
+            blocs_a_rendre = sorted(soc["blocs"].keys())
+            grids_a_rendre = [k for k in active_full_grid_keys if soc["grids"].get(k)]
+            n_cols = _sheet_n_cols(soc, blocs_a_rendre, grids_a_rendre)
+            _write_sheet_title(ws, n_cols, f"{soc['nom'] or code} ({code})", "FS Market Intelligence — Export de données")
+            row = 4
+            for display_tableau in blocs_a_rendre:
+                row, used_cols = _write_narrow_block(ws, row, display_tableau, soc["blocs"][display_tableau])
                 n_cols = max(n_cols, used_cols)
-                _write_logo_and_finish(ws, code, n_cols)
-            for key in active_full_grid_keys:
-                if not soc["grids"].get(key):
-                    continue
-                spec = _FULL_GRID_SPECS[key]
-                sheet_name = _safe_sheet_name(spec["display"], used_names)
-                ws = wb.create_sheet(sheet_name)
-                n_cols = _sheet_n_cols(soc, [], [key])
-                _write_sheet_title(ws, n_cols, nom_affiche, spec["display"])
-                row, n_cols = _write_grid_section(ws, 4, n_cols, key, soc["grids"][key])
-                _write_logo_and_finish(ws, code, n_cols)
+            for key in grids_a_rendre:
+                row, n_cols = _write_grid_section(ws, row, n_cols, key, soc["grids"][key])
+            _write_logo_and_finish(ws, code, n_cols)
 
     buffer = io.BytesIO()
     wb.save(buffer)
