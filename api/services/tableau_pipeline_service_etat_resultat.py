@@ -23,7 +23,7 @@ TABLEAU_KEY = "etat_resultat"
 
 def _cmf_documents(conn, codes=None, annees=None):
     query = """
-        SELECT d.id, c.code, d.nom_pdf
+        SELECT d.id, c.code, d.nom_pdf, d.annee
         FROM documents d
         JOIN sources s ON s.id = d.source_id
         JOIN societes c ON c.id = d.cmf_id
@@ -42,13 +42,13 @@ def _cmf_documents(conn, codes=None, annees=None):
         return cur.fetchall()
 
 
-def process_one_document(conn, document_id, code, nom_pdf):
+def process_one_document(conn, document_id, code, nom_pdf, annee):
     """Traite un document : extraction + stockage. Renvoie le statut
     ('ok' | 'page_introuvable' | 'pdf_absent')."""
     pdf_path = local_pdf_path("CMF", code, nom_pdf)
     if not pdf_path or not os.path.isfile(pdf_path):
         return "pdf_absent"
-    result = process_resultat(pdf_path)
+    result = process_resultat(pdf_path, code=code, annee=annee)
     if result is None:
         return "page_introuvable"
     save_tableau_result(conn, document_id, TABLEAU_KEY, result)
@@ -67,9 +67,9 @@ def process_all(codes=None, annees=None, progress_callback=None):
     try:
         docs = _cmf_documents(conn, codes, annees)
         summary = {"total": len(docs), "ok": 0, "page_introuvable": 0, "pdf_absent": 0, "erreur": 0}
-        for i, (document_id, code, nom_pdf) in enumerate(docs, 1):
+        for i, (document_id, code, nom_pdf, annee) in enumerate(docs, 1):
             try:
-                statut = process_one_document(conn, document_id, code, nom_pdf)
+                statut = process_one_document(conn, document_id, code, nom_pdf, annee)
                 summary[statut] += 1
             except Exception as exc:
                 summary["erreur"] += 1

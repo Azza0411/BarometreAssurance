@@ -6,11 +6,20 @@ dashboards), pour le tableau distinct "État de résultat" (voir
 place et `api/services/pdf_sections.py` pour la détection de page
 "etat_resultat").
 
-4 colonnes de valeurs — vérifié en conditions réelles sur STAR/ATTIJARI/
-COMAR 2024 : "Opérations brutes", "Cessions et/ou rétrocessions",
-"Opérations nettes" (exercice courant), "Opérations nettes" (exercice
-précédent). Codes de ligne réels : RTNV/RTV (résultat technique repris
-depuis l'Annexe 13/12), PRNV*/CHNV* (Non-Vie), PRV*/CHV* (Vie)."""
+Le NOMBRE de colonnes de valeurs varie réellement d'une société à
+l'autre — découvert le 2026-09-17 (retour utilisateur : "pour attijari
+[...] les noms de colonnes sont fausses") : STAR/COMAR publient 4
+colonnes ("Opérations brutes", "Cessions et/ou rétrocessions",
+"Opérations nettes" exercice courant/précédent), mais ATTIJARI n'en a
+que 2 ("Montant 2024", "Montant 2023") — en-tête réel "DESIGNATION
+Montant 2024 Montant 2023", pas de ventilation Brut/Cessions du tout.
+Détecté dynamiquement par le nombre de valeurs trouvées sur la
+PREMIÈRE ligne à code reconnu (même principe que le gabarit Takaful du
+Bilan, voir `bilan_full_extractor.py` : le nombre de colonnes vient du
+nombre de valeurs sur une vraie ligne de détail, pas d'un marqueur
+textuel peu fiable), plutôt que fixé en dur pour toutes les sociétés.
+Codes de ligne réels : RTNV/RTV (résultat technique repris depuis
+l'Annexe 13/12), PRNV*/CHNV* (Non-Vie), PRV*/CHV* (Vie)."""
 
 import re
 
@@ -30,7 +39,15 @@ _TOP_SECTION_RE = re.compile(r"^(RTNV|RTV|PRNV|CHNV|PRV|CHV)\d$", re.IGNORECASE)
 
 _TITLE_HINT_RE = re.compile(r"etat\s+de\s+resultat", re.IGNORECASE)
 
-_COLONNES = ["Opérations brutes", "Cessions et/ou rétrocessions", "Opérations nettes (N)", "Opérations nettes (N-1)"]
+# Noms de colonnes par nombre de valeurs réellement trouvées (voir
+# docstring du module) — 3 n'a pas encore été observé en pratique mais
+# reste couvert par prudence (Brut/Net courant/Net précédent, sans
+# cessions séparées).
+_COLONNES_PAR_NB = {
+    2: ["Exercice N", "Exercice N-1"],
+    3: ["Brut", "Net (N)", "Net (N-1)"],
+    4: ["Opérations brutes", "Cessions et/ou rétrocessions", "Opérations nettes (N)", "Opérations nettes (N-1)"],
+}
 
 MIN_ROWS = 5
 
@@ -64,6 +81,8 @@ def extract_resultat_full_grid(page, min_rows=MIN_ROWS):
                               # jamais un vrai libellé wrappé — sans ce
                               # garde-fou, il polluait le libellé du 1er
                               # poste de la page (constaté STAR/ATTIJARI).
+    colonnes = None  # déterminé dynamiquement (voir docstring module) au
+                      # nombre de valeurs de la PREMIÈRE ligne à code
 
     for line in lines:
         first_word = line[0]["text"] if line else ""
@@ -83,6 +102,8 @@ def extract_resultat_full_grid(page, min_rows=MIN_ROWS):
             # presque toujours la ligne d'en-tête elle-même (ex. "31/12/
             # 2024 31/12/2023" lue comme 2 fausses "valeurs") : ignorée.
             continue
+        if colonnes is None:
+            colonnes = _COLONNES_PAR_NB.get(len(values), [f"Valeur {i + 1}" for i in range(len(values))])
 
         label_words = [w["text"] for w in line if not NUMERIC_TOKEN_RE.match(w["text"])]
         combined = " ".join(pending_label_words + label_words)
@@ -106,7 +127,7 @@ def extract_resultat_full_grid(page, min_rows=MIN_ROWS):
         else:
             key = label or f"ligne_{len(lignes) + 1}"
 
-        row_values = {_COLONNES[i]: v for i, (v, _x0) in enumerate(values[:4])}
+        row_values = {colonnes[i]: v for i, (v, _x0) in enumerate(values[:len(colonnes)])}
         if key not in lignes:
             lignes[key] = row_values
             label_by_key[key] = label
@@ -126,15 +147,40 @@ def extract_resultat_full_grid(page, min_rows=MIN_ROWS):
     # "validations" : liste vide (pas de garde-fou métier encore défini
     # pour ce tableau, contrairement à Bilan/Annexe 13 — voir
     # save_tableau_result, qui l'exige même vide).
-    return {"colonnes": _COLONNES, "lignes": lignes_affichage, "validations": []}
+    return {"colonnes": colonnes, "lignes": lignes_affichage, "validations": []}
 
 
-def process_resultat(pdf_path, max_pages=15):
-    """Cherche la page 'État de résultat' dans les `max_pages` premières
-    pages et renvoie la grille (avec sa page ajoutée sous `"page"`) ou
-    None — même contrat de sortie que `bilan_full_extractor.process_bilan`
-    (voir `api/services/tableau_pipeline_service_etat_resultat.py`)."""
+def process_resultat(pdf_path, code=None, annee=None, max_pages=15):
+    """Renvoie la grille (avec sa page ajoutée sous `"page"`) ou None —
+    même contrat de sortie que `bilan_full_extractor.process_bilan` (voir
+    `api/services/tableau_pipeline_service_etat_resultat.py`).
+
+    Si `code`/`annee` sont fournis, réutilise DIRECTEMENT la page déjà
+    repérée par `api.services.pdf_sections.get_pdf_sections()` — ne
+    refait PAS sa propre recherche par titre. Découvert le 2026-09-17
+    (retour utilisateur : "pour attijari [...] les noms de colonnes sont
+    fausses") : plusieurs pages d'un même document peuvent contenir la
+    sous-chaîne "état de résultat" (ex. ATTIJARI 2024 — page 4 "état de
+    résultat TECHNIQUE VIE", en réalité la page des sinistres Vie donnée
+    à `resultat_kpi_extractor.py`, ET page 5, la vraie page globale/
+    canonique) ; une recherche par titre seule tombait à tort sur la
+    première (mauvais nombre de colonnes, mauvais code de ligne). Repli
+    sur l'ancienne recherche par titre uniquement si `code`/`annee` ne
+    sont pas fournis (usage direct/test sans base de données)."""
     import pdfplumber
+    if code and annee:
+        from api.services.pdf_sections import get_pdf_sections
+        page_num = get_pdf_sections(code, annee).get("etat_resultat")
+        if not page_num:
+            return None
+        with pdfplumber.open(pdf_path) as pdf:
+            if page_num > len(pdf.pages):
+                return None
+            grid = extract_resultat_full_grid(pdf.pages[page_num - 1])
+        if grid:
+            grid["page"] = page_num
+        return grid
+
     with pdfplumber.open(pdf_path) as pdf:
         for i, page in enumerate(pdf.pages[:max_pages]):
             if not _is_target_page(page):
