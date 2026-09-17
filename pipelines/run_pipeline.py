@@ -153,6 +153,11 @@ def _run_takaful_ventilation_full():
     return process_all()
 
 
+def _run_etat_resultat_full():
+    from api.services.tableau_pipeline_service_etat_resultat import process_all
+    return process_all()
+
+
 def _run_ftusa():
     """Synchronisation PUIS extraction KPI FTUSA, dans cet ordre et dans le
     MÊME appel — contrairement à CMF (voir _run_cmf/cmf_pipeline.py), dont
@@ -224,6 +229,7 @@ SOURCES = [
     ("Takaful Surplus (grille complète)", _run_takaful_surplus_full),
     ("Takaful Résultat entreprise (grille complète)", _run_takaful_resultat_full),
     ("Takaful Ventilation (grille complète)", _run_takaful_ventilation_full),
+    ("Etat de resultat (grille complète)", _run_etat_resultat_full),
     ("FTUSA", _run_ftusa),
     ("CGA", _run_cga),
     ("INS", _run_ins),

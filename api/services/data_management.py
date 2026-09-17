@@ -264,6 +264,8 @@ TABLEAU_GROUPS = [
      ["Annexes 14/15 - Ventilation par categorie d'assurance (Takaful)"]),
     ("takaful_ventilation_general", "Takaful Ventilation Général (Annexe 15)",
      ["Annexes 14/15 - Ventilation par categorie d'assurance (Takaful)"]),
+    ("etat_resultat", "État de résultat",
+     ["Etat de resultat (technique / global)"]),
 ]
 _TABLEAU_GROUP_TO_RAW = {key: raws for key, _label, raws in TABLEAU_GROUPS}
 
@@ -1304,11 +1306,10 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
     # demandes pour cet export, exclus definitivement (retour utilisateur
     # direct, 2026-09-17 : "je ne vous ai jamais demande de mettre la
     # presentation de la societe [...] et les ratios calcules en
-    # interne"). "Etat de resultat" EST un vrai tableau PDF mais n'a pas
-    # encore d'extracteur de grille complete (voir TODO plus haut) - en
-    # attendant, exclu ici aussi plutot que d'afficher un sous-ensemble
-    # KPI qui ferait croire, a tort, que c'est le tableau complet.
-    superseded_raws |= {"Presentation de la societe", "Calcul interne", "Etat de resultat (technique / global)"}
+    # interne"). "Etat de resultat" EST maintenant une vraie grille
+    # complete (voir extraction/resultat_full_extractor.py) - supersede
+    # automatiquement via active_full_grid_keys ci-dessus.
+    superseded_raws |= {"Presentation de la societe", "Calcul interne"}
 
     conn = get_connection()
     try:
