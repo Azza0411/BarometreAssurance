@@ -1115,7 +1115,11 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
         font=Font(color=_REF_HEADER_TEXT, bold=True, name="Arial", size=10),
         alignment=Alignment(horizontal="center", vertical="center"),
     )
-    col_header_fill = PatternFill(start_color="2563EB", end_color="2563EB", fill_type="solid")
+    # Bleu plus mat/plus clair que le premier essai (retour utilisateur
+    # direct, 2026-09-17 : "un bleu plus mat et plus clair, mais pas trop
+    # clair non plus") — bleu Office standard (celui des en-têtes de
+    # tableau Excel natifs), moins saturé/vif que le bleu franc initial.
+    col_header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     col_header_font = Font(color=_REF_HEADER_TEXT, bold=True, name="Arial", size=10)
 
     if len(annees) == 1:
