@@ -67,6 +67,8 @@ _SURPLUS_ANCHOR_RE = re.compile(r"^surplus\s+ou\s+deficit\s+de\s+l.?assurance\s+
 _SURPLUS_APRES_RE = re.compile(r"apres\s+modification\s+comptable")
 _SECTION_NUM_RE = re.compile(r"^\d{1,2}$")
 _DASH_PLACEHOLDER_RE = re.compile(r"^[-‐‑–—]+$")
+_SIGN_TOKEN_RE = re.compile(r"^[+\-‐‑–—]$")
+_NOTE_NUM_RE = re.compile(r"^\d{1,2}$")
 
 _COLUMN_NAMES = ["Opérations brutes", "Cessions et/ou rétrocessions", "Opérations nettes", "Opérations nettes (N-1)"]
 
@@ -87,32 +89,54 @@ def _is_target_page(page, side, lines_checked=6):
     return bool(_TITLE_RE[side].search(normalized))
 
 
+def _strip_note_column(line):
+    """Retire le couple (signe +/‐ isolé, numéro de note 1-2 chiffres)
+    imprimé juste après le libellé sur les lignes de section — colonne
+    "Note" (renvoi vers l'annexe correspondante), PAS une valeur — avant
+    tout le reste du traitement. Découvert le 2026-09-17 sur
+    ZITOUNA_TAKAFUL/AT_TAKAFULIA : "PRF1 Primes + 15 34 896 720 1 774 304
+    33 122 416 28 952 957" (le "15" est le numéro de note) et "CHF3 Frais
+    d'exploitation ‐ 18 3 219 836 ...". Fait AVANT `_resolved_words` (donc
+    avant que le "‐" isolé ne soit lu comme un placeholder "néant" et
+    converti en un faux "0") : sinon ce signe de section, distinct d'un
+    vrai tiret "néant", introduisait sa propre valeur fantôme en plus du
+    numéro de note, cassant `_assign_columns` de 2 colonnes à la fois
+    (constaté ZITOUNA/CHF3). Seul le signe SUIVI IMMÉDIATEMENT d'un nombre
+    à 1-2 chiffres LUI-MÊME suivi d'autres valeurs (donc jamais le dernier
+    token de la ligne) correspond à ce gabarit — un vrai "‐" isolé de fin
+    de ligne (cellule vide) n'est jamais touché."""
+    for i in range(len(line) - 1):
+        if _SIGN_TOKEN_RE.match(line[i]["text"]) and _NOTE_NUM_RE.match(line[i + 1]["text"]):
+            return line[:i] + line[i + 2:]
+    return line
+
+
 def _resolved_words(line):
     """Mots de la ligne, négatifs entre parenthèses résolus, et tout
     placeholder tiret ("néant") converti en "0" explicite — sinon un "-"
     isolé disparaît silencieusement de `_extract_numeric_clusters` au lieu
     de compter comme un zéro à sa position, décalant les colonnes
     suivantes."""
-    resolved = _words_with_bracket_negatives_resolved(line)
+    resolved = _words_with_bracket_negatives_resolved(_strip_note_column(line))
     return [{**w, "text": "0"} if _DASH_PLACEHOLDER_RE.match(w["text"]) else w for w in resolved]
 
 
-def _strip_leading_section_number(resolved, text_norm):
+def _strip_leading_section_number(resolved):
     """Pour une ligne "Sous total N ...", retire le token "N" (numéro de
     section, PAS une valeur) de la liste de mots avant tout calcul de
-    clusters numériques. Renvoie (resolved_sans_le_numero, numero_ou_None)."""
-    tokens = text_norm.split()
-    if len(tokens) < 3 or tokens[0] != "sous" or tokens[1] != "total" or not _SECTION_NUM_RE.match(tokens[2]):
+    clusters numériques. Renvoie (resolved_sans_le_numero, numero_ou_None).
+
+    Détecté sur les 3 premiers mots BRUTS de `resolved` (pas sur un texte
+    déjà nettoyé des jetons numériques, qui exclurait justement "N" et
+    empêcherait toute détection) — bug constaté le 2026-09-17 sur
+    AT_TAKAFULIA : "Sous total 3 V‐3 ‐1 690 029 ..." affichait le "3" à la
+    place de la vraie valeur "Opérations brutes" (‐1 690 029), la
+    reconnaissance d'origine (basée sur un texte déjà sans chiffres) ne se
+    déclenchant jamais."""
+    cleaned = [_normalizer.clean(w["text"]) for w in resolved]
+    if len(cleaned) < 3 or cleaned[0] != "sous" or cleaned[1] != "total" or not _SECTION_NUM_RE.match(cleaned[2]):
         return resolved, None
-    num = tokens[2]
-    seen = False
-    out = []
-    for w in resolved:
-        if not seen and _normalizer.clean(w["text"]) == num and NUMERIC_TOKEN_RE.match(w["text"]):
-            seen = True
-            continue
-        out.append(w)
-    return out, num
+    return resolved[:2] + resolved[3:], cleaned[2]
 
 
 def _column_count(lines):
@@ -170,11 +194,21 @@ def extract_takaful_surplus_grid(page, side, min_rows=_MIN_ROWS):
     prepared = []
     for line in lines:
         resolved = _resolved_words(line)
+        resolved, sous_total_num = _strip_leading_section_number(resolved)
         label_words0 = [w for w in resolved if not NUMERIC_TOKEN_RE.match(w["text"])]
         text_norm = _normalizer.clean(" ".join(w["text"] for w in label_words0))
-        resolved, sous_total_num = _strip_leading_section_number(resolved, text_norm)
-        label_words = [w for w in resolved if not NUMERIC_TOKEN_RE.match(w["text"])]
+        label_words = label_words0
         clusters = _extract_numeric_clusters(resolved)
+        # Colonne "Notes" (renvoi vers l'annexe) : quand le signe +/‐ qui
+        # la précède habituellement a disparu à la lecture (glyphe non
+        # natif, constaté CHF1/CHF4/CH8 sur ZITOUNA_TAKAFUL — mêmes lignes
+        # que celles avec signe, mais sans lui), `_strip_note_column`
+        # (basé sur ce signe) ne peut pas la retirer en amont : repli
+        # générique ici — un unique jeton isolé (< 100, jamais fusionné
+        # avec les vraies valeurs à cause de l'écart de position) EN TROP
+        # par rapport aux colonnes attendues ne peut être qu'elle.
+        if len(clusters) == n_cols + 1 and 0 <= clusters[0][0] < 100:
+            clusters = clusters[1:]
         prepared.append({
             "text_norm": text_norm,
             "label": " ".join(w["text"] for w in label_words),
