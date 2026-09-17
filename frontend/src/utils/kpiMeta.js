@@ -367,7 +367,7 @@ export const KPI_META = {
         label: "Total actif", denominator: true,
         section: "bilan",
         tableau: "Bilan au 31/12",
-        ligne: "Total de l'actif || Total des actifs || Total actifs", colonne: "Net",
+        ligne: "Total de l'actif || Total des actifs || Total actifs || Total", colonne: "Net",
       },
     ],
   },
@@ -383,7 +383,13 @@ export const KPI_META = {
     type: "extrait",
     section: "bilan",
     tableau: "Bilan au 31/12",
-    ligne: "Total de l'actif || Total des actifs || Total actifs", colonne: "Net",
+    // "Total" seul (ATTIJARI : la ligne finale du Bilan Actif ne porte
+    // que ce mot, sans "actif(s)") ajouté en DERNIER recours (retour
+    // utilisateur du 2026-09-17, déjà anticipé dans CAS_PARTICULIERS.txt
+    // comme gap de formulation) : n'est tenté que si les 3 libellés plus
+    // spécifiques ci-avant ne trouvent RIEN sur la page, jamais en
+    // remplacement d'une correspondance déjà trouvée.
+    ligne: "Total de l'actif || Total des actifs || Total actifs || Total", colonne: "Net",
   },
   "Capitaux propres": {
     type: "extrait",
