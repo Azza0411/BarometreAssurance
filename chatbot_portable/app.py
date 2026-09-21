@@ -188,6 +188,13 @@ KPI_SYNONYMS: dict[str, str] = {
     "roa": "ROA (%)",
     "return on assets": "ROA (%)",
     "rentabilite actifs": "ROA (%)",
+    # "Résultat technique" AVANT les alias génériques "résultat" (plus bas) :
+    # sans ces entrées, "Expliquer ce chiffre" sur la carte Résultat technique
+    # (ex: STAR 2024) répondait par le Résultat Net — bug constaté le
+    # 2026-09-21 (l'alias "résultat" gagnait par sous-chaîne).
+    "resultat technique": "Résultat technique (TND)",
+    "résultat technique": "Résultat technique (TND)",
+    "resultat technique (tnd)": "Résultat technique (TND)",
     "resultat net": "Résultat Net",
     "résultat net": "Résultat Net",
     "benefice": "Résultat Net",
