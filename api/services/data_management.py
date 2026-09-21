@@ -1108,8 +1108,10 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
     # Couleur des noms de colonnes en bleu (retour utilisateur direct,
     # 2026-09-17, précisé ensuite : "la couleur des CELLULES [...] pas du
     # texte") — le FOND des cellules d'en-tête de colonne passe en bleu
-    # (texte blanc conservé pour le contraste), pas "LIBELLÉ" ni
-    # l'éventuel bandeau année (repères visuels distincts entre eux).
+    # (texte blanc conservé pour le contraste). "LIBELLÉ" prend désormais
+    # le même bleu que les autres noms de colonnes (retour utilisateur
+    # direct, 2026-09-21 : en-tête uniforme) ; seul l'éventuel bandeau année
+    # (plusieurs années) reste gris, repère visuel distinct.
     header_style = dict(
         fill=PatternFill(start_color=_REF_HEADER, end_color=_REF_HEADER, fill_type="solid"),
         font=Font(color=_REF_HEADER_TEXT, bold=True, name="Arial", size=10),
@@ -1127,7 +1129,7 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
         # une seule ligne d'en-tête (LIBELLÉ + noms de colonnes), pas de
         # bandeau "année" fusionné en plus, redondant et jamais voulu ici.
         cell = ws.cell(row=row, column=1, value="LIBELLÉ")
-        cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
+        cell.fill, cell.font, cell.alignment = col_header_fill, col_header_font, header_style["alignment"]
         cell.border = _thin_border()
         a = annees[0]
         cols = grids[a]["colonnes"]
@@ -1147,7 +1149,7 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
         # propre de chaque colonne de chaque année (ligne 2).
         ws.merge_cells(start_row=row, start_column=1, end_row=row + 1, end_column=1)
         cell = ws.cell(row=row, column=1, value="LIBELLÉ")
-        cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
+        cell.fill, cell.font, cell.alignment = col_header_fill, col_header_font, header_style["alignment"]
         cell.border = _thin_border()
         ws.cell(row=row + 1, column=1).border = _thin_border()
 
