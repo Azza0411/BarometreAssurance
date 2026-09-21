@@ -616,12 +616,38 @@ def apply_manual_corrections(conn, document_id, tableau, corrections, kpi_raw_la
                     )
                     row = cur.fetchone()
                     if row is None:
-                        raise CorrectionError(f"Cellule « {c['ligne']} / {c['colonne']} » introuvable — a-t-elle changé depuis le chargement de la page ?")
-                    ancienne = row[0]
-                    cur.execute(
-                        "UPDATE tableau_cellules SET valeur=%s WHERE document_id=%s AND tableau=%s AND ligne=%s AND colonne=%s",
-                        (nouvelle, document_id, tableau, c["ligne"], c["colonne"]),
-                    )
+                        # Cellule absente de la base (affichée « — » dans la
+                        # grille : le pipeline n'a pas extrait cette valeur).
+                        # Elle est créée à la saisie si sa ligne ET sa colonne
+                        # existent déjà ailleurs dans ce document/tableau — le
+                        # cas typique : un « Total » manquant sur une ligne dont
+                        # les autres colonnes sont extraites. Sinon, on refuse
+                        # (retour utilisateur direct, 2026-09-21 : saisir une
+                        # valeur dans une case « — » échouait avec « introuvable »).
+                        cur.execute(
+                            "SELECT colonne_ordre FROM tableau_cellules WHERE document_id=%s AND tableau=%s AND colonne=%s LIMIT 1",
+                            (document_id, tableau, c["colonne"]),
+                        )
+                        col_row = cur.fetchone()
+                        cur.execute(
+                            "SELECT 1 FROM tableau_cellules WHERE document_id=%s AND tableau=%s AND ligne=%s LIMIT 1",
+                            (document_id, tableau, c["ligne"]),
+                        )
+                        ligne_row = cur.fetchone()
+                        if col_row is None or ligne_row is None:
+                            raise CorrectionError(f"Cellule « {c['ligne']} / {c['colonne']} » introuvable — a-t-elle changé depuis le chargement de la page ?")
+                        ancienne = None
+                        cur.execute(
+                            """INSERT INTO tableau_cellules (document_id, tableau, ligne, colonne, colonne_ordre, valeur)
+                               VALUES (%s, %s, %s, %s, %s, %s)""",
+                            (document_id, tableau, c["ligne"], c["colonne"], col_row[0], nouvelle),
+                        )
+                    else:
+                        ancienne = row[0]
+                        cur.execute(
+                            "UPDATE tableau_cellules SET valeur=%s WHERE document_id=%s AND tableau=%s AND ligne=%s AND colonne=%s",
+                            (nouvelle, document_id, tableau, c["ligne"], c["colonne"]),
+                        )
                     _propagate_correction_to_kpi(cur, document_id, kpi_raw_labels, ancienne, nouvelle)
                     cur.execute(
                         """INSERT INTO tableau_corrections
