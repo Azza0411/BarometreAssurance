@@ -522,7 +522,16 @@ def main():
     _log_json("pipeline_start")
     clear_cancel()  # une éventuelle annulation d'un run précédent ne doit jamais affecter celui-ci
     clear_quick_ready()  # un run précédent ne doit jamais faire croire la plateforme "prête" avant celui-ci
-    set_plan(FULL_PLAN)  # phases attendues pour ce run : sert au pourcentage global (voir pipelines/progress.py)
+    # Phases attendues pour ce run (pourcentage global + frise d'étapes du
+    # bandeau, voir pipelines/progress.py) : l'étape "PDF locaux" n'est annoncée
+    # que s'il y a réellement des PDF locaux à rattraper (jamais au premier
+    # lancement, base vide).
+    try:
+        from extraction.kpi_extraction_pipeline import has_missing_local_pdfs
+        needs_pdf_backfill = has_missing_local_pdfs()
+    except Exception:
+        needs_pdf_backfill = True
+    set_plan([p for p in FULL_PLAN if p != "rattrapage_pdf" or needs_pdf_backfill], kind="full")
 
     results = []
     failed_sources = []

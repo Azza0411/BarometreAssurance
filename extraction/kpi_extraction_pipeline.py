@@ -217,6 +217,31 @@ def _backfill_one_document(code, annee, nom_pdf, lien):
     return True
 
 
+def _missing_local_pdf_documents(conn, already_done):
+    """Documents CMF déjà extraits (dans `already_done`) dont le PDF local manque."""
+    from api.services.data_management import local_pdf_path
+
+    documents = [
+        doc for doc in list_all_documents(conn)
+        if doc[1] == "CMF" and doc[0] in already_done
+    ]
+    return [
+        doc for doc in documents
+        if not (local_pdf_path("CMF", doc[2], doc[4]) and os.path.isfile(local_pdf_path("CMF", doc[2], doc[4])))
+    ]
+
+
+def has_missing_local_pdfs():
+    """Vrai s'il y a des PDF locaux à rattraper — sert à ne PAS annoncer
+    l'étape "PDF locaux" dans la frise d'un premier lancement (base vide :
+    rien à rattraper), voir pipelines/run_pipeline.py::main."""
+    conn = get_connection()
+    try:
+        return bool(_missing_local_pdf_documents(conn, get_document_ids_with_kpi(conn)))
+    finally:
+        conn.close()
+
+
 def _backfill_missing_local_pdfs(conn, already_done):
     """Télécharge (SANS reparser) le PDF local manquant de tout document CMF
     déjà extrait avec succès (dans `already_done`) — pas seulement les
@@ -239,17 +264,9 @@ def _backfill_missing_local_pdfs(conn, already_done):
     telechargement est independant, borne dans le temps (voir
     _backfill_one_document), donc sans risque a paralleliser comme la
     synchronisation CMF (pipelines/cmf_pipeline.py::CMF_WORKERS)."""
-    from api.services.data_management import local_pdf_path
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    documents = [
-        doc for doc in list_all_documents(conn)
-        if doc[1] == "CMF" and doc[0] in already_done
-    ]
-    missing = [
-        doc for doc in documents
-        if not (local_pdf_path("CMF", doc[2], doc[4]) and os.path.isfile(local_pdf_path("CMF", doc[2], doc[4])))
-    ]
+    missing = _missing_local_pdf_documents(conn, already_done)
     if not missing:
         from pipelines.progress import drop_from_plan
         drop_from_plan("rattrapage_pdf")  # rien à rattraper : ne pèse plus dans le pourcentage global

@@ -8,12 +8,25 @@ But : donner à l'utilisateur un message PRÉCIS pendant l'initialisation
 qu'un simple "collecte en cours" opaque qui ne dit rien de la progression
 réelle — retour utilisateur direct 2026-09-16 : "on voit que le scraping
 a commencé, ensuite on voit que le calcul des KPI a également commencé,
-jusqu'à ce que toute la plateforme soit fonctionnelle"."""
+jusqu'à ce que toute la plateforme soit fonctionnelle".
 
+Depuis 2026-09-23 (retour du responsable pro : "on ne sait pas où en est le
+scraping"), ce module expose aussi :
+  - l'avancement chiffré de la phase courante (x sur y + élément en cours),
+  - la liste des ÉTAPES du run (terminée / en cours / à venir),
+  - un pourcentage global pondéré,
+  - une ESTIMATION du temps restant, auto-calibrée : la durée réellement
+    observée de chaque phase est mémorisée (logs/phase_durations.json) et
+    sert d'a priori au run suivant ; au sein d'un run, la vitesse observée
+    corrige l'estimation des phases restantes."""
+
+import json
+import os
 import threading
+import time
 
 _lock = threading.Lock()
-_phase = {"code": None}
+_phase = {"code": None, "started": None}
 _quick_ready = {"value": False}
 
 PHASE_LABELS = {
@@ -26,15 +39,28 @@ PHASE_LABELS = {
     "veille": "Vérification des actualités et textes réglementaires…",
 }
 
+# Libellés COURTS pour la frise d'étapes du bandeau + unité de comptage.
+PHASE_SHORT = {
+    "scraping": "Documents CMF",
+    "rattrapage_pdf": "PDF locaux",
+    "extraction_kpi": "Calcul des KPI",
+    "sources_prioritaires": "Sources sectorielles",
+    "grilles": "Tableaux détaillés",
+    "qualite": "Contrôle qualité",
+    "veille": "Actualités",
+}
+PHASE_UNITS = {
+    "scraping": "sociétés",
+    "rattrapage_pdf": "PDF",
+    "extraction_kpi": "documents",
+    "sources_prioritaires": "sources",
+    "grilles": "sources",
+}
 
 # ── Avancement chiffré (x/y) de la phase courante ──────────────────────────
-# Retour du responsable pro (2026-09-21) : "le scraping tourne indéfiniment
-# et on ne sait pas où il en est". Le message de phase seul (ci-dessus) dit
-# QUOI, pas COMBIEN : ce compteur dit "42 sur 224 documents, en ce moment
-# STAR 2024", et `get_progress()` en déduit un pourcentage GLOBAL pondéré
-# sur les phases prévues pour ce run (voir set_plan).
 _counter = {"done": 0, "total": 0, "detail": None}
 _plan = {"phases": []}
+_run = {"kind": None, "started": None, "done": [], "observed": {}}
 
 # Poids relatifs (durée typique observée) — seules les phases PRÉVUES pour
 # le run en cours comptent (voir set_plan), le pourcentage global est donc
@@ -51,11 +77,66 @@ PHASE_WEIGHTS = {
 FULL_PLAN = ["scraping", "rattrapage_pdf", "extraction_kpi", "sources_prioritaires", "grilles", "qualite", "veille"]
 CATCHUP_PLAN = ["rattrapage_pdf", "extraction_kpi"]
 
+# A priori de durée (secondes) tant qu'aucun run n'a encore été mesuré sur
+# cette machine — calibrés sur les anciens pipelines complets de 12 à 30 min
+# (logs/pipeline.log, event pipeline_end). Remplacés dès le 1er run terminé
+# par la durée réellement observée (voir _save_observed).
+DEFAULT_PRIOR_S = {
+    "full": {"scraping": 240, "rattrapage_pdf": 120, "extraction_kpi": 420,
+             "sources_prioritaires": 150, "grilles": 300, "qualite": 20, "veille": 20},
+    "catchup": {"rattrapage_pdf": 120, "extraction_kpi": 30},
+}
 
-def set_plan(phases):
-    """Déclare les phases qui vont s'enchaîner pour CE run (dans l'ordre)."""
+_DURATIONS_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "phase_durations.json",
+)
+
+
+def _load_observed():
+    try:
+        with open(_DURATIONS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_observed(kind, code, seconds):
+    """Mémorise la durée réelle d'une phase terminée (meilleure-effort : une
+    erreur d'écriture ne doit jamais gêner la collecte)."""
+    if not kind or seconds is None or seconds < 1:
+        return
+    try:
+        data = _load_observed()
+        data.setdefault(kind, {})[code] = round(float(seconds), 1)
+        os.makedirs(os.path.dirname(_DURATIONS_PATH), exist_ok=True)
+        tmp = _DURATIONS_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, _DURATIONS_PATH)
+    except Exception:
+        pass
+
+
+def _cancel_requested():
+    try:
+        from pipelines.control import is_cancel_requested
+        return bool(is_cancel_requested())
+    except Exception:
+        return False
+
+
+def set_plan(phases, kind="full"):
+    """Déclare les phases qui vont s'enchaîner pour CE run (dans l'ordre) et
+    son type ("full" = collecte complète, "catchup" = rattrapage au
+    démarrage) ; démarre le chronomètre du run."""
+    observed = _load_observed()
     with _lock:
         _plan["phases"] = list(phases)
+        _run["kind"] = kind
+        _run["started"] = time.monotonic()
+        _run["done"] = []
+        _run["observed"] = observed
 
 
 def reset_progress(total=0, detail=None):
@@ -83,14 +164,64 @@ def bump_progress(detail=None):
             _counter["detail"] = detail
 
 
+def _prior(kind, code):
+    observed = _run["observed"].get(kind, {}) if kind else {}
+    return float(observed.get(code) or DEFAULT_PRIOR_S.get(kind, {}).get(code) or 60)
+
+
+def _clamp(x, lo, hi):
+    return max(lo, min(hi, x))
+
+
+def _estimate_remaining(now):
+    """Secondes restantes estimées (None tant qu'on n'a pas assez de recul).
+    Appelée avec `_lock` tenu."""
+    code, phases, kind = _phase["code"], _plan["phases"], _run["kind"]
+    if code not in phases or _run["started"] is None or _phase["started"] is None:
+        return None
+    if now - _run["started"] < 15:
+        return None  # trop tôt : "estimation en cours…"
+    idx = phases.index(code)
+    cur_elapsed = now - _phase["started"]
+    prior_cur = _prior(kind, code)
+    done, total = _counter["done"], _counter["total"]
+
+    # Vitesse relative de CE run par rapport à l'a priori, mesurée sur les
+    # phases déjà terminées : corrige aussi l'estimation des phases à venir.
+    obs = sum(s for c, s in _run["done"] if c in phases)
+    pri = sum(_prior(kind, c) for c, _s in _run["done"] if c in phases)
+    factor = _clamp(obs / pri, 0.4, 3.0) if obs > 0 and pri > 0 else None
+
+    if total > 0 and (done >= 2 or (done >= 1 and cur_elapsed > 10)):
+        cur_total = cur_elapsed * total / done
+        cur_remaining = max(cur_total - cur_elapsed, 0.0)
+        if factor is None:
+            factor = _clamp(cur_total / prior_cur, 0.4, 3.0)
+    else:
+        expected = prior_cur * (factor or 1.0)
+        cur_remaining = max(expected - cur_elapsed, expected * 0.25)
+
+    future = sum(_prior(kind, p) for p in phases[idx + 1:]) * (factor or 1.0)
+    return cur_remaining + future
+
+
 def get_progress():
-    """{"done","total","detail","pourcentage"} — `pourcentage` est global
-    (0-100, ou None si aucun plan n'est déclaré / phase hors plan)."""
+    """Avancement complet du run en cours — voir la docstring du module.
+    `pourcentage` est global (0-100, ou None si aucun plan n'est déclaré /
+    phase hors plan) ; `etapes` liste les phases du run avec leur statut ;
+    `reste_s` est l'estimation du temps restant (None = pas encore calculable)."""
+    now = time.monotonic()
     with _lock:
         code = _phase["code"]
         done, total, detail = _counter["done"], _counter["total"], _counter["detail"]
         phases = list(_plan["phases"])
+        kind = _run["kind"]
+        finished = dict(_run["done"])
+        started = _run["started"]
+        reste = _estimate_remaining(now)
     pct = None
+    etapes = []
+    etape_index = None
     if code in phases:
         total_weight = sum(PHASE_WEIGHTS.get(c, 0) for c in phases) or 1
         before = sum(PHASE_WEIGHTS.get(c, 0) for c in phases[: phases.index(code)])
@@ -100,24 +231,61 @@ def get_progress():
         # est suivie d'étapes (sources sectorielles, KPI calculés...) — le 100 %
         # n'apparaît que par la disparition du bandeau (collecte terminée).
         pct = min(pct, 99)
-    return {"done": done, "total": total, "detail": detail, "pourcentage": pct}
+        cur_idx = phases.index(code)
+        etape_index = cur_idx + 1
+        for i, c in enumerate(phases):
+            statut = "terminee" if i < cur_idx else ("en_cours" if i == cur_idx else "a_venir")
+            etapes.append({
+                "code": c, "label": PHASE_SHORT.get(c, c), "statut": statut,
+                "duree_s": round(finished[c]) if c in finished else None,
+            })
+    return {
+        "done": done, "total": total, "detail": detail, "pourcentage": pct,
+        "type": kind,
+        "unite": PHASE_UNITS.get(code),
+        "restantes": max(total - done, 0) if total > 0 else None,
+        "etapes": etapes,
+        "etape_index": etape_index,
+        "etapes_total": len(phases),
+        "ecoule_s": round(now - started) if started is not None else None,
+        "reste_s": round(reste) if reste is not None else None,
+    }
 
 
 def set_phase(code):
+    save = None
     with _lock:
+        prev, now = _phase["code"], time.monotonic()
+        if prev is not None and prev != code and _phase["started"] is not None:
+            secs = now - _phase["started"]
+            _run["done"].append((prev, secs))
+            save = (_run["kind"], prev, secs)
+        if prev != code:
+            _phase["started"] = now
         _phase["code"] = code
         # Chaque nouvelle phase repart d'un compteur vierge : sans ça, le
         # "42/224" de la phase précédente resterait affiché.
         _counter["done"], _counter["total"], _counter["detail"] = 0, 0, None
+    if save and not _cancel_requested():
+        _save_observed(*save)
 
 
 def drop_from_plan(code):
     """Retire une phase du plan quand on sait qu'elle n'aura rien à faire
     (ex. aucun PDF local manquant à rattraper) : le pourcentage global ne
-    doit pas sauter d'emblée de son poids comme si elle avait été faite."""
+    doit pas sauter d'emblée de son poids comme si elle avait été faite.
+    Si c'est la phase COURANTE, on passe aussitôt à la suivante du plan."""
     with _lock:
-        if code in _plan["phases"]:
-            _plan["phases"].remove(code)
+        phases = _plan["phases"]
+        if code not in phases:
+            return
+        idx = phases.index(code)
+        phases.remove(code)
+        if _phase["code"] == code:
+            nxt = phases[idx] if idx < len(phases) else None
+            _phase["code"] = nxt
+            _phase["started"] = time.monotonic() if nxt else None
+            _counter["done"], _counter["total"], _counter["detail"] = 0, 0, None
 
 
 def enter_phase_if_planned(code):
@@ -133,10 +301,18 @@ def enter_phase_if_planned(code):
 
 
 def clear_phase():
+    """Fin du run : mémorise la durée de la dernière phase (sauf annulation)
+    et efface tout l'état d'avancement."""
+    save = None
     with _lock:
-        _phase["code"] = None
+        if _phase["code"] is not None and _phase["started"] is not None:
+            save = (_run["kind"], _phase["code"], time.monotonic() - _phase["started"])
+        _phase["code"], _phase["started"] = None, None
         _counter["done"], _counter["total"], _counter["detail"] = 0, 0, None
         _plan["phases"] = []
+        _run["kind"], _run["started"], _run["done"] = None, None, []
+    if save and not _cancel_requested():
+        _save_observed(*save)
 
 
 def get_phase():

@@ -102,7 +102,7 @@ def run_tracked_catchup():
         _collecte_state["source"] = "rattrapage"
     try:
         clear_cancel()  # une annulation d'un run précédent ne doit jamais affecter celui-ci
-        set_plan(CATCHUP_PLAN)
+        set_plan(CATCHUP_PLAN, kind="catchup")
         set_phase("rattrapage_pdf")  # kpi_extraction_pipeline.run() bascule ensuite seul sur "extraction_kpi"
         from extraction.kpi_extraction_pipeline import run as run_kpi_extraction
         # respect_backoff : les documents déjà tentés en vain récemment ne sont

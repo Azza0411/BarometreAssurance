@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { getLogoSrc } from "../utils/logos";
+import { formatReste } from "../components/CollecteBanner";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
 
@@ -218,6 +219,7 @@ function CollecteBar() {
             <span>
               {compteur ? <b style={{ color: DARK }}>{compteur}</b> : "Traitement en cours"}
               {prog?.detail && <span> · {prog.detail}</span>}
+              {prog?.reste_s != null && <span> · temps restant estimé <b style={{ color: DARK }}>{formatReste(prog.reste_s)}</b></span>}
             </span>
             {pct !== null && <b style={{ color: DARK }}>{pct} %</b>}
           </div>

@@ -26,7 +26,7 @@ from scraping.cmf_portal_scraper import CMFPortalScraper
 from config.company_registry import COMPANY_REGISTRY
 from extraction.kpi_extraction_pipeline import run as run_kpi_extraction
 from pipelines.control import is_cancel_requested
-from pipelines.progress import set_phase, reset_progress, bump_progress
+from pipelines.progress import set_phase, reset_progress, bump_progress, enter_phase_if_planned
 
 # Nombre de navigateurs Chrome headless lancés en parallèle pour la
 # synchronisation CMF (24 sociétés) — chacun traite un sous-ensemble
@@ -168,7 +168,11 @@ def main(headless=True):
     if is_cancel_requested():
         return {"sync": sync_summary, "kpi": None}
 
-    set_phase("extraction_kpi")
+    # Run PLANIFIÉ (pipelines/run_pipeline.py::main) : run() signale lui-même ses
+    # sous-étapes (PDF locaux puis KPI), dans l'ordre du plan. Sans plan
+    # (appel isolé de ce module), on garde l'ancien libellé unique.
+    if not enter_phase_if_planned("rattrapage_pdf"):
+        set_phase("extraction_kpi")
     kpi_summary = run_kpi_extraction()
     return {"sync": sync_summary, "kpi": kpi_summary}
 
