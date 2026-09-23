@@ -82,6 +82,38 @@ def _run_pipeline_background():
             _collecte_state["annulation_demandee"] = False
 
 
+def run_tracked_catchup():
+    """Rattrapage léger au démarrage (api/app.py::_backfill_startup_loop),
+    exécuté DANS l'état partagé `_collecte_state` — retour du responsable
+    pro 2026-09-21 : "le scraping tourne indéfiniment et on ne sait pas où
+    il en est". Avant, ce rattrapage appelait le pipeline KPI en direct :
+    aucun bandeau, aucun compteur, alors qu'il pouvait durer des minutes.
+    Désormais le bandeau global (CollecteBanner.jsx) et la page "Gestion de
+    données" affichent son avancement (x/y + pourcentage). Renvoie False
+    sans rien faire si une collecte est déjà en cours."""
+    from pipelines.control import clear_cancel
+    from pipelines.progress import set_plan, set_phase, clear_phase, CATCHUP_PLAN
+    with _collecte_lock:
+        if _collecte_state["en_cours"]:
+            return False
+        _collecte_state["en_cours"] = True
+        _collecte_state["demarree_le"] = datetime.now().isoformat(timespec="seconds")
+        _collecte_state["annulation_demandee"] = False
+        _collecte_state["source"] = "rattrapage"
+    try:
+        clear_cancel()  # une annulation d'un run précédent ne doit jamais affecter celui-ci
+        set_plan(CATCHUP_PLAN)
+        set_phase("rattrapage_pdf")  # kpi_extraction_pipeline.run() bascule ensuite seul sur "extraction_kpi"
+        from extraction.kpi_extraction_pipeline import run as run_kpi_extraction
+        run_kpi_extraction()
+    finally:
+        clear_phase()
+        with _collecte_lock:
+            _collecte_state["en_cours"] = False
+            _collecte_state["annulation_demandee"] = False
+    return True
+
+
 def ensure_pipeline_running(source="manuelle"):
     """Démarre le pipeline complet en tâche de fond s'il ne tourne pas déjà
     — factorisé hors de `lancer_collecte()` pour que le déclenchement
@@ -131,7 +163,7 @@ def annuler_collecte():
 
 @bp.route("/api/gestion-donnees/statut-collecte")
 def statut_collecte():
-    from pipelines.progress import get_phase, is_quick_ready
+    from pipelines.progress import get_phase, get_progress, is_quick_ready
     with _collecte_lock:
         en_cours = _collecte_state["en_cours"]
         demarree_le = _collecte_state["demarree_le"]
@@ -139,6 +171,7 @@ def statut_collecte():
         source = _collecte_state.get("source")
     derniere = _last_pipeline_end_from_log()
     phase = get_phase() if en_cours else {"code": None, "label": None}
+    progression = get_progress() if en_cours else None
     return jsonify({
         "en_cours": en_cours,
         "demarree_le": demarree_le,
@@ -147,6 +180,11 @@ def statut_collecte():
         "derniere_execution": derniere,
         "phase": phase["code"],
         "phase_label": phase["label"],
+        # Avancement chiffré de la phase courante ({done,total,detail}) et
+        # pourcentage GLOBAL du run (0-100, None si indéterminé) — voir
+        # pipelines/progress.py::get_progress.
+        "progression": progression,
+        "pourcentage": progression["pourcentage"] if progression else None,
         # Vrai dès que les sources prioritaires pour Aperçu marché/Analyse
         # comparative/Vue par assurance (CMF + FTUSA/CGA/INS/BVMT) sont en
         # base, même si `en_cours` reste vrai (complément des grilles

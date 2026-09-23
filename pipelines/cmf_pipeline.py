@@ -26,7 +26,7 @@ from scraping.cmf_portal_scraper import CMFPortalScraper
 from config.company_registry import COMPANY_REGISTRY
 from extraction.kpi_extraction_pipeline import run as run_kpi_extraction
 from pipelines.control import is_cancel_requested
-from pipelines.progress import set_phase
+from pipelines.progress import set_phase, reset_progress, bump_progress
 
 # Nombre de navigateurs Chrome headless lancés en parallèle pour la
 # synchronisation CMF (24 sociétés) — chacun traite un sous-ensemble
@@ -100,6 +100,7 @@ def _sync_worker(company_keys, headless, worker_id):
             print(f"\n===== TRAITEMENT : {company_key} (worker {worker_id}) =====")
             nb_nouveaux, timed_out = _run_company_with_watchdog(scraper, company_key)
             summary[company_key] = nb_nouveaux
+            bump_progress(company_key)
             if timed_out:
                 # Le driver est probablement dans un état mort/incohérent
                 # (c'est justement pourquoi l'appel n'est jamais revenu) : on
@@ -125,6 +126,7 @@ def sync_documents(headless=True):
     print("\n===== ETAPE 1 : SYNCHRONISATION CMF -> BASE =====\n")
 
     company_keys = list(COMPANY_REGISTRY)
+    reset_progress(total=len(company_keys), detail="portail CMF")
     workers = min(CMF_WORKERS, len(company_keys))
     # Répartition round-robin (pas par tranches contiguës) : équilibre mieux
     # la charge si certaines sociétés voisines dans le registre partagent

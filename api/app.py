@@ -201,12 +201,11 @@ def _backfill_startup_loop():
     try:
         if _database_is_empty():
             return  # géré par _first_run_scrape_loop ci-dessus
-        from api.routes.gestion_donnees import _collecte_lock, _collecte_state
-        with _collecte_lock:
-            if _collecte_state["en_cours"]:
-                return  # une collecte (auto ou manuelle) s'en occupe déjà
-        from extraction.kpi_extraction_pipeline import run as run_kpi_extraction
-        run_kpi_extraction()
+        # `run_tracked_catchup` (pas un appel direct au pipeline KPI) : partage
+        # l'état de collecte pour que le bandeau affiche l'avancement, et
+        # ne fait rien si une collecte (auto ou manuelle) tourne déjà.
+        from api.routes.gestion_donnees import run_tracked_catchup
+        run_tracked_catchup()
     except Exception as exc:
         print(f"[rattrapage au demarrage] Échec : {exc}")
 

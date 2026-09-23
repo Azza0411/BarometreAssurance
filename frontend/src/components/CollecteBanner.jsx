@@ -12,10 +12,14 @@ export const BANNER_HEIGHT = 34;
 // devant des pages vides (retour utilisateur direct, 2026-09-15, capture
 // d'écran d'"Aperçu marché" entièrement à "—" sans aucune explication).
 const POLL_INTERVAL_MS = 15_000;
+// Pendant une collecte, l'avancement (x/y, pourcentage) change en continu :
+// sondage plus rapproché tant que `en_cours`, retour à 15s ensuite.
+const POLL_ACTIVE_MS = 3_000;
 
 const SOURCE_LABEL = {
   premier_lancement: "Premier lancement — récupération initiale des données",
   manuelle: "Collecte lancée manuellement",
+  rattrapage: "Mise à jour au démarrage — vérification des données déjà collectées",
 };
 
 function formatDuree(demarreeLe) {
@@ -35,6 +39,7 @@ export function useCollecteStatus() {
   const [statut, setStatut] = useState(null);
   const intervalRef = useRef(null);
 
+  const enCours = !!statut?.en_cours;
   useEffect(() => {
     const check = () => {
       fetch(`${API}/api/gestion-donnees/statut-collecte`)
@@ -43,9 +48,9 @@ export function useCollecteStatus() {
         .catch(() => {});
     };
     check();
-    intervalRef.current = setInterval(check, POLL_INTERVAL_MS);
+    intervalRef.current = setInterval(check, enCours ? POLL_ACTIVE_MS : POLL_INTERVAL_MS);
     return () => clearInterval(intervalRef.current);
-  }, []);
+  }, [enCours]);
 
   return statut;
 }
@@ -85,6 +90,14 @@ export default function CollecteBanner({ statut }) {
   // la progression réelle pendant l'initialisation (voir
   // pipelines/progress.py, statut.phase_label vient de là).
   const etape = statut.phase_label;
+  // Avancement chiffré (voir pipelines/progress.py) : "42 / 224 — STAR 2024"
+  // + pourcentage global du run. Sans compteur (phase de durée inconnue),
+  // la barre passe en mode "indéterminé" (bande animée) plutôt que de
+  // rester figée à 0 % — l'utilisateur voit que ça travaille.
+  const prog = statut.progression;
+  const pct = typeof statut.pourcentage === "number" ? statut.pourcentage : null;
+  const compteur = prog && prog.total > 0 ? `${Math.min(prog.done, prog.total)} / ${prog.total}` : null;
+  const detail = prog?.detail;
 
   return (
     <div style={{
@@ -92,7 +105,7 @@ export default function CollecteBanner({ statut }) {
       height: BANNER_HEIGHT,
       display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
       background: D, color: "#fff", fontSize: 12.5, fontWeight: 600,
-      padding: "0 16px",
+      padding: "0 16px", overflow: "hidden",
     }}>
       <span style={{
         width: 8, height: 8, borderRadius: "50%", background: Y, flexShrink: 0,
@@ -104,12 +117,32 @@ export default function CollecteBanner({ statut }) {
         {etape && (
           <span style={{ color: Y, fontWeight: 700 }}> — {etape}</span>
         )}
+        {compteur && (
+          <span style={{ color: "#fff", fontWeight: 700 }}> {compteur}</span>
+        )}
+        {detail && (
+          <span style={{ color: "rgba(255,255,255,.75)", fontWeight: 500 }}> ({detail})</span>
+        )}
         {" — "}
         <span style={{ color: "rgba(255,255,255,.75)" }}>
           certaines pages peuvent afficher des données incomplètes pendant ce temps.
         </span>
       </span>
+      {pct !== null && (
+        <span style={{ marginLeft: 8, color: Y, fontWeight: 800, flexShrink: 0 }}>{pct} %</span>
+      )}
+      {/* Barre d'avancement : collée au bord bas du bandeau (3px), sans changer
+          BANNER_HEIGHT — la mise en page (décalage de la navbar) reste intacte. */}
+      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 3, background: "rgba(255,255,255,.18)" }}>
+        <div style={pct !== null
+          ? { height: "100%", width: `${pct}%`, background: Y, transition: "width .6s ease" }
+          : { height: "100%", width: "35%", background: Y, animation: "collecte-indetermine 1.6s ease-in-out infinite" }} />
+      </div>
       <style>{`
+        @keyframes collecte-indetermine {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(300%); }
+        }
         @keyframes collecte-pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: .4; transform: scale(.75); }

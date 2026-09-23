@@ -149,6 +149,10 @@ function CollecteBar() {
   // 2026-09-16 : "ça a l'air de ne jamais se terminer !!!".
   const sourcesPrioritairesPretes = statut?.sources_prioritaires_pretes;
   const phaseLabel = statut?.phase_label;
+  // Même avancement chiffré que le bandeau global (voir CollecteBanner.jsx).
+  const prog = statut?.progression;
+  const pct = typeof statut?.pourcentage === "number" ? statut.pourcentage : null;
+  const compteur = prog && prog.total > 0 ? `${Math.min(prog.done, prog.total)} / ${prog.total}` : null;
 
   return (
     <Card style={{ padding: "14px 20px" }}>
@@ -208,6 +212,23 @@ function CollecteBar() {
           </button>
         </div>
       </div>
+      {enCours && !annulationDemandee && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#6B7280", marginBottom: 4 }}>
+            <span>
+              {compteur ? <b style={{ color: DARK }}>{compteur}</b> : "Traitement en cours"}
+              {prog?.detail && <span> · {prog.detail}</span>}
+            </span>
+            {pct !== null && <b style={{ color: DARK }}>{pct} %</b>}
+          </div>
+          <div style={{ height: 6, borderRadius: 3, background: "#EEF0F4", overflow: "hidden" }}>
+            <div style={pct !== null
+              ? { height: "100%", width: `${pct}%`, background: "#FFE600", borderRadius: 3, transition: "width .6s ease" }
+              : { height: "100%", width: "35%", background: "#FFE600", borderRadius: 3, animation: "collecte-indetermine 1.6s ease-in-out infinite" }} />
+          </div>
+          <style>{`@keyframes collecte-indetermine { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }`}</style>
+        </div>
+      )}
     </Card>
   );
 }

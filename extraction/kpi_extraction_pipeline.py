@@ -248,8 +248,13 @@ def _backfill_missing_local_pdfs(conn, already_done):
         if not (local_pdf_path("CMF", doc[2], doc[4]) and os.path.isfile(local_pdf_path("CMF", doc[2], doc[4])))
     ]
     if not missing:
+        from pipelines.progress import drop_from_plan
+        drop_from_plan("rattrapage_pdf")  # rien à rattraper : ne pèse plus dans le pourcentage global
         return 0
     print(f"\n===== RATTRAPAGE PDF LOCAUX MANQUANTS : {len(missing)} document(s) deja extrait(s) =====\n")
+    from pipelines.progress import enter_phase_if_planned, reset_progress, bump_progress
+    enter_phase_if_planned("rattrapage_pdf")
+    reset_progress(total=len(missing), detail="PDF locaux manquants")
     saved = 0
     workers = min(BACKFILL_WORKERS, len(missing))
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -261,6 +266,8 @@ def _backfill_missing_local_pdfs(conn, already_done):
             future = pool.submit(_backfill_one_document, code, annee, nom_pdf, lien)
             futures[future] = (code, annee)
         for future in as_completed(futures):
+            code_f, annee_f = futures[future]
+            bump_progress(f"{code_f} {annee_f}")
             if future.result():
                 saved += 1
     print(f"===== RATTRAPAGE TERMINE : {saved}/{len(missing)} PDF local(aux) sauvegarde(s) =====\n")
@@ -616,6 +623,20 @@ def _run_cga(conn, already_done=None):
 
 DOCUMENT_HARD_TIMEOUT_S = 45
 
+# AL_AMANAH_TAKAFUL (états financiers en arabe, voir
+# extraction/takaful_kpi_extractor.py::extract_al_amanah_takaful_kpis) a
+# régulièrement besoin d'un repli OCR (extraction/arabic_ocr_extractor.py,
+# tesseract sur plusieurs pages) largement plus long que le cas général —
+# mesuré en conditions réelles à plusieurs minutes par document (2026-09-17),
+# contre quelques secondes pour un document CMF francophone en texte natif.
+# Avec le délai commun de 45s, 2022 et 2024 étaient abandonnés à tort avant
+# la fin d'une extraction qui aurait réussi (2023, elle, a réussi dans ce
+# même délai — la marge est trop juste pour être fiable). Délai propre,
+# nettement plus généreux, pour cette seule société plutôt que de relâcher
+# la borne commune (qui protège justement contre un vrai blocage pour les
+# ~130 autres documents, en texte natif rapide).
+DOCUMENT_HARD_TIMEOUT_ARABIC_S = 240
+
 
 def _process_one_document(conn, code, annee, nom_pdf, lien):
     """Télécharge + extrait les KPI d'UN document (partie risquée de la
@@ -699,14 +720,20 @@ def run(force=False, years=None):
     failures = {name: [] for name in KPI_NAMES}
     kpi_values_saved = documents_with_kpi = download_errors = balance_mismatches = yoy_anomalies = 0
 
-    for document_id, _source_nom, code, nom_entreprise, nom_pdf, annee, lien in documents:
+    from pipelines.progress import enter_phase_if_planned, reset_progress, set_progress
+    enter_phase_if_planned("extraction_kpi")
+    reset_progress(total=len(documents))
+
+    for idx, (document_id, _source_nom, code, nom_entreprise, nom_pdf, annee, lien) in enumerate(documents):
+        set_progress(idx, detail=f"{code} {annee}")
         if is_cancel_requested():
             print("[ANNULE] Extraction KPI CMF interrompue par l'utilisateur.")
             break
         print(f"[STEP] {code} {annee} : {lien}")
-        result, timed_out = _process_one_document_with_watchdog(conn, code, annee, nom_pdf, lien)
+        doc_timeout = DOCUMENT_HARD_TIMEOUT_ARABIC_S if code == "AL_AMANAH_TAKAFUL" else DOCUMENT_HARD_TIMEOUT_S
+        result, timed_out = _process_one_document_with_watchdog(conn, code, annee, nom_pdf, lien, timeout=doc_timeout)
         if timed_out:
-            print(f"  [ERROR] {code} {annee} : delai de {DOCUMENT_HARD_TIMEOUT_S}s depasse, document saute.")
+            print(f"  [ERROR] {code} {annee} : delai de {doc_timeout}s depasse, document saute.")
         if not result["ok"]:
             exc = result["error"]
             print(f"  [ERROR] Echec de telechargement/lecture : {exc}")
@@ -759,6 +786,7 @@ def run(force=False, years=None):
             print(f"  [WARN] Aucun KPI trouve ({cause})")
 
     _write_failure_report(failures)
+    set_progress(len(documents), detail="sources sectorielles et KPI calculés…")
 
     print("\n===== RESUME EXTRACTION KPI =====")
     print(f"  Documents avec au moins 1 KPI   : {documents_with_kpi}")

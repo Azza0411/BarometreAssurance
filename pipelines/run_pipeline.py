@@ -498,13 +498,16 @@ def _run_parallel_batch(sources, results, failed_sources, empty_sources):
     main() — une fois pour les sources prioritaires, une fois pour les
     grilles complètes reportées (voir PRIORITY_SOURCE_NAMES)."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    from pipelines.progress import reset_progress, bump_progress
 
+    reset_progress(total=len(sources), detail=", ".join(n for n, _f in sources))
     parallel_results = {}
     with ThreadPoolExecutor(max_workers=min(len(sources), 6)) as pool:
         futures = {pool.submit(run_with_retry, name, func): name for name, func in sources}
         for future in as_completed(futures):
             name = futures[future]
             parallel_results[name] = future.result()
+            bump_progress(f"{name} terminé")
     for name, _func in sources:
         ok, result, duration = parallel_results[name]
         doc_count, kpi_count = _classify_result(name, ok, result, failed_sources, empty_sources)
@@ -513,12 +516,13 @@ def _run_parallel_batch(sources, results, failed_sources, empty_sources):
 
 def main():
     from pipelines.control import clear_cancel, is_cancel_requested
-    from pipelines.progress import set_phase, clear_phase, mark_quick_ready, clear_quick_ready
+    from pipelines.progress import set_phase, clear_phase, mark_quick_ready, clear_quick_ready, set_plan, FULL_PLAN
 
     started_at = datetime.now()
     _log_json("pipeline_start")
     clear_cancel()  # une éventuelle annulation d'un run précédent ne doit jamais affecter celui-ci
     clear_quick_ready()  # un run précédent ne doit jamais faire croire la plateforme "prête" avant celui-ci
+    set_plan(FULL_PLAN)  # phases attendues pour ce run : sert au pourcentage global (voir pipelines/progress.py)
 
     results = []
     failed_sources = []
