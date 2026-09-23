@@ -372,6 +372,51 @@ def get_document_ids_with_kpi(conn):
         return {row[0] for row in cur.fetchall()}
 
 
+def get_documents_in_backoff(conn):
+    """`document_id` dont la prochaine tentative d'extraction n'est pas encore
+    due (table `documents_echecs`, voir schema.sql) — le rattrapage au
+    démarrage les saute pour ne pas retélécharger à chaque ouverture un PDF
+    qui a déjà échoué."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT document_id FROM documents_echecs WHERE prochain_essai > NOW()")
+        return {row[0] for row in cur.fetchall()}
+
+
+def record_document_failures(conn, document_ids):
+    """Note un nouvel échec pour chacun de ces documents : incrémente le
+    nombre d'essais et repousse le prochain essai (1 j au 1er échec, puis
+    3 j, 7 j, 30 j — MySQL évalue les affectations de gauche à droite, le
+    CASE voit donc déjà le nouveau nb_tentatives)."""
+    if not document_ids:
+        return
+    with conn.cursor() as cur:
+        for document_id in document_ids:
+            cur.execute(
+                """
+                INSERT INTO documents_echecs (document_id, nb_tentatives, dernier_essai, prochain_essai)
+                VALUES (%s, 1, NOW(), DATE_ADD(NOW(), INTERVAL 1 DAY))
+                ON DUPLICATE KEY UPDATE
+                    nb_tentatives = nb_tentatives + 1,
+                    dernier_essai = NOW(),
+                    prochain_essai = DATE_ADD(NOW(), INTERVAL CASE
+                        WHEN nb_tentatives = 2 THEN 3
+                        WHEN nb_tentatives = 3 THEN 7
+                        ELSE 30 END DAY)
+                """,
+                (document_id,),
+            )
+    conn.commit()
+
+
+def clear_document_failures(conn, document_ids):
+    """Oublie l'historique d'échecs de documents qui ont fini par donner des KPI."""
+    if not document_ids:
+        return
+    with conn.cursor() as cur:
+        cur.executemany("DELETE FROM documents_echecs WHERE document_id = %s", [(i,) for i in document_ids])
+    conn.commit()
+
+
 def save_kpi_value(conn, document_id, tableau, kpi, valeur_nombre=None, valeur_texte=None):
     """Enregistre un KPI numérique (valeur_nombre) ou textuel (valeur_texte) —
     un seul des deux doit être fourni."""

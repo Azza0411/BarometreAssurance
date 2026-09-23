@@ -46,9 +46,12 @@ from openpyxl.utils import get_column_letter
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.repository import (
+    clear_document_failures,
     ensure_database,
     get_connection,
     get_document_ids_with_kpi,
+    get_documents_in_backoff,
+    record_document_failures,
     get_kpi_values_for_document,
     init_schema,
     list_all_documents,
@@ -680,7 +683,31 @@ def _process_one_document_with_watchdog(conn, code, annee, nom_pdf, lien, timeou
         return {"ok": False, "error": TimeoutError(f"delai de {timeout}s depasse")}, True
 
 
-def run(force=False, years=None):
+def _tail_candidate_ids(conn, skip):
+    """document_id des documents que les extracteurs sectoriels (FTUSA, BVMT
+    PDF/bulletins, CGA) vont tenter dans CE passage — mêmes filtres que
+    `_run_ftusa`/`_run_bvmt`/`_run_cga` ci-dessous ; sert à savoir, à la fin,
+    lesquels ont été tentés pour rien (voir `_update_failure_memory`)."""
+    ids = set()
+    for doc in list_all_documents(conn):
+        if doc[0] in skip:
+            continue
+        source, nom_pdf = doc[1], doc[4]
+        if source in ("FTUSA", "CGA") or (source == "BVMT" and nom_pdf.lower().endswith(".pdf")):
+            ids.add(doc[0])
+    return ids
+
+
+def _update_failure_memory(conn, attempted_ids):
+    """Après un passage complet : un document tenté qui n'a toujours AUCUN KPI
+    est noté en échec (essai +1, prochain essai repoussé) ; un document tenté
+    qui a fini par donner des KPI est oublié. Voir schema.sql::documents_echecs."""
+    after = get_document_ids_with_kpi(conn)
+    record_document_failures(conn, sorted(i for i in attempted_ids if i not in after))
+    clear_document_failures(conn, sorted(i for i in attempted_ids if i in after))
+
+
+def run(force=False, years=None, respect_backoff=False):
     """Lance l'extraction KPI pour tous les documents CMF déjà en base, puis
     les sous-pipelines FTUSA/BVMT/BVMT-bulletin/CGA et la modélisation.
 
@@ -709,10 +736,21 @@ def run(force=False, years=None):
     already_done = set() if force else get_document_ids_with_kpi(conn)
     if already_done:
         _backfill_missing_local_pdfs(conn, already_done)
+    # `respect_backoff=True` (rattrapage au démarrage, voir api/routes/
+    # gestion_donnees.py::run_tracked_catchup) : les documents déjà tentés en
+    # vain et dont le prochain essai n'est pas encore dû sont sautés — sinon
+    # chaque ouverture de la plateforme retéléchargeait les mêmes PDF sans
+    # KPI (retour du responsable pro, 2026-09-21). Une collecte lancée à la
+    # main garde le comportement par défaut : tout est retenté.
+    in_backoff = get_documents_in_backoff(conn) if (respect_backoff and not force) else set()
+    if in_backoff:
+        print(f"[INFO] {len(in_backoff)} document(s) en attente d'un nouvel essai (échecs précédents) : ignorés pour l'instant.")
+    skip = already_done | in_backoff
     documents = [
         doc for doc in list_all_documents(conn)
-        if doc[1] == "CMF" and doc[0] not in already_done and (years is None or doc[5] in years)
+        if doc[1] == "CMF" and doc[0] not in skip and (years is None or doc[5] in years)
     ]
+    attempted_ids = {doc[0] for doc in documents} | _tail_candidate_ids(conn, skip)
 
     print(f"\n===== EXTRACTION KPI : {len(documents)} document(s) a traiter "
           f"({len(already_done)} deja extraits, sautes), {len(KPI_NAMES)} KPI =====\n")
@@ -785,7 +823,10 @@ def run(force=False, years=None):
         else:
             print(f"  [WARN] Aucun KPI trouve ({cause})")
 
-    _write_failure_report(failures)
+    # Rien de traité (rattrapage à vide) : ne pas écraser le dernier rapport
+    # d'échecs d'une vraie collecte par un classeur vide.
+    if documents:
+        _write_failure_report(failures)
     set_progress(len(documents), detail="sources sectorielles et KPI calculés…")
 
     print("\n===== RESUME EXTRACTION KPI =====")
@@ -803,10 +844,15 @@ def run(force=False, years=None):
         balance_mismatches=balance_mismatches, yoy_anomalies=yoy_anomalies,
     )
 
-    ftusa_stats = _run_ftusa(conn, already_done=already_done)
-    bvmt_stats = _run_bvmt(conn, already_done=already_done)
-    bvmt_bulletin_stats = _run_bvmt_bulletin(conn, already_done=already_done)
-    cga_stats = _run_cga(conn, already_done=already_done)
+    ftusa_stats = _run_ftusa(conn, already_done=skip)
+    bvmt_stats = _run_bvmt(conn, already_done=skip)
+    bvmt_bulletin_stats = _run_bvmt_bulletin(conn, already_done=skip)
+    cga_stats = _run_cga(conn, already_done=skip)
+
+    # Mémoire des échecs : seulement si le passage est allé au bout (une
+    # annulation laisserait croire que des documents jamais tentés ont échoué).
+    if not is_cancel_requested():
+        _update_failure_memory(conn, attempted_ids)
 
     print("\n===== MODELISATION : KPI CALCULES =====\n")
     calculated_stats = calculated_kpi_extractor.run(conn)

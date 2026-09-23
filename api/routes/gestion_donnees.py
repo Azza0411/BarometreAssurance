@@ -105,7 +105,9 @@ def run_tracked_catchup():
         set_plan(CATCHUP_PLAN)
         set_phase("rattrapage_pdf")  # kpi_extraction_pipeline.run() bascule ensuite seul sur "extraction_kpi"
         from extraction.kpi_extraction_pipeline import run as run_kpi_extraction
-        run_kpi_extraction()
+        # respect_backoff : les documents déjà tentés en vain récemment ne sont
+        # pas retéléchargés à chaque ouverture (voir schema.sql::documents_echecs).
+        run_kpi_extraction(respect_backoff=True)
     finally:
         clear_phase()
         with _collecte_lock:

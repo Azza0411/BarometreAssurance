@@ -182,6 +182,23 @@ CREATE TABLE IF NOT EXISTS tableau_pages (
     CONSTRAINT fk_tableau_pages_document FOREIGN KEY (document_id) REFERENCES documents(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Memoire des documents dont l'extraction KPI n'a rien donne (echec de
+-- telechargement/lecture, ou aucun KPI trouve) -- retour du responsable pro
+-- 2026-09-21 : "a chaque ouverture, le scraping se relance". Ces documents
+-- (ex: un PDF FTUSA ancien sans KPI exploitable, un rapport ESG) etaient
+-- retelecharges et reparses A CHAQUE demarrage. On retient ici le nombre
+-- d'essais et la date du prochain essai (delai croissant : 1 j, 3 j, 7 j,
+-- puis 30 j) : le rattrapage au demarrage saute les documents dont
+-- prochain_essai est dans le futur ; une collecte lancee a la main les
+-- retente toujours (demande explicite de l'utilisateur).
+CREATE TABLE IF NOT EXISTS documents_echecs (
+    document_id    INT NOT NULL PRIMARY KEY,
+    nb_tentatives  INT NOT NULL DEFAULT 1,
+    dernier_essai  DATETIME NOT NULL,
+    prochain_essai DATETIME NOT NULL,
+    CONSTRAINT fk_documents_echecs_document FOREIGN KEY (document_id) REFERENCES documents(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Historique des corrections manuelles apportees depuis la page Correction
 -- manuelle (bouton "Enregistrer tout") -- journal d'audit APPEND-ONLY, ne
 -- remplace jamais la ligne precedente : sert a savoir qui a corrige quoi et
