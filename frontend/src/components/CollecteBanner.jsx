@@ -23,7 +23,7 @@ const POLL_ACTIVE_MS = 3_000;
 const TITRE = {
   premier_lancement: "Premier lancement — récupération initiale des données",
   manuelle: "Collecte des données en cours",
-  rattrapage: "Mise à jour au démarrage",
+  rattrapage: "Mise à jour au démarrage — téléchargement des documents manquants",
 };
 
 const AVERTISSEMENT = "Certaines pages peuvent afficher des données incomplètes pendant la collecte.";
@@ -76,8 +76,15 @@ export function isBandeauVisible(statut) {
   return !!statut?.en_cours;
 }
 
+// Le rattrapage au démarrage n'a de "gros" travail à montrer que s'il doit
+// télécharger des PDF manquants (l'étape "PDF locaux" est alors dans le plan) ;
+// sinon c'est un simple contrôle de quelques secondes : une ligne suffit.
+function rattrapageLeger(statut) {
+  return statut?.source === "rattrapage" && !statut?.progression?.etapes?.some(e => e.code === "rattrapage_pdf");
+}
+
 function isCompact(statut) {
-  return statut?.source === "rattrapage" || !!statut?._ui?.compact;
+  return rattrapageLeger(statut) || !!statut?._ui?.compact;
 }
 
 /* Hauteur réelle du bandeau (0 si masqué) — App.jsx s'en sert pour décaler la
@@ -93,13 +100,6 @@ export function formatReste(s) {
   const m = Math.ceil(s / 60);
   if (m < 90) return `≈ ${m} min`;
   return `≈ ${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`;
-}
-
-function formatEcoule(s) {
-  s = Math.max(0, Math.round(s));
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-  const mm = String(m).padStart(2, "0"), ss = String(sec).padStart(2, "0");
-  return h > 0 ? `${h} h ${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 // Horloge à 1 Hz, uniquement quand le bandeau est affiché.
@@ -195,12 +195,17 @@ export default function CollecteBanner({ statut }) {
   const titre = TITRE[statut.source] || "Collecte des données en cours";
   const etapes = prog?.etapes ?? [];
   const decalage = (now - (statut._ui?.fetchedAt ?? now)) / 1000;
-  const ecoule = prog?.ecoule_s != null ? prog.ecoule_s + decalage : null;
   const resteS = prog?.reste_s != null ? Math.max(prog.reste_s - decalage, 0) : null;
   const reste = formatReste(resteS);
   const compteur = prog && prog.total > 0 ? `${Math.min(prog.done, prog.total)} / ${prog.total}${prog.unite ? " " + prog.unite : ""}` : null;
   const etapeCourante = etapes.find(e => e.statut === "en_cours");
-  const toggle = statut.source !== "rattrapage" ? statut._ui?.toggle : null;
+  const toggle = !rattrapageLeger(statut) ? statut._ui?.toggle : null;
+  // Tâches restantes, en clair : éléments de l'étape en cours + étapes à venir.
+  const etapesAVenir = etapes.filter(e => e.statut === "a_venir").length;
+  const restant = [
+    prog?.restantes ? `${prog.restantes} ${prog.unite || "éléments"}` : null,
+    etapesAVenir > 0 ? `${etapesAVenir} étape${etapesAVenir > 1 ? "s" : ""} ensuite` : null,
+  ].filter(Boolean).join(" · ");
 
   const boutonToggle = (libelle, aide) => toggle && (
     <button onClick={toggle} title={aide}
@@ -223,6 +228,7 @@ export default function CollecteBanner({ statut }) {
           {etapeCourante && <span> · {etapeCourante.label}</span>}
           {compteur && <span style={{ color: GRIS }}> {compteur}</span>}
         </span>
+        {restant && <span style={{ flexShrink: 0, color: GRIS }}>reste {restant}</span>}
         {reste && <span style={{ background: Y, borderRadius: 10, padding: "2px 10px", fontWeight: 800, flexShrink: 0 }}>{reste}</span>}
         {pct !== null && <span style={{ fontWeight: 800, flexShrink: 0 }}>{pct} %</span>}
         {boutonToggle("Agrandir ▾", "Afficher le détail de la collecte")}
@@ -263,7 +269,7 @@ export default function CollecteBanner({ statut }) {
                 <span style={{ fontSize: 11.5, fontWeight: 600 }}>restantes</span>
               </div>
             : <div style={{ fontSize: 12.5, fontWeight: 600, color: GRIS }}>Estimation du temps restant…</div>}
-          {ecoule !== null && <div style={{ marginTop: 3, fontSize: 11.5, color: GRIS }}>écoulé {formatEcoule(ecoule)}</div>}
+          {restant && <div style={{ marginTop: 4, fontSize: 12.5, fontWeight: 700 }}>Il reste : {restant}</div>}
         </div>
         {boutonToggle("Réduire ▴", "Réduire le bandeau")}
       </div>

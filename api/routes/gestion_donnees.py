@@ -102,8 +102,13 @@ def run_tracked_catchup():
         _collecte_state["source"] = "rattrapage"
     try:
         clear_cancel()  # une annulation d'un run précédent ne doit jamais affecter celui-ci
-        set_plan(CATCHUP_PLAN, kind="catchup")
-        set_phase("rattrapage_pdf")  # kpi_extraction_pipeline.run() bascule ensuite seul sur "extraction_kpi"
+        # L'étape "PDF locaux" n'est annoncée que s'il y en a à télécharger
+        # (sinon le rattrapage n'est qu'un contrôle de quelques secondes : le
+        # bandeau reste en une ligne, voir CollecteBanner.jsx::rattrapageLeger).
+        from extraction.kpi_extraction_pipeline import has_missing_local_pdfs
+        plan = CATCHUP_PLAN if has_missing_local_pdfs() else [p for p in CATCHUP_PLAN if p != "rattrapage_pdf"]
+        set_plan(plan, kind="catchup")
+        set_phase(plan[0])  # kpi_extraction_pipeline.run() enchaîne ensuite seul les sous-étapes
         from extraction.kpi_extraction_pipeline import run as run_kpi_extraction
         # respect_backoff : les documents déjà tentés en vain récemment ne sont
         # pas retéléchargés à chaque ouverture (voir schema.sql::documents_echecs).
