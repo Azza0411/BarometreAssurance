@@ -41,13 +41,13 @@ PHASE_LABELS = {
 
 # Libellés COURTS pour la frise d'étapes du bandeau + unité de comptage.
 PHASE_SHORT = {
-    "scraping": "Documents CMF",
-    "rattrapage_pdf": "PDF locaux",
-    "extraction_kpi": "Calcul des KPI",
-    "sources_prioritaires": "Sources sectorielles",
-    "grilles": "Tableaux détaillés",
-    "qualite": "Contrôle qualité",
-    "veille": "Actualités",
+    "scraping": "Collecte portail CMF",
+    "rattrapage_pdf": "Téléchargement PDF",
+    "extraction_kpi": "Extraction des données",
+    "sources_prioritaires": "Données FTUSA / CGA",
+    "grilles": "Extraction des annexes",
+    "qualite": "Vérification des données",
+    "veille": "Veille secteur",
 }
 PHASE_UNITS = {
     "scraping": "sociétés",

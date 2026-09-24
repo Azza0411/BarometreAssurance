@@ -914,15 +914,11 @@ function PageTransition({ children }) {
 /* ─── Shell ─── */
 function AppShell() {
   const location = useLocation();
-  // Sondé une seule fois ici (pas dans CollecteBanner ni dans chaque
-  // page) : AppNavbar est fixed/top:0 — décaler sa position ET le
-  // bandeau doivent rester sur la MÊME source de vérité, sinon ils
-  // peuvent désynchroniser (bandeau affiché mais navbar pas décalée, ou
-  // l'inverse) pendant les quelques secondes entre deux sondages.
+  // Sondé une seule fois ici — le panneau de progression est désormais
+  // flottant à droite (pas un bandeau haut), donc plus besoin de décaler
+  // la navbar. navbarTop reste à 0 pour ne pas casser les autres layouts.
   const statut = useCollecteStatus();
-  // Hauteur réelle du bandeau : 34 px (compact) ou plus (étendu, avec frise
-  // d'étapes et temps restant) — voir CollecteBanner.jsx::bandeauHeight.
-  const navbarTop = bandeauHeight(statut);
+  const navbarTop = 0;
 
   if (location.pathname === "/accueil" || location.pathname === "/") {
     return (

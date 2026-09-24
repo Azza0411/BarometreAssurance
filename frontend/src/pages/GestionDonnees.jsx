@@ -213,6 +213,15 @@ function CollecteBar() {
           </button>
         </div>
       </div>
+      {!enCours && (
+        <div style={{ marginTop: 10, fontSize: 11.5, color: "#6B7280", lineHeight: "1.5",
+          background: "#F8F9FB", borderRadius: 6, padding: "8px 12px", border: "1px solid #E5E7EB" }}>
+          ℹ️ La collecte traite d'abord les données prioritaires (portail CMF, FTUSA, CGA), puis
+          les annexes détaillées en arrière-plan. Les tâches longues — notamment l'extraction
+          OCR des documents en arabe (Takaful) — passent en dernier et peuvent prendre
+          plusieurs minutes supplémentaires.
+        </div>
+      )}
       {enCours && !annulationDemandee && (
         <div style={{ marginTop: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#6B7280", marginBottom: 4 }}>

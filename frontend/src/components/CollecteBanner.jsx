@@ -3,95 +3,51 @@ import { useState, useEffect, useRef, useMemo } from "react";
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
 const Y = "#FFE600", D = "#2E2E38", GRIS = "#6B7280", PISTE = "#E6E8EE";
 
-// Deux hauteurs : bandeau "étendu" (anneau de progression, étapes, temps
-// restant) pour une vraie collecte (premier lancement / manuelle), bandeau
-// "compact" (une ligne) pour le rattrapage au démarrage, ou si l'utilisateur
-// l'a réduit.
-export const BANNER_COMPACT = 34;
-export const BANNER_EXPANDED = 104;
-export const BANNER_HEIGHT = BANNER_COMPACT; // compat : ancien nom
+// Compat : App.jsx importe encore bandeauHeight / BANNER_HEIGHT pour décaler
+// la navbar. Avec le panneau droit flottant, il n'y a plus de décalage vertical.
+export const BANNER_COMPACT = 0;
+export const BANNER_EXPANDED = 0;
+export const BANNER_HEIGHT = 0;
+export function bandeauHeight() { return 0; }
 
-// Sondage plus rapproché tant qu'une collecte tourne (avancement x/y et temps
-// restant changent en continu), retour à 15s quand rien ne tourne — la
-// collecte automatique au premier lancement dure typiquement plusieurs
-// dizaines de minutes (voir docs/packaging_portable.md) : un utilisateur qui
-// n'est pas prévenu peut légitimement croire l'application cassée devant des
-// pages vides (retour utilisateur direct, 2026-09-15).
 const POLL_INTERVAL_MS = 15_000;
-const POLL_ACTIVE_MS = 3_000;
+const POLL_ACTIVE_MS   = 3_000;
 
 const TITRE = {
-  premier_lancement: "Premier lancement — récupération initiale des données",
-  manuelle: "Collecte des données en cours",
-  rattrapage: "Mise à jour au démarrage — téléchargement des documents manquants",
+  premier_lancement: "Récupération initiale des données",
+  manuelle:          "Collecte des données",
+  rattrapage:        "Mise à jour au démarrage",
 };
 
-const AVERTISSEMENT = "Certaines pages peuvent afficher des données incomplètes pendant la collecte.";
-
-/* Sondage partagé — un seul appel dans AppShell (pas un par page/bandeau),
-   pour que la mise en page (décalage de la navbar fixe) et le contenu du
-   bandeau restent toujours synchronisés sur le même statut. Ajoute `_ui`
-   (mode compact choisi par l'utilisateur + instant de la dernière réponse,
-   qui sert à faire défiler le compte à rebours entre deux sondages). */
 export function useCollecteStatus() {
-  const [statut, setStatut] = useState(null);
+  const [statut, setStatut]     = useState(null);
   const [fetchedAt, setFetchedAt] = useState(Date.now());
-  const [compact, setCompact] = useState(() => {
-    try { return localStorage.getItem("collecte-compact") === "1"; } catch { return false; }
-  });
+  const [collapsed, setCollapsed] = useState(false);
   const intervalRef = useRef(null);
 
   const enCours = !!statut?.en_cours;
   useEffect(() => {
-    const check = () => {
+    const check = () =>
       fetch(`${API}/api/gestion-donnees/statut-collecte`)
         .then(r => r.json())
         .then(s => { setStatut(s); setFetchedAt(Date.now()); })
         .catch(() => {});
-    };
     check();
     intervalRef.current = setInterval(check, enCours ? POLL_ACTIVE_MS : POLL_INTERVAL_MS);
     return () => clearInterval(intervalRef.current);
   }, [enCours]);
 
-  const toggle = () => setCompact(c => {
-    const next = !c;
-    try { localStorage.setItem("collecte-compact", next ? "1" : "0"); } catch { /* stockage indisponible */ }
-    return next;
-  });
+  const toggle = () => setCollapsed(c => !c);
 
   return useMemo(
-    () => (statut ? { ...statut, _ui: { compact, toggle, fetchedAt } } : null),
+    () => (statut ? { ...statut, _ui: { collapsed, toggle, fetchedAt } } : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [statut, compact, fetchedAt],
+    [statut, collapsed, fetchedAt],
   );
 }
 
-/* Vrai tant que le bandeau doit rester affiché : simplement `en_cours`.
-   Retour utilisateur direct 2026-09-16 : le bandeau avait été masqué dès
-   que les sources prioritaires étaient prêtes - "je remarque que le bandeau
-   a été retiré, ce que je n'ai pas demandé. Je veux voir la progression".
-   Il reste donc visible du DÉBUT à la TOUTE FIN de la collecte. */
 export function isBandeauVisible(statut) {
   return !!statut?.en_cours;
-}
-
-// Le rattrapage au démarrage n'a de "gros" travail à montrer que s'il doit
-// télécharger des PDF manquants (l'étape "PDF locaux" est alors dans le plan) ;
-// sinon c'est un simple contrôle de quelques secondes : une ligne suffit.
-function rattrapageLeger(statut) {
-  return statut?.source === "rattrapage" && !statut?.progression?.etapes?.some(e => e.code === "rattrapage_pdf");
-}
-
-function isCompact(statut) {
-  return rattrapageLeger(statut) || !!statut?._ui?.compact;
-}
-
-/* Hauteur réelle du bandeau (0 si masqué) — App.jsx s'en sert pour décaler la
-   navbar et le contenu, afin que rien ne se chevauche. */
-export function bandeauHeight(statut) {
-  if (!isBandeauVisible(statut)) return 0;
-  return isCompact(statut) ? BANNER_COMPACT : BANNER_EXPANDED;
 }
 
 export function formatReste(s) {
@@ -102,181 +58,200 @@ export function formatReste(s) {
   return `≈ ${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`;
 }
 
-// Horloge à 1 Hz, uniquement quand le bandeau est affiché.
 function useNow(active) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    if (!active) return undefined;
+    if (!active) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [active]);
   return now;
 }
 
-/* Anneau de progression globale : le pourcentage est LE chiffre à voir en
-   premier. Sans pourcentage (phase de durée inconnue), l'arc tourne. */
-function Anneau({ pct, taille = 58 }) {
-  const trait = 6, r = (taille - trait) / 2, c = 2 * Math.PI * r, milieu = taille / 2;
+/* Anneau SVG — pourcentage global */
+function Anneau({ pct, taille = 52 }) {
+  const trait = 5, r = (taille - trait) / 2, c = 2 * Math.PI * r, mid = taille / 2;
   const arc = pct === null ? 0.25 : pct / 100;
   return (
     <svg width={taille} height={taille} viewBox={`0 0 ${taille} ${taille}`}
-      style={{ flexShrink: 0, animation: pct === null ? "collecte-tourne 1.2s linear infinite" : "none" }}>
-      <circle cx={milieu} cy={milieu} r={r} fill="none" stroke={PISTE} strokeWidth={trait} />
-      <circle cx={milieu} cy={milieu} r={r} fill="none" stroke={D} strokeWidth={trait} strokeLinecap="round"
-        strokeDasharray={`${arc * c} ${c}`} transform={`rotate(-90 ${milieu} ${milieu})`}
-        style={{ transition: "stroke-dasharray .6s ease" }} />
+      style={{ flexShrink: 0, animation: pct === null ? "cp-spin 1.2s linear infinite" : "none" }}>
+      <circle cx={mid} cy={mid} r={r} fill="none" stroke={PISTE} strokeWidth={trait} />
+      <circle cx={mid} cy={mid} r={r} fill="none" stroke={D} strokeWidth={trait}
+        strokeLinecap="round"
+        strokeDasharray={`${arc * c} ${c}`}
+        transform={`rotate(-90 ${mid} ${mid})`}
+        style={{ transition: "stroke-dasharray .5s ease" }} />
       {pct !== null && (
-        <text x="50%" y="50%" dominantBaseline="central" textAnchor="middle" fontSize="15" fontWeight="800" fill={D}>{pct}%</text>
+        <text x="50%" y="50%" dominantBaseline="central" textAnchor="middle"
+          fontSize="13" fontWeight="800" fill={D}>{pct}%</text>
       )}
     </svg>
   );
 }
 
-/* Une barre segmentée = une étape par segment : sombre (terminée), jaune
-   cerclé de sombre (en cours, remplie selon son propre avancement), grise
-   (à venir). Le libellé de chaque étape est dessous. */
-function Segments({ etapes, prog }) {
+/* Icône d'état par étape */
+function Icone({ statut }) {
+  if (statut === "terminee") return (
+    <svg width={16} height={16} viewBox="0 0 16 16" style={{ flexShrink: 0 }}>
+      <circle cx={8} cy={8} r={8} fill={D} />
+      <polyline points="4,8 7,11 12,5" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+  if (statut === "en_cours") return (
+    <div style={{
+      width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
+      background: Y, border: `2px solid ${D}`,
+      animation: "cp-pulse 1.4s ease-in-out infinite",
+    }} />
+  );
   return (
-    <div style={{ display: "flex", gap: 6 }}>
-      {etapes.map(e => {
-        const enCours = e.statut === "en_cours";
-        const terminee = e.statut === "terminee";
-        const connu = prog?.total > 0;
-        const frac = enCours && connu ? Math.min(prog.done / prog.total, 1) : 0;
-        return (
-          <div key={e.code} title={e.label} style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              position: "relative", height: 8, borderRadius: 4, overflow: "hidden",
-              background: terminee ? D : PISTE,
-              boxShadow: enCours ? `0 0 0 1.5px ${D}` : "none",
-            }}>
-              {enCours && (connu
-                ? <div style={{ height: "100%", width: `${frac * 100}%`, background: Y, transition: "width .6s ease" }} />
-                : <div style={{ height: "100%", width: "40%", background: Y, animation: "collecte-indetermine 1.6s ease-in-out infinite" }} />)}
-            </div>
-            <div style={{
-              marginTop: 4, fontSize: 10.5, lineHeight: "13px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-              fontWeight: enCours ? 800 : 500, color: enCours ? D : terminee ? GRIS : "#A3A9B5",
-            }}>{terminee ? "✓ " : ""}{e.label}</div>
-          </div>
-        );
-      })}
-    </div>
+    <div style={{ width: 16, height: 16, borderRadius: "50%", flexShrink: 0, border: `2px solid ${PISTE}`, background: "#fff" }} />
   );
 }
 
-const STYLES = `
-  @keyframes collecte-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.75); } }
-  @keyframes collecte-tourne { to { transform: rotate(360deg); } }
-  @keyframes collecte-indetermine { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+const CSS = `
+  @keyframes cp-spin  { to { transform: rotate(360deg); } }
+  @keyframes cp-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.5; transform:scale(.8); } }
+  @keyframes cp-slide { 0% { transform:translateX(-100%); } 100% { transform:translateX(300%); } }
 `;
 
-/* Bandeau global fixe (toutes pages, y compris Accueil) — position:fixed
-   plutôt qu'un élément de flux normal : AppNavbar est déjà fixed/top:0,
-   un bandeau "normal" serait donc masqué derrière elle plutôt que de
-   s'afficher au-dessus. AppShell décale AppNavbar/le contenu principal de
-   `bandeauHeight(statut)` quand ce bandeau est visible pour que rien ne se
-   chevauche. Sans indication, des pages entières de "—" sont
-   indissociables d'une application cassée ; ce bandeau disparaît
-   uniquement quand la collecte est intégralement terminée.
-
-   Design (2026-09-23, à la demande de l'utilisatrice : "plus lisible, plus
-   clair, minimaliste, mis en valeur") : bandeau CLAIR, trois informations
-   seulement — le pourcentage (anneau), la phase en cours en une phrase, et
-   le temps restant (pastille jaune) — plus la barre segmentée des étapes. */
+/* Panneau flottant droit */
 export default function CollecteBanner({ statut }) {
   const visible = isBandeauVisible(statut);
   const now = useNow(visible);
   if (!visible) return null;
 
   const prog = statut.progression;
-  const pct = typeof statut.pourcentage === "number" ? statut.pourcentage : null;
-  const compact = isCompact(statut);
-  const titre = TITRE[statut.source] || "Collecte des données en cours";
+  const pct  = typeof statut.pourcentage === "number" ? statut.pourcentage : null;
+  const collapsed = !!statut._ui?.collapsed;
+  const titre = TITRE[statut.source] || "Collecte des données";
   const etapes = prog?.etapes ?? [];
   const decalage = (now - (statut._ui?.fetchedAt ?? now)) / 1000;
-  const resteS = prog?.reste_s != null ? Math.max(prog.reste_s - decalage, 0) : null;
-  const reste = formatReste(resteS);
-  const compteur = prog && prog.total > 0 ? `${Math.min(prog.done, prog.total)} / ${prog.total}${prog.unite ? " " + prog.unite : ""}` : null;
+  const resteS   = prog?.reste_s != null ? Math.max(prog.reste_s - decalage, 0) : null;
+  const reste    = formatReste(resteS);
   const etapeCourante = etapes.find(e => e.statut === "en_cours");
-  const toggle = !rattrapageLeger(statut) ? statut._ui?.toggle : null;
-  // Tâches restantes, en clair : éléments de l'étape en cours + étapes à venir.
-  const etapesAVenir = etapes.filter(e => e.statut === "a_venir").length;
-  const restant = [
-    prog?.restantes ? `${prog.restantes} ${prog.unite || "éléments"}` : null,
-    etapesAVenir > 0 ? `${etapesAVenir} étape${etapesAVenir > 1 ? "s" : ""} ensuite` : null,
-  ].filter(Boolean).join(" · ");
+  const compteur = prog?.total > 0
+    ? `${Math.min(prog.done, prog.total)} / ${prog.total}${prog.unite ? " " + prog.unite : ""}`
+    : null;
 
-  const boutonToggle = (libelle, aide) => toggle && (
-    <button onClick={toggle} title={aide}
-      style={{ flexShrink: 0, background: "transparent", border: "none", color: GRIS, fontSize: 11.5, fontWeight: 600, cursor: "pointer", padding: "2px 4px" }}>
-      {libelle}
-    </button>
-  );
-
-  if (compact) {
-    return (
-      <div title={AVERTISSEMENT} style={{
-        position: "fixed", top: 0, left: 0, right: 0, zIndex: 101, height: BANNER_COMPACT, boxSizing: "border-box",
-        display: "flex", alignItems: "center", gap: 10, background: "#fff", color: D, fontSize: 12.5, fontWeight: 600,
-        padding: "0 18px", overflow: "hidden", borderBottom: "1px solid #E5E7EB", boxShadow: "0 1px 6px rgba(20,20,40,.08)",
-      }}>
-        <span style={{ width: 9, height: 9, borderRadius: "50%", background: Y, boxShadow: `0 0 0 2px ${D}`, flexShrink: 0, animation: "collecte-pulse 1.4s ease-in-out infinite" }} />
-        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          <b>{titre}</b>
-          {prog?.etape_index && <span style={{ color: GRIS }}> · étape {prog.etape_index}/{prog.etapes_total}</span>}
-          {etapeCourante && <span> · {etapeCourante.label}</span>}
-          {compteur && <span style={{ color: GRIS }}> {compteur}</span>}
-        </span>
-        {restant && <span style={{ flexShrink: 0, color: GRIS }}>reste {restant}</span>}
-        {reste && <span style={{ background: Y, borderRadius: 10, padding: "2px 10px", fontWeight: 800, flexShrink: 0 }}>{reste}</span>}
-        {pct !== null && <span style={{ fontWeight: 800, flexShrink: 0 }}>{pct} %</span>}
-        {boutonToggle("Agrandir ▾", "Afficher le détail de la collecte")}
-        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 3, background: PISTE }}>
-          <div style={pct !== null
-            ? { height: "100%", width: `${pct}%`, background: Y, transition: "width .6s ease" }
-            : { height: "100%", width: "35%", background: Y, animation: "collecte-indetermine 1.6s ease-in-out infinite" }} />
-        </div>
-        <style>{STYLES}</style>
-      </div>
-    );
-  }
+  // Ligne connecteur entre étapes
+  const CONN_H = 14;
 
   return (
-    <div style={{
-      position: "fixed", top: 0, left: 0, right: 0, zIndex: 101, height: BANNER_EXPANDED, boxSizing: "border-box",
-      display: "flex", flexDirection: "column", justifyContent: "space-between",
-      background: "#fff", color: D, padding: "9px 28px 8px", overflow: "hidden",
-      borderBottom: "1px solid #E5E7EB", boxShadow: "0 3px 16px rgba(20,20,40,.10)",
-    }}>
-      {/* Ligne 1 : pourcentage · ce qui se passe · temps restant */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <Anneau pct={pct} />
-        <div style={{ flex: 1, minWidth: 0 }} title={AVERTISSEMENT}>
-          <div style={{ fontSize: 16.5, fontWeight: 800, letterSpacing: "-.1px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titre}</div>
-          <div style={{ marginTop: 3, fontSize: 13, color: GRIS, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {prog?.etape_index && etapeCourante
-              ? <><b style={{ color: D }}>Étape {prog.etape_index} sur {prog.etapes_total} · {etapeCourante.label}</b>
-                  {compteur && <span> — {compteur}</span>}
-                  {prog.detail && <span> · en ce moment : {prog.detail}</span>}</>
-              : (statut.phase_label || "Initialisation…")}
-          </div>
-        </div>
-        <div style={{ textAlign: "right", flexShrink: 0 }}>
-          {reste
-            ? <div style={{ display: "inline-flex", alignItems: "baseline", gap: 6, background: Y, borderRadius: 14, padding: "4px 14px" }}>
-                <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.3px" }}>{reste}</span>
-                <span style={{ fontSize: 11.5, fontWeight: 600 }}>restantes</span>
-              </div>
-            : <div style={{ fontSize: 12.5, fontWeight: 600, color: GRIS }}>Estimation du temps restant…</div>}
-          {restant && <div style={{ marginTop: 4, fontSize: 12.5, fontWeight: 700 }}>Il reste : {restant}</div>}
-        </div>
-        {boutonToggle("Réduire ▴", "Réduire le bandeau")}
-      </div>
+    <>
+      <style>{CSS}</style>
+      <div style={{
+        position: "fixed",
+        right: 0,
+        top: 70,            // sous la navbar (~64px)
+        width: collapsed ? 44 : 300,
+        zIndex: 200,
+        background: "#fff",
+        borderRadius: "12px 0 0 12px",
+        boxShadow: "-4px 4px 24px rgba(20,20,40,.13)",
+        border: `1px solid #E5E7EB`,
+        borderRight: "none",
+        overflow: "hidden",
+        transition: "width .3s ease",
+      }}>
 
-      {/* Ligne 2 : une barre segmentée = les étapes de la collecte */}
-      {etapes.length > 0 ? <Segments etapes={etapes} prog={prog} /> : <div style={{ height: 25 }} />}
-      <style>{STYLES}</style>
-    </div>
+        {/* Mode réduit : juste le bouton + % */}
+        {collapsed ? (
+          <button onClick={statut._ui?.toggle}
+            title="Voir la progression de la collecte"
+            style={{
+              width: 44, height: 80, background: "transparent", border: "none",
+              cursor: "pointer", display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center", gap: 6,
+            }}>
+            <div style={{
+              width: 10, height: 10, borderRadius: "50%", background: Y,
+              border: `2px solid ${D}`, animation: "cp-pulse 1.4s ease-in-out infinite",
+            }} />
+            {pct !== null && <span style={{ fontSize: 11, fontWeight: 800, color: D }}>{pct}%</span>}
+          </button>
+        ) : (
+          <div style={{ padding: "14px 16px 16px" }}>
+
+            {/* En-tête : anneau + titre + bouton réduire */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+              <Anneau pct={pct} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: D, lineHeight: "1.3" }}>{titre}</div>
+                {reste
+                  ? <div style={{ marginTop: 4, display: "inline-flex", alignItems: "baseline", gap: 5,
+                      background: Y, borderRadius: 10, padding: "2px 10px" }}>
+                      <span style={{ fontSize: 13, fontWeight: 800 }}>{reste}</span>
+                      <span style={{ fontSize: 10.5, fontWeight: 600 }}>restantes</span>
+                    </div>
+                  : <div style={{ marginTop: 4, fontSize: 11.5, color: GRIS }}>Estimation en cours…</div>}
+              </div>
+              <button onClick={statut._ui?.toggle} title="Réduire"
+                style={{ background: "transparent", border: "none", cursor: "pointer",
+                  color: GRIS, fontSize: 16, lineHeight: 1, padding: "2px 4px", flexShrink: 0 }}>›</button>
+            </div>
+
+            {/* Séparateur */}
+            <div style={{ borderTop: `1px solid ${PISTE}`, marginBottom: 12 }} />
+
+            {/* Liste des étapes */}
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {etapes.map((e, i) => {
+                const enCours  = e.statut === "en_cours";
+                const terminee = e.statut === "terminee";
+                const connu = prog?.total > 0;
+                const frac  = enCours && connu ? Math.min(prog.done / prog.total, 1) : 0;
+                const isLast = i === etapes.length - 1;
+
+                return (
+                  <div key={e.code}>
+                    {/* Étape */}
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                      {/* Colonne icône + trait */}
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+                        <Icone statut={e.statut} />
+                        {!isLast && (
+                          <div style={{ width: 2, height: CONN_H + (enCours ? 24 : 0),
+                            background: terminee ? D : PISTE, marginTop: 2 }} />
+                        )}
+                      </div>
+
+                      {/* Texte */}
+                      <div style={{ flex: 1, minWidth: 0, paddingBottom: isLast ? 0 : CONN_H / 2 }}>
+                        <div style={{
+                          fontSize: 12.5,
+                          fontWeight: enCours ? 800 : terminee ? 600 : 500,
+                          color: enCours ? D : terminee ? GRIS : "#B0B7C3",
+                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                        }}>{e.label}</div>
+
+                        {/* Barre + compteur pour l'étape en cours */}
+                        {enCours && (
+                          <div style={{ marginTop: 5 }}>
+                            <div style={{ height: 5, borderRadius: 3, background: PISTE, overflow: "hidden" }}>
+                              {(!connu || frac === 0)
+                                ? <div style={{ height: "100%", width: "40%", background: Y, animation: "cp-slide 1.6s ease-in-out infinite" }} />
+                                : <div style={{ height: "100%", width: `${frac * 100}%`, background: Y, transition: "width .6s ease" }} />
+                              }
+                            </div>
+                            {compteur && (
+                              <div style={{ marginTop: 3, fontSize: 11, color: GRIS }}>
+                                {compteur}
+                                {prog.detail && <span> · {prog.detail}</span>}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
+        )}
+      </div>
+    </>
   );
 }
