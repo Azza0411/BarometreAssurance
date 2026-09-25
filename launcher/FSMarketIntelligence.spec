@@ -38,14 +38,6 @@ a = Analysis(
             for f in os.listdir(os.path.join(PROJECT_ROOT, "data"))
             if f.lower().endswith(".xlsx")
         ],
-        # Données initiales pré-extraites — importées automatiquement au 1er
-        # lancement si la base est vide (voir launcher/main.py::_auto_seed()).
-        # Mise à jour : regénérer avec mysqldump (voir docs/packaging_portable.md).
-        *(
-            [(os.path.join(PROJECT_ROOT, "data", "seed", "initial_data.sql"), "data/seed")]
-            if os.path.exists(os.path.join(PROJECT_ROOT, "data", "seed", "initial_data.sql"))
-            else []
-        ),
     ],
     hiddenimports=["pymysql", "chatbot_portable.app"],
     hookspath=[],
