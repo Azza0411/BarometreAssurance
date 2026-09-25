@@ -115,11 +115,15 @@ def _auto_seed():
                 print(f"  Base déjà peuplée ({count} valeurs KPI) — import initial ignoré.")
                 return
 
-            print("  Base vide — import des données initiales (quelques secondes)...")
+            print("  Base vide — import des données initiales...")
             # utf-8-sig absorbe le BOM éventuel (Out-File PowerShell)
             with open(seed_path, "r", encoding="utf-8-sig") as f:
                 sql = re.sub(r"--[^\n]*", "", f.read())
 
+            # Le dump utilise des INSERTs groupés (multi-lignes) : 4 requêtes
+            # seulement pour 900+ lignes → import en < 5 secondes en transaction
+            # unique (autocommit=False, un seul commit à la fin).
+            conn.autocommit(False)
             with conn.cursor() as cur:
                 for stmt in sql.split(";"):
                     stmt = stmt.strip()
