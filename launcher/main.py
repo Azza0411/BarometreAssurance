@@ -30,6 +30,7 @@ tout début, avant tout autre import, corrige ça pour tout le programme
 sans devoir auditer chaque usage de chemin relatif du code existant."""
 
 import os
+import re
 import sys
 import threading
 import time
@@ -89,6 +90,52 @@ def _wait_for_mysql(host, port, max_wait_seconds=30):
     return False
 
 
+def _auto_seed():
+    """Si la base MarketInsurance est vide et qu'un fichier data/seed/initial_data.sql
+    est présent (distribué avec l'exécutable), l'importe automatiquement — les pages
+    Aperçu marché, Profil pays, etc. sont ainsi disponibles dès le premier lancement,
+    sans attendre une collecte complète (~30-60 min)."""
+    seed_path = os.path.join(BASE_DIR, "data", "seed", "initial_data.sql")
+    if not os.path.exists(seed_path):
+        return
+
+    try:
+        import pymysql
+        from config.db_config import DB_CONFIG
+        from database.repository import ensure_database, init_schema
+
+        ensure_database()
+        conn = pymysql.connect(**DB_CONFIG)
+        try:
+            init_schema(conn)
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM kpi_values")
+                count = cur.fetchone()[0]
+            if count > 0:
+                print(f"  Base déjà peuplée ({count} valeurs KPI) — import initial ignoré.")
+                return
+
+            print("  Base vide — import des données initiales (quelques secondes)...")
+            # utf-8-sig absorbe le BOM éventuel (Out-File PowerShell)
+            with open(seed_path, "r", encoding="utf-8-sig") as f:
+                sql = re.sub(r"--[^\n]*", "", f.read())
+
+            with conn.cursor() as cur:
+                for stmt in sql.split(";"):
+                    stmt = stmt.strip()
+                    if stmt:
+                        try:
+                            cur.execute(stmt)
+                        except Exception:
+                            pass
+            conn.commit()
+            print("  Données initiales importées — pages disponibles immédiatement.")
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"  [avertissement] Import initial ignoré : {exc}")
+
+
 def main():
     print("FS Market Intelligence — démarrage de la plateforme...")
     print(f"  Dossier de l'application : {BASE_DIR}")
@@ -109,6 +156,7 @@ def main():
         input("Appuyez sur Entrée pour fermer...")
         return 1
     print("  MySQL accessible.")
+    _auto_seed()
 
     if not _is_port_open(API_PORT):
         print(f"  Démarrage de l'API (port {API_PORT})...")
