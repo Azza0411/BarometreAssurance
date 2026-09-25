@@ -763,10 +763,23 @@ def run(force=False, years=None, respect_backoff=False):
     if in_backoff:
         print(f"[INFO] {len(in_backoff)} document(s) en attente d'un nouvel essai (échecs précédents) : ignorés pour l'instant.")
     skip = already_done | in_backoff
-    documents = [
-        doc for doc in list_all_documents(conn)
-        if doc[1] == "CMF" and doc[0] not in skip and (years is None or doc[5] in years)
-    ]
+    # Ordre de traitement : année la plus récente EN PREMIER (2024 avant 2023…)
+    # pour que les pages Aperçu marché / Vue par assurance / Analyse comparative
+    # soient alimentées dès les premiers documents traités (retour utilisateur
+    # 2026-09-25). Au sein d'une même année, les sociétés Takaful passent EN
+    # DERNIER car leur extraction (OCR arabe deux passes) est la plus longue —
+    # les 21 sociétés standard sont donc visibles avant elles.
+    documents = sorted(
+        [
+            doc for doc in list_all_documents(conn)
+            if doc[1] == "CMF" and doc[0] not in skip and (years is None or doc[5] in years)
+        ],
+        key=lambda d: (
+            -d[5],                                      # année DESC  (2024 en premier)
+            d[2] in TAKAFUL_EXTRACTABLE_COMPANIES,      # Takaful en dernier (True > False)
+            d[2] or "",                                  # alphabétique au sein du groupe
+        ),
+    )
     attempted_ids = {doc[0] for doc in documents} | _tail_candidate_ids(conn, skip)
 
     print(f"\n===== EXTRACTION KPI : {len(documents)} document(s) a traiter "
