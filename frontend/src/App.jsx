@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import Chatbot from "./components/Chatbot";
-import CollecteBanner, { useCollecteStatus, bandeauHeight } from "./components/CollecteBanner";
+// import CollecteBanner, { useCollecteStatus, bandeauHeight } from "./components/CollecteBanner"; // TEMP désactivé
 import Sidebar            from "./components/Sidebar";
 import NotificationBell   from "./components/NotificationBell";
 import ApercuMarche       from "./pages/ApercuMarche";
@@ -914,16 +914,14 @@ function PageTransition({ children }) {
 /* ─── Shell ─── */
 function AppShell() {
   const location = useLocation();
-  // Sondé une seule fois ici — le panneau de progression est désormais
-  // flottant à droite (pas un bandeau haut), donc plus besoin de décaler
-  // la navbar. navbarTop reste à 0 pour ne pas casser les autres layouts.
-  const statut = useCollecteStatus();
+  // TEMP : bandeau de collecte désactivé (useCollecteStatus commenté avec CollecteBanner)
+  const statut = null; // useCollecteStatus();
   const navbarTop = 0;
 
   if (location.pathname === "/accueil" || location.pathname === "/") {
     return (
       <>
-        <CollecteBanner statut={statut}/>
+        {/* <CollecteBanner statut={statut}/> */}
         <Routes>
           <Route path="/"        element={<Navigate to="/accueil" replace/>}/>
           <Route path="/accueil" element={<Accueil navbarTop={navbarTop}/>}/>
@@ -936,7 +934,7 @@ function AppShell() {
   return (
     <div style={{ height:"100vh", width:"100%", fontFamily:"Barlow,system-ui,sans-serif",
       display:"flex", flexDirection:"column" }}>
-      <CollecteBanner statut={statut}/>
+      {/* <CollecteBanner statut={statut}/> */}
       <AppNavbar top={navbarTop}/>
       <main style={{
         marginTop:92 + navbarTop, flex:1, overflowY:"auto",
