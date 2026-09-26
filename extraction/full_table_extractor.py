@@ -721,6 +721,24 @@ def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_C
                 for c, ci, n in zip(candidates, kept_col_idxs, col_names)
             ]
 
+    # Déduplication de mots consécutifs identiques dans un libellé de colonne
+    # (ex. BH 2024 : camelot lit "operations" deux fois dans la même cellule
+    # d'en-tête → "operations operations nettes" au lieu de "operations nettes").
+    def _dedup_consecutive_words(s):
+        words = s.split()
+        if not words:
+            return s
+        out = [words[0]]
+        for w in words[1:]:
+            if w.lower() != out[-1].lower():
+                out.append(w)
+        return " ".join(out)
+
+    col_names = [
+        _dedup_consecutive_words(cn) if not cn.startswith("(colonne ") else cn
+        for cn in col_names
+    ]
+
     # Deux colonnes peuvent se voir attribuer le même libellé nettoyé
     # (rare mais déjà rencontré) — distinguer par suffixe plutôt que de les
     # laisser se confondre en aval (silencieusement en Excel, ou en erreur
@@ -795,7 +813,35 @@ def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_C
                 n += 1
             rows[key] = row_values
 
-    return {"colonnes": [c for c in col_names if c.strip()], "lignes": rows}
+    # Correction d'alignement décalé entre header et données :
+    # Si la colonne i a un vrai libellé mais AUCUNE donnée dans rows,
+    # et que la colonne i+1 a un placeholder mais DES données, le texte
+    # du PDF s'est visuellement positionné une colonne à gauche de ses
+    # valeurs (ex. ASTREE 2025 : "Mixte" en col 3 mais les valeurs en col 4).
+    col_has_data = {cn: any(cn in rv for rv in rows.values()) for cn in col_names}
+    for i in range(len(col_names) - 1):
+        cn_i, cn_j = col_names[i], col_names[i + 1]
+        if (not cn_i.startswith("(colonne ")
+                and cn_j.startswith("(colonne ")
+                and not col_has_data.get(cn_i)
+                and col_has_data.get(cn_j)):
+            for rv in rows.values():
+                if cn_j in rv:
+                    rv[cn_i] = rv.pop(cn_j)
+            col_names[i + 1] = cn_i
+            col_names[i] = cn_j
+
+    # Supprimer les colonnes-placeholder sans aucune donnée (ex. col décalée
+    # réassignée à son vrai voisin — le placeholder reste dans col_names sans
+    # valeurs après le swap ci-dessus).
+    cols_with_data = {cn for cn in col_names if any(cn in rv for rv in rows.values())}
+    return {
+        "colonnes": [
+            c for c in col_names
+            if c.strip() and (c in cols_with_data or not c.startswith("(colonne "))
+        ],
+        "lignes": rows,
+    }
 
 
 # Vocabulaire générique d'un tableau "résultat technique"/Annexe, en plus
