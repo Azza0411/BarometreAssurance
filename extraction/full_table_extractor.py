@@ -654,6 +654,9 @@ def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_C
     # cellules non vides dans les lignes d'en-tête (camelot aligne déjà
     # chaque fragment replié dans la bonne colonne — pas besoin de
     # rattachement par position), hors en-têtes de groupe détectés ci-dessus.
+    import re as _re_hdr
+    _HDR_DATE_RE = _re_hdr.compile(r"^\d{1,2}/\d{1,2}/\d{4}")
+
     col_names = []
     for col_idx in kept_col_idxs:
         parts = [
@@ -668,6 +671,9 @@ def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_C
             # d'en-tête. Sans ce filtre : "Vie" + "32 465 786" -> colonne
             # nommée "Vie 32 465 786" au lieu de "Vie" (constaté 2026-09-11).
             and not _looks_numeric_cell(rows_raw[r][col_idx].strip())
+            # Sous-ligne de date (ex. BH 2022-2024 : "31/12/2024" sous le
+            # libellé de branche) — jamais un libellé de colonne.
+            and not _HDR_DATE_RE.match(rows_raw[r][col_idx].strip())
         ]
         recovered = recovered_headers.get(col_idx)
         if recovered:
@@ -678,6 +684,42 @@ def reconstruct_grid_from_rows(rows_raw, n_cols_total, min_data_cells=MIN_DATA_C
             parts = rec_tokens + parts
         label = _normalizer.clean(" ".join(parts)) if parts else f"(colonne {col_idx})"
         col_names.append(label)
+
+    # Récupération de repli — deux cas où la ligne de titre (row header_start-1)
+    # absorbe des libellés réels qui auraient dû figurer dans la zone d'en-tête :
+    #
+    # 1. ASTREE / tous-vides : header_start est positionné APRÈS une ligne qui
+    #    contient à la fois le titre ET les noms de colonnes (ex. "Annexe n°12
+    #    ... | Vie | Décès | Mixte | ..."), donc (header_start, first_data_idx)
+    #    est vide → tous les libellés tombent en (colonne N).
+    # 2. BH 2022/2023 / dates : header_start saute la ligne 0 qui contient les
+    #    vrais noms ("BRUTES", "RETROCESSIONS", "NETTES"), et la zone scannée
+    #    ne contient que la sous-ligne de dates ("31/12/2022"...) qui devient à
+    #    tort le libellé de colonne.
+    #
+    # Dans les deux cas, on retente avec la ligne juste avant header_start.
+    import re as _re
+    _DATE_RE = _re.compile(r"^\d{1,2}/\d{1,2}/\d{4}")
+
+    def _is_label_like(s):
+        return bool(s) and not _looks_numeric_cell(s) and sum(c.isdigit() for c in s) < 4
+
+    _all_placeholder = all(n.startswith("(colonne ") for n in col_names)
+    _all_date_like = col_names and all(_DATE_RE.match(n) for n in col_names)
+    if (_all_placeholder or _all_date_like) and header_start > 0:
+        fallback_row = rows_raw[header_start - 1]
+        candidates = [
+            _normalizer.clean(fallback_row[ci]).strip()
+            for ci in kept_col_idxs
+            if ci < len(fallback_row)
+        ]
+        # Ne retenir le repli que si les candidats ressemblent à des libellés
+        # textuels purs : moins de 4 chiffres au total dans le texte.
+        if any(_is_label_like(c) for c in candidates):
+            col_names = [
+                c if _is_label_like(c) else (n if not n.startswith("(colonne ") else f"(colonne {ci})")
+                for c, ci, n in zip(candidates, kept_col_idxs, col_names)
+            ]
 
     # Deux colonnes peuvent se voir attribuer le même libellé nettoyé
     # (rare mais déjà rencontré) — distinguer par suffixe plutôt que de les

@@ -48,7 +48,11 @@ _DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
 # plateforme elle-même) — réutilisés tels quels pour l'export Excel plutôt
 # que de dupliquer des assets. Mapping par code société car les noms de
 # fichiers ne suivent pas exactement la convention des codes CMF.
-_LOGO_DIR = os.path.join(_PROJECT_ROOT, "frontend", "public", "logos")
+_LOGO_DIR = (
+    os.path.join(_PROJECT_ROOT, "frontend", "public", "logos")
+    if os.path.isdir(os.path.join(_PROJECT_ROOT, "frontend", "public", "logos"))
+    else os.path.join(_PROJECT_ROOT, "frontend", "dist", "logos")
+)
 _LOGO_FILES = {
     "STAR": "STAR.png", "GAT": "GAT.png", "GAT_VIE": "GAT-vie.png",
     "COMAR": "COMAR.png", "ATTIJARI": "Attijari.png", "BH": "BH.png",
@@ -1165,7 +1169,7 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
             ws.merge_cells(start_row=row, start_column=col, end_row=row, end_column=end_col)
             for c in range(col, end_col + 1):
                 cell = ws.cell(row=row, column=c, value=str(a) if c == col else None)
-                cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
+                cell.fill, cell.font, cell.alignment = col_header_fill, col_header_font, header_style["alignment"]
                 cell.border = _thin_border()
             for i, colname in enumerate(cols):
                 cell = ws.cell(row=row + 1, column=col + i, value=colname.upper())
