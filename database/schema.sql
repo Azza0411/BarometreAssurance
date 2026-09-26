@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS societes (
 -- societe_id est NULL pour les documents_pdf d'une source sectorielle (ex: FTUSA), qui
 -- n'est pas rattachée à une société individuelle. source_id identifie
 -- toujours l'origine du document, quelle que soit la source.
-CREATE TABLE IF NOT EXISTS documents (
+CREATE TABLE IF NOT EXISTS documents_pdf (
     id           INT AUTO_INCREMENT PRIMARY KEY,
     source_id    INT NOT NULL,
     societe_id       INT NULL,
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS kpis (
     -- tableau fait partie de la cle : deux tableaux differents produisant
     -- par erreur le meme nom de KPI ne doivent jamais s'ecraser en silence.
     UNIQUE KEY uq_document_tableau_kpi (document_id, tableau, kpi),
-    CONSTRAINT fk_kpi_document FOREIGN KEY (document_id) REFERENCES documents(id)
+    CONSTRAINT fk_kpi_document FOREIGN KEY (document_id) REFERENCES documents_pdf(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Anomalies detectees au moment de l'extraction/nettoyage (desequilibre
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS tableaux_excel (
     valeur        DOUBLE NULL,
     date_ajout    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_tableau_cellule (document_id, tableau, ligne, colonne),
-    CONSTRAINT fk_tableaux_excel_document FOREIGN KEY (document_id) REFERENCES documents(id)
+    CONSTRAINT fk_tableaux_excel_document FOREIGN KEY (document_id) REFERENCES documents_pdf(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Resultat de chaque regle de validation (identite comptable) appliquee lors
@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS regles_validations (
     statut      VARCHAR(20)  NOT NULL,   -- 'ok' | 'ecart' | 'donnees_manquantes'
     date_ajout  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_tableau_validation (document_id, tableau, regle_code, colonne),
-    CONSTRAINT fk_regles_validations_document FOREIGN KEY (document_id) REFERENCES documents(id)
+    CONSTRAINT fk_regles_validations_document FOREIGN KEY (document_id) REFERENCES documents_pdf(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Cache du numero de page PDF ou se trouve un tableau (annexe12/annexe13),
@@ -179,7 +179,7 @@ CREATE TABLE IF NOT EXISTS num_page_tableau (
     page        INT NULL,   -- NULL = repere comme "non trouvee" (evite de re-scanner en vain)
     date_ajout  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (document_id, tableau),
-    CONSTRAINT fk_num_page_tableau_document FOREIGN KEY (document_id) REFERENCES documents(id)
+    CONSTRAINT fk_num_page_tableau_document FOREIGN KEY (document_id) REFERENCES documents_pdf(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Memoire des documents dont l'extraction KPI n'a rien donne (echec de
@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS echecs_extraction (
     nb_tentatives  INT NOT NULL DEFAULT 1,
     dernier_essai  DATETIME NOT NULL,
     prochain_essai DATETIME NOT NULL,
-    CONSTRAINT fk_echecs_extraction_document FOREIGN KEY (document_id) REFERENCES documents(id)
+    CONSTRAINT fk_echecs_extraction_document FOREIGN KEY (document_id) REFERENCES documents_pdf(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Historique des corrections manuelles apportees depuis la page Correction
@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS corrections_manuelles (
     ancienne_valeur VARCHAR(255) NULL,
     nouvelle_valeur VARCHAR(255) NOT NULL,
     date_ajout      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_corrections_manuelles_document FOREIGN KEY (document_id) REFERENCES documents(id)
+    CONSTRAINT fk_corrections_manuelles_document FOREIGN KEY (document_id) REFERENCES documents_pdf(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS veille_reglementaire (

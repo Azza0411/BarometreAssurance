@@ -219,7 +219,7 @@ def _migrate_kpis_unique_key(conn):
             if has_fk:
                 cur.execute(
                     "ALTER TABLE kpis ADD CONSTRAINT fk_kpi_document "
-                    "FOREIGN KEY (document_id) REFERENCES documents(id)"
+                    "FOREIGN KEY (document_id) REFERENCES documents_pdf(id)"
                 )
 
 
