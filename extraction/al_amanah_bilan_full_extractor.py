@@ -1,6 +1,6 @@
 """Extraction PLEINE GRILLE du Bilan Combiné AL_AMANAH_TAKAFUL (documents
 en ARABE, texte réel non scanné — voir `is_scanned_page`) — même clés
-`tableau_cellules` ('bilan_actif'/'bilan_passif') que
+`tableaux_excel` ('bilan_actif'/'bilan_passif') que
 `bilan_full_extractor.py`, pour que Correction manuelle et l'export
 fonctionnent identiquement pour cette société sans branche spéciale côté
 frontend/API.

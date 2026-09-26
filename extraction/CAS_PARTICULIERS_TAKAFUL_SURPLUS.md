@@ -106,7 +106,7 @@ jamais appuyé sur ces deux colonnes non plus.
 
 13/21 documents (AT_TAKAFULIA + ZITOUNA_TAKAFUL, toutes années
 disponibles localement) stockés avec succès (Familial ET Général) sous
-`tableau_cellules.tableau = 'takaful_surplus_familial'` /
+`tableaux_excel.tableau = 'takaful_surplus_familial'` /
 `'takaful_surplus_general'`. 4 `page_introuvable` (format ancien, voir
 ci-dessus), 4 `pdf_absent` (documents non téléchargés localement, 2015/
 2016). Route déclenchable manuellement : `POST /api/gestion-donnees/
@@ -119,7 +119,7 @@ valider-takaful-surplus` (même schéma que `/valider-bilan`).
 - Annexes 14/15 (Ventilation par branche/catégorie) — pas encore
   construites.
 - Correction manuelle UI / propagation dashboards pour ces nouvelles clés
-  `tableau_cellules` — pas encore branchée (`TABLEAU_GROUPS` dans
+  `tableaux_excel` — pas encore branchée (`TABLEAU_GROUPS` dans
   `api/services/data_management.py` ne les référence pas encore),
   cohérent avec la décision déjà prise plus tôt dans la session de
   prioriser "Extraction + stockage d'abord" pour les nouvelles sources.
@@ -237,10 +237,10 @@ Pipeline `tableau_pipeline_service_takaful_ventilation.py` (clés
 `api/services/data_management.py::TABLEAU_GROUPS` étendu avec les 5 clés
 (`takaful_surplus_familial`/`_general`, `takaful_resultat_entreprise`,
 `takaful_ventilation_familial`/`_general`), avec leurs libellés `raws`
-kpi_values correspondants (`extraction/kpi_extraction_pipeline.py
+kpis correspondants (`extraction/kpi_extraction_pipeline.py
 ::KPI_TABLE_LABEL` — "Annexes 3/4/5.1 - Fonds des Participants (Takaful)"
 et "Annexes 14/15 - Ventilation par categorie d'assurance (Takaful)",
-chacun partagé par plusieurs clés `tableau_cellules`, même principe que
+chacun partagé par plusieurs clés `tableaux_excel`, même principe que
 `bilan_actif`/`bilan_passif`). Libellés SANS " — " (même contrainte que
 Bilan Actif/Passif : le frontend tronque sur ce séparateur pour le texte
 d'onglet court, et les 5 libellés commencent tous par "Takaful").
@@ -256,8 +256,8 @@ raccordement", concept propre à Annexe 12/13) :
 - `page_source_info` : ces 5 clés ajoutées à la liste "pas de concept de
   raccordement" (comme `bilan_actif`/`bilan_passif`).
 - `get_filter_options` : requête supplémentaire directe sur
-  `tableau_cellules` pour peupler `societes_par_tableau` (même raison que
-  Bilan : le KPI narrow kpi_values peut diverger de ce que la grille
+  `tableaux_excel` pour peupler `societes_par_tableau` (même raison que
+  Bilan : le KPI narrow kpis peut diverger de ce que la grille
   complète contient réellement).
 
 Vérifié bout en bout (`get_document_grid`, `page_source_info`) sur
@@ -269,7 +269,7 @@ Nouveau module `extraction/al_amanah_bilan_full_extractor.py` — jusqu'ici
 AL_AMANAH_TAKAFUL n'avait AUCUNE grille complète (seulement quelques KPI
 ciblés via recherche floue arabe/OCR, voir
 `takaful_kpi_extractor.py::extract_al_amanah_takaful_kpis`). Réutilise les
-mêmes clés `tableau_cellules` que le Bilan francophone
+mêmes clés `tableaux_excel` que le Bilan francophone
 (`bilan_actif`/`bilan_passif`) — dispatché depuis
 `tableau_pipeline_service_bilan.py::process_one_document` sur
 `code == "AL_AMANAH_TAKAFUL"`, donc AUCUN branchement supplémentaire

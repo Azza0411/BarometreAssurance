@@ -31,7 +31,7 @@
 1. **LLM = Groq, pas Claude.** Le `README.md` racine et le `docs/prompt_handoff_ia_technique.md` mentionnent une clé "Claude API" (`VITE_ANTHROPIC_KEY`). Le code réel (`chatbot_portable/app.py`) appelle exclusivement **Groq** (modèle `openai/gpt-oss-120b`). Aucune clé Anthropic nulle part dans le dépôt. Le widget Chatbot affiche lui-même "Groq LLM" dans son pied de page.
 2. **Le RAG n'a pas d'embeddings** — retrieval **TF-IDF fait main**, pas de base vectorielle.
 3. **"SHAP" = TreeSHAP natif XGBoost**, pas la librairie Python `shap` (absente de `requirements.txt`).
-4. **8 sources d'origine, pas 5** : CMF, FTUSA, CGA, BVMT, INS, **Atlas Magazine, IlBoursa, ENQUETE**. CGA et FTUSA alimentent chacune deux circuits différents (rapports KPI dans `documents`/`kpi_values` **et** textes réglementaires dans `actualites_vues`/`reglementation_vues`, ce second circuit vivant dans `api/routes/veille.py`, pas dans `scraping/`) — mais restent une seule source d'origine chacune.
+4. **8 sources d'origine, pas 5** : CMF, FTUSA, CGA, BVMT, INS, **Atlas Magazine, IlBoursa, ENQUETE**. CGA et FTUSA alimentent chacune deux circuits différents (rapports KPI dans `documents`/`kpis` **et** textes réglementaires dans `veille_actualites`/`veille_reglementaire`, ce second circuit vivant dans `api/routes/veille.py`, pas dans `scraping/`) — mais restent une seule source d'origine chacune.
 6. **README obsolète sur plusieurs points** : indique React 18 (le code utilise React 19), et une clé `VITE_ANTHROPIC_KEY` inexistante dans le code.
 7. **Frontend : pages mortes/non finalisées** : `/positionnement` (stub, données codées en dur), `/geographie` (100% données mock), composants orphelins (`Sidebar.jsx`, `PageHeader.jsx`, `KpiCard.jsx`, `components/Positionnement.jsx`), pages non routées (`CarteAfrique.jsx`, `EtatGeneral.jsx`, `FicheEntreprise.jsx`).
 8. **`react-simple-maps` est une dépendance installée mais inutilisée** — la carte de Tunisie est un SVG statique manipulé à la main.
@@ -91,7 +91,7 @@ Sites web sources (CMF, FTUSA, CGA, BVMT, INS)
    MySQL (documents = métadonnées, PAS le PDF lui-même stocké en base)
         │  extraction/*_kpi_extractor.py (pdfplumber + OCR Tesseract)
         ▼
-   MySQL (kpi_values = valeurs numériques/texte extraites)
+   MySQL (kpis = valeurs numériques/texte extraites)
         │  api/services/kpi_builder.py, calculated_kpi_extractor.py
         ▼
    Ratios calculés + garde-fous de plausibilité
@@ -161,7 +161,7 @@ Trois méthodes techniques différentes selon la nature du site, et une chaîne 
 **Détails propres à certaines sources** :
 - **FTUSA** : l'année d'un rapport est détectée en lisant le **contenu** du PDF plutôt que son nom de fichier — jugé trop peu fiable sur 25 ans d'archives (ex. fichiers nommés `Rapport-FTUSA-DEFINITIF.pdf`).
 - **BVMT** : la liste des sociétés cotées en bourse est découverte dynamiquement plutôt que codée en dur — évite une maintenance manuelle si une société entre ou sort de la cote.
-- **CGA / FTUSA (réglementaire)** : ce deuxième circuit (lois, décrets, circulaires côté CGA ; codes professionnels côté FTUSA) alimente la page "Veille réglementaire", avec un cache mémoire (1h) et une détection de nouveauté propre (`actualites_vues`/`reglementation_vues`), indépendante des tables `documents`/`kpi_values` utilisées par le reste du pipeline.
+- **CGA / FTUSA (réglementaire)** : ce deuxième circuit (lois, décrets, circulaires côté CGA ; codes professionnels côté FTUSA) alimente la page "Veille réglementaire", avec un cache mémoire (1h) et une détection de nouveauté propre (`veille_actualites`/`veille_reglementaire`), indépendante des tables `documents`/`kpis` utilisées par le reste du pipeline.
 - **Atlas Magazine / IlBoursa** : scraping via BeautifulSoup, exécuté en parallèle (`ThreadPoolExecutor`) pour aller plus vite ; alimentent la page Actualités, pas les KPI.
 
 ### Reconnaissance automatique des sociétés — `config/company_registry.py`
@@ -182,11 +182,11 @@ Bug réel corrigé grâce à cette pondération : "El Amana Takaful" était mal 
 |---|---|---|
 | `sources` | CMF/FTUSA/CGA/INS/BVMT/ENQUETE | Créée dynamiquement (`get_or_create_source`) |
 | `cmf` | Référentiel des 24 sociétés | Nom historique (hérité de l'époque "CMF only") |
-| `documents` | 1 ligne par PDF/fichier collecté | `cmf_id` **nullable** pour les documents sectoriels (FTUSA/CGA/INS n'ont pas de société associée) ; clé unique `(source_id, cmf_id, annee)` |
-| `kpi_values` | Valeurs extraites | Clé unique `(document_id, tableau, kpi)` — **`tableau` fait partie de la clé** pour qu'un même nom de KPI produit par deux tableaux différents (ex. Bilan vs Calcul interne) ne s'écrase jamais silencieusement |
+| `documents` | 1 ligne par PDF/fichier collecté | `societe_id` **nullable** pour les documents sectoriels (FTUSA/CGA/INS n'ont pas de société associée) ; clé unique `(source_id, societe_id, annee)` |
+| `kpis` | Valeurs extraites | Clé unique `(document_id, tableau, kpi)` — **`tableau` fait partie de la clé** pour qu'un même nom de KPI produit par deux tableaux différents (ex. Bilan vs Calcul interne) ne s'écrase jamais silencieusement |
 | `anomalies_detectees` | Anomalies + historique du score qualité | Table à double usage : anomalies ponctuelles ET instantanés de tendance qualité |
 | `notifications` | Cloche in-app | Types : nouveau_document, anomalie_critique, echec_pipeline, nouvelle_actualite, nouvelle_reglementation |
-| `actualites_vues` / `reglementation_vues` | Déduplication veille | Clé = URL/identifiant, garde "premier passage" anti-avalanche |
+| `veille_actualites` / `veille_reglementaire` | Déduplication veille | Clé = URL/identifiant, garde "premier passage" anti-avalanche |
 
 **Pourquoi MySQL plutôt que PostgreSQL/SQLite** : volume modéré (~300 documents, ~14 000 valeurs de KPI) ne justifiant pas les fonctionnalités avancées de Postgres ; MySQL reste un choix standard, bien supporté par `pymysql`, et suffisant pour ce volume avec de simples index/contraintes uniques.
 

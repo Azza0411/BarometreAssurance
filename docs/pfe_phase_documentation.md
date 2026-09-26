@@ -41,7 +41,7 @@ La plateforme collectait déjà silencieusement de nouvelles données (rapports 
 ### Méthode
 
 1. **Audit de l'existant avant d'ajouter quoi que ce soit** : la cloche (UI + API + table `notifications`) était déjà fonctionnelle bout-en-bout — réutilisée telle quelle plutôt que reconstruite.
-2. **Persistance minimale ciblée** : 2 nouvelles tables (`actualites_vues`, `reglementation_vues`), clé unique = URL/identifiant de la source — servent uniquement à la détection de nouveauté ; les pages elles-mêmes restent des scrapes en direct inchangés.
+2. **Persistance minimale ciblée** : 2 nouvelles tables (`veille_actualites`, `veille_reglementaire`), clé unique = URL/identifiant de la source — servent uniquement à la détection de nouveauté ; les pages elles-mêmes restent des scrapes en direct inchangés.
 3. **Garde-fou anti-avalanche** : le tout premier passage peuple les tables sans générer de notification (sinon "82 nouvelles actualités" dès le premier lancement après déploiement).
 4. **Intégration au pipeline planifié existant** plutôt qu'un nouveau système séparé — même cadence, même mécanisme de notification déjà en place pour les autres événements (nouveau document, échec source, score qualité faible).
 5. **Vérification à 5 niveaux**, jusqu'au vrai chemin de code de `main()` (pas une réimplémentation) : diff correct dans les deux sens (aucun faux positif, détection exacte d'un item réinjecté), garde-fou premier lancement, écriture/lecture via l'API réelle consommée par la cloche, câblage complet testé en cas négatif ET positif.

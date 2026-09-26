@@ -26,7 +26,7 @@ journalisée pour investigation. Une évolution business réellement extrême
 reste possible et ne doit pas être écrasée silencieusement.
 """
 
-from database.repository import get_document_id, get_kpi_values_for_document
+from database.repository import get_document_id, get_kpis_for_document
 
 YOY_MAX_DROP_PCT = 95.0
 YOY_MAX_GROWTH_X = 20.0
@@ -87,7 +87,7 @@ def check_yoy_consistency(conn, code, annee, kpis):
     prev_document_id = get_document_id(conn, code, annee - 1)
     if prev_document_id is None:
         return []
-    prev_kpis = get_kpi_values_for_document(conn, prev_document_id)
+    prev_kpis = get_kpis_for_document(conn, prev_document_id)
 
     flags = []
     for name in YOY_CHECKED_KPIS:

@@ -3,7 +3,7 @@ Scraper pour le site du Comité Général des Assurances (CGA) :
 https://www.cga.gov.tn/index.php?id=96&L=0 (page "Rapports annuels")
 
 Comme FTUSA, le CGA publie des rapports sectoriels (pas de societe
-associee, cmf_id NULL) : on prend les rapports des NB_YEARS dernieres
+associee, societe_id NULL) : on prend les rapports des NB_YEARS dernieres
 annees disponibles sur le site.
 
 Contrairement a FTUSA, le texte du lien de chaque rapport contient deja
@@ -131,7 +131,7 @@ def sync_documents():
     saved = 0  # compteur enregistrés
     for year in kept_years:  # années retenues
         nom_pdf = f"CGA_{year}.pdf"  # nom construit, pas téléchargé
-        save_document(conn, source_id, None, nom_pdf, year, by_year[year])  # cmf_id=None : sectoriel
+        save_document(conn, source_id, None, nom_pdf, year, by_year[year])  # societe_id=None : sectoriel
         saved += 1  # +1 enregistré
         print(f"  [OK] {year} -> {by_year[year]}")  # confirmation
 

@@ -92,7 +92,7 @@ class DataLoader:
         Charge la série temporelle complète pour un KPI donné.
 
         Args:
-            kpi: nom exact du KPI (tel que stocké dans kpi_values.kpi)
+            kpi: nom exact du KPI (tel que stocké dans kpis.kpi)
             company: code compagnie (ex: "STAR") ou None pour données marché
 
         Returns:
@@ -140,7 +140,7 @@ class DataLoader:
         à la fois comme valeur brute extraite (ex: "Primes acquises" issu de
         l'Annexe 13 Non-Vie seule) et comme valeur recalculée sous ce
         tableau (ex: somme Vie+Non-Vie) — voir database/repository.py::
-        get_kpi_values_for_document pour l'incident déjà rencontré (ASTREE
+        get_kpis_for_document pour l'incident déjà rencontré (ASTREE
         2025, "Primes acquises" lu à 2,86 Md TND au lieu de ~148M via ce
         mélange). Sans ce filtre, une série temporelle pourrait mélanger
         silencieusement des années en valeur brute et d'autres en valeur
@@ -148,10 +148,10 @@ class DataLoader:
         rows = self._conn.execute(
             """
             SELECT d.annee, k.valeur_nombre
-            FROM kpi_values k
-            JOIN documents d ON d.id = k.document_id
+            FROM kpis k
+            JOIN documents_pdf d ON d.id = k.document_id
             JOIN sources s   ON s.id = d.source_id
-            JOIN societes c       ON c.id = d.cmf_id
+            JOIN societes c       ON c.id = d.societe_id
             WHERE c.code = ?
               AND k.kpi = ?
               AND k.valeur_nombre IS NOT NULL
@@ -177,14 +177,14 @@ class DataLoader:
             rows = self._conn.execute(
                 """
                 SELECT d.annee, k.valeur_nombre
-                FROM kpi_values k
-                JOIN documents d ON d.id = k.document_id
+                FROM kpis k
+                JOIN documents_pdf d ON d.id = k.document_id
                 JOIN sources s   ON s.id = d.source_id
                 WHERE s.nom = ?
                   AND k.kpi = ?
                   AND k.valeur_nombre IS NOT NULL
                   AND k.tableau != 'Calcul interne'
-                  AND d.cmf_id IS NULL
+                  AND d.societe_id IS NULL
                   AND d.annee BETWEEN 2000 AND 2025
                 ORDER BY d.annee
                 """,
@@ -202,7 +202,7 @@ class DataLoader:
     def list_available_companies(self) -> list[str]:
         """Retourne tous les codes compagnies ayant des documents CMF."""
         rows = self._conn.execute(
-            "SELECT DISTINCT c.code FROM societes c JOIN documents d ON d.cmf_id = c.id ORDER BY c.code"
+            "SELECT DISTINCT c.code FROM societes c JOIN documents_pdf d ON d.societe_id = c.id ORDER BY c.code"
         ).fetchall()
         return [r[0] for r in rows]
 
@@ -211,14 +211,14 @@ class DataLoader:
         if company:
             rows = self._conn.execute(
                 """
-                SELECT DISTINCT d.annee FROM documents d
-                JOIN societes c ON c.id = d.cmf_id
+                SELECT DISTINCT d.annee FROM documents_pdf d
+                JOIN societes c ON c.id = d.societe_id
                 WHERE c.code = ? ORDER BY d.annee
                 """,
                 (company,),
             ).fetchall()
         else:
             rows = self._conn.execute(
-                "SELECT DISTINCT annee FROM documents WHERE cmf_id IS NULL ORDER BY annee"
+                "SELECT DISTINCT annee FROM documents_pdf WHERE societe_id IS NULL ORDER BY annee"
             ).fetchall()
         return [r[0] for r in rows if r[0]]

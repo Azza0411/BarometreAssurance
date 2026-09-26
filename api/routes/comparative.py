@@ -2,7 +2,7 @@
 
 from flask import Blueprint, jsonify
 from database.repository import (
-    get_connection, get_kpi_values_for_document, list_documents_by_source
+    get_connection, get_kpis_for_document, list_documents_by_source
 )
 from api.utils.formatters import PRIMES_UNIT_DIVISOR, round1, required_year_arg, kpis_by_year
 from api.services.kpi_builder import build_company_row
@@ -60,10 +60,10 @@ def analyse_comparative():
 
         # Primes année précédente pour calcul croissance YoY
         primes_prev_year = {}
-        for _doc_id_p, _cmf_id_p, code_p, doc_annee_p in list_documents_by_source(conn, "CMF"):
+        for _doc_id_p, _societe_id_p, code_p, doc_annee_p in list_documents_by_source(conn, "CMF"):
             if doc_annee_p != annee - 1 or not code_p:
                 continue
-            kpis_p  = get_kpi_values_for_document(conn, _doc_id_p)
+            kpis_p  = get_kpis_for_document(conn, _doc_id_p)
             pnv_p   = kpis_p.get("Primes émises Non-Vie par assurance")
             pv_p    = kpis_p.get("Primes émises Vie par assurance")
             pr_p    = kpis_p.get("Primes émises par assurance")
@@ -73,10 +73,10 @@ def analyse_comparative():
                 primes_prev_year[code_p] = pr_p
 
         result = {}
-        for document_id, _cmf_id, code, doc_annee in list_documents_by_source(conn, "CMF"):
+        for document_id, _societe_id, code, doc_annee in list_documents_by_source(conn, "CMF"):
             if doc_annee != annee or not code or code in PROBLEMATIC_COMPANIES:
                 continue
-            kpis = get_kpi_values_for_document(conn, document_id)
+            kpis = get_kpis_for_document(conn, document_id)
             if not any(kpis.get(k) is not None for k in _KEY_KPIS):
                 continue
 
@@ -101,10 +101,10 @@ def classement_compagnies():
     conn  = get_connection()
     try:
         rows = []
-        for document_id, _cmf_id, code, doc_annee in list_documents_by_source(conn, "CMF"):
+        for document_id, _societe_id, code, doc_annee in list_documents_by_source(conn, "CMF"):
             if doc_annee != annee or not code or code in PROBLEMATIC_COMPANIES:
                 continue
-            kpis      = get_kpi_values_for_document(conn, document_id)
+            kpis      = get_kpis_for_document(conn, document_id)
             pdm       = filter_reliable("Part de marché (%)", kpis.get("Part de marché (%)"))
             if pdm is None:
                 continue

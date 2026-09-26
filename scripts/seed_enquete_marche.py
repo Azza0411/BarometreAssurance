@@ -150,8 +150,8 @@ ENQUETE_DATA = {
 # Utilité : point d'entrée unique — crée le référentiel puis insère tous les KPI
 def seed(conn):  # insère tout ENQUETE_DATA
     source_id = get_or_create_source(conn, "ENQUETE", "Enquête de marché")  # source ENQUETE
-    cmf_id    = get_or_create_company(conn, "STAR", "Société Tunisienne d'Assurances et de Réassurance")  # rattache à STAR
-    doc_id    = save_document(conn, source_id, cmf_id, "Enquête de marché STAR 2024", 2024, "")  # document = l'enquête
+    societe_id    = get_or_create_company(conn, "STAR", "Société Tunisienne d'Assurances et de Réassurance")  # rattache à STAR
+    doc_id    = save_document(conn, source_id, societe_id, "Enquête de marché STAR 2024", 2024, "")  # document = l'enquête
     conn.commit()  # valide avant les KPI
 
     TAB = "Enquête"  # onglet des KPI

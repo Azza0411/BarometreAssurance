@@ -1,7 +1,7 @@
 """Routes /api/apercu-marche/* — données sectorielles FTUSA/CGA/INS."""
 
 from flask import Blueprint, jsonify, request
-from database.repository import get_connection, list_documents_by_source, get_kpi_values_for_document
+from database.repository import get_connection, list_documents_by_source, get_kpis_for_document
 from api.utils.formatters import (
     PRIMES_UNIT_DIVISOR, round1, growth_pct, required_year_arg, kpis_by_year
 )
@@ -48,10 +48,10 @@ def _takaful_sector_snapshot(conn, annee):
     nb_operateurs_branches = 0
     charges_prestations_total = charges_acquisition_total = primes_ratio_total = 0
     ratio_coverage = 0
-    for document_id, _cmf_id, code, doc_annee in list_documents_by_source(conn, "CMF"):
+    for document_id, _societe_id, code, doc_annee in list_documents_by_source(conn, "CMF"):
         if code not in USABLE_TAKAFUL_CODES or doc_annee != annee:
             continue
-        kpis = get_kpi_values_for_document(conn, document_id)
+        kpis = get_kpis_for_document(conn, document_id)
         primes = kpis.get("Primes émises par assurance")
         if primes is not None:
             total = (total or 0) + primes
@@ -152,10 +152,10 @@ def _takaful_operateurs_detail(conn, annee):
     from config.company_registry import TAKAFUL_CODES
 
     rows_by_code = {}
-    for document_id, _cmf_id, code, doc_annee in list_documents_by_source(conn, "CMF"):
+    for document_id, _societe_id, code, doc_annee in list_documents_by_source(conn, "CMF"):
         if code not in USABLE_TAKAFUL_CODES or doc_annee != annee:
             continue
-        kpis = get_kpi_values_for_document(conn, document_id)
+        kpis = get_kpis_for_document(conn, document_id)
         primes = kpis.get("Primes émises par assurance")
         if primes is not None:
             rows_by_code[code] = primes
@@ -233,7 +233,7 @@ def apercu_marche_annees():
 
 
 def _takaful_years(conn):
-    return sorted({doc_annee for _id, _cmf_id, code, doc_annee in list_documents_by_source(conn, "CMF")
+    return sorted({doc_annee for _id, _societe_id, code, doc_annee in list_documents_by_source(conn, "CMF")
                    if code in USABLE_TAKAFUL_CODES and doc_annee})
 
 
@@ -420,7 +420,7 @@ def apercu_marche_profil_pays():
             nb_assureurs = cga.get("Nombre d'assureurs")
         if nb_assureurs is None:
             cmf_docs = list_documents_by_source(conn, "CMF")
-            nb_assureurs = len({code for _id, _cmf_id, code, doc_annee in cmf_docs
+            nb_assureurs = len({code for _id, _societe_id, code, doc_annee in cmf_docs
                                 if doc_annee == annee and code and code not in TAKAFUL_CODES}) or None
 
         return jsonify({

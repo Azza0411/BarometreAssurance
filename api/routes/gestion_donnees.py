@@ -111,7 +111,7 @@ def run_tracked_catchup():
         set_phase(plan[0])  # kpi_extraction_pipeline.run() enchaîne ensuite seul les sous-étapes
         from extraction.kpi_extraction_pipeline import run as run_kpi_extraction
         # respect_backoff : les documents déjà tentés en vain récemment ne sont
-        # pas retéléchargés à chaque ouverture (voir schema.sql::documents_echecs).
+        # pas retéléchargés à chaque ouverture (voir schema.sql::echecs_extraction).
         run_kpi_extraction(respect_backoff=True)
     finally:
         clear_phase()
@@ -234,7 +234,7 @@ def _run_validation_background(codes, annees):
 def valider_annexe13():
     """Lance (en tâche de fond) l'extraction complète + normalisation +
     validation Annexe 13 pour les documents CMF filtrés (tous par défaut) et
-    stocke le résultat en base (tableau_cellules/tableau_validations) — un
+    stocke le résultat en base (tableaux_excel/regles_validations) — un
     passage nécessaire avant que l'export Excel puisse servir ces documents
     depuis la base plutôt que re-parser leur PDF à chaque requête."""
     codes = request.args.getlist("societe") or None
@@ -546,7 +546,7 @@ def cellules():
     """Grille de cellules déjà stockée pour UN document CMF (société +
     année + tableau) — sert la page de correction manuelle, qui permet de
     consulter (et bientôt corriger) les données avant de générer l'Excel,
-    sans avoir à le télécharger d'abord. Pure lecture de `tableau_cellules`,
+    sans avoir à le télécharger d'abord. Pure lecture de `tableaux_excel`,
     aucune ré-extraction déclenchée ici."""
     code = request.args.get("societe")
     annee_raw = request.args.get("annee")
@@ -574,13 +574,13 @@ def enregistrer_corrections():
     CMF (société + année + tableau) — bouton "Enregistrer tout" de la page
     Correction manuelle. Corps JSON : {"societe", "annee", "tableau",
     "corrections": [{"kind": "valeur"|"ligne"|"colonne", "ligne", "colonne",
-    "nouvelle"}, ...]}. Applique directement sur `tableau_cellules` (la
+    "nouvelle"}, ...]}. Applique directement sur `tableaux_excel` (la
     grille affichée/exportée en repart aussitôt) et journalise chaque
-    correction dans `tableau_cellules` — voir
+    correction dans `tableaux_excel` — voir
     database/repository.py::apply_manual_corrections. Tout ou rien : une
     correction invalide (nom en doublon, valeur non numérique...) annule
     toute la liste plutôt que de laisser la base à moitié corrigée. Une
-    correction de VALEUR est aussi répercutée dans `kpi_values` (KPI narrow
+    correction de VALEUR est aussi répercutée dans `kpis` (KPI narrow
     utilisés par les autres dashboards — Aperçu marché, Analyse
     comparative...) quand elle y correspond de façon non ambiguë, voir
     `apply_manual_corrections`."""

@@ -24,7 +24,7 @@ for _d in (STORAGE_DIR, CACHE_DIR, LOG_DIR):
 
 # ── KPIs supportés ───────────────────────────────────────────────────────────
 
-# KPI exact tel que stocké dans kpi_values.kpi
+# KPI exact tel que stocké dans kpis.kpi
 SUPPORTED_KPIS: list[str] = [
     "Primes émises par assurance",
     "Part de marché (%)",

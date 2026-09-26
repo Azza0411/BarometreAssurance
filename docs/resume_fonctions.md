@@ -354,7 +354,7 @@ fraîche) jusqu'à 3 fois en cas de timeout.
 
 # Trajet de la donnée — Phase Scraping — Source FTUSA
 
-FTUSA publie des rapports **sectoriels** (pas de société associée, `cmf_id` NULL). Contrairement à CMF, il n'y a pas de sélection dans un menu : le trajet part directement de la liste des PDF sur une page unique.
+FTUSA publie des rapports **sectoriels** (pas de société associée, `societe_id` NULL). Contrairement à CMF, il n'y a pas de sélection dans un menu : le trajet part directement de la liste des PDF sur une page unique.
 
 ```
 sync_documents()               -> orchestre tout
@@ -434,7 +434,7 @@ sync_documents()               -> orchestre tout
 
 ## Étape 5 — `save_document()` — ★ écriture en base
 
-Identique à la fonction utilisée par CMF (fichier `database/repository.py`, lignes 257-283, voir plus haut). `cmf_id=None` ici : c'est une source sectorielle, sans société associée.
+Identique à la fonction utilisée par CMF (fichier `database/repository.py`, lignes 257-283, voir plus haut). `societe_id=None` ici : c'est une source sectorielle, sans société associée.
 
 ---
 
@@ -500,7 +500,7 @@ Identique en principe aux autres sources (3 tentatives, voir capture).
 
 ## Étape 5 — `save_document()` — ★ écriture en base
 
-Identique à CMF/FTUSA (`database/repository.py`, lignes 257-283). `cmf_id=None` : source sectorielle.
+Identique à CMF/FTUSA (`database/repository.py`, lignes 257-283). `societe_id=None` : source sectorielle.
 
 ---
 
@@ -709,7 +709,7 @@ sync_all()
 
 # Trajet de la donnée — Actualités (IlBoursa & Atlas Magazine)
 
-**Cas particulier** : ces 2 sources partagent le même fichier (`api/routes/veille.py`) et les mêmes outils. Autre particularité : la destination finale n'est **pas** la table `documents` mais `actualites_vues` — une simple détection de nouveauté pour la cloche de notification, pas un stockage complet comme les 6 autres sources.
+**Cas particulier** : ces 2 sources partagent le même fichier (`api/routes/veille.py`) et les mêmes outils. Autre particularité : la destination finale n'est **pas** la table `documents` mais `veille_actualites` — une simple détection de nouveauté pour la cloche de notification, pas un stockage complet comme les 6 autres sources.
 
 ```
 sync_new_items()                  -> point d'entrée réel (appelé par le pipeline)
@@ -719,7 +719,7 @@ sync_new_items()                  -> point d'entrée réel (appelé par le pipel
    │     ├─ _normalize_date()
    │     └─ _categorize()
    ├─ _scrape_atlas()               -> réutilise les 4 fonctions ci-dessus
-   └─ diff_and_mark_actualites()    -> ★ FIN DU TRAJET (table actualites_vues)
+   └─ diff_and_mark_actualites()    -> ★ FIN DU TRAJET (table veille_actualites)
 ```
 
 ## Étape 1 — `sync_new_items()`

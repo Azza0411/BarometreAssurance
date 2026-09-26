@@ -6,7 +6,7 @@ archive remontant au moins à fin 2015).
 Contrairement aux autres sources CMF (un document par société et par année),
 un seul bulletin couvre TOUTES les sociétés cotées un jour donné -> comme
 pour CGA (extraction/cga_kpi_extractor.py), un seul document par année
-(cmf_id NULL) porte des KPI éclatés par société : "Cours de l'action -
+(societe_id NULL) porte des KPI éclatés par société : "Cours de l'action -
 {code}".
 
 Colonnes du tableau "COTE DE LA BOURSE : MARCHE PRINCIPAL DES TITRES DE

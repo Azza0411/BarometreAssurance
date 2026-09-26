@@ -2,16 +2,16 @@
 Table de correspondance use case -> liste de KPI, pour structurer la
 récupération des données par page/dashboard côté frontend.
 
-Ceci n'est PAS une nouvelle table de stockage : `kpi_values` reste la
+Ceci n'est PAS une nouvelle table de stockage : `kpis` reste la
 source unique de vérité. Ce registre sert uniquement de filtre au moment de
-la requête (voir database.repository.get_kpi_values_by_use_case) — il
+la requête (voir database.repository.get_kpis_by_use_case) — il
 évite de dupliquer les valeurs de KPI par use case.
 
-Les noms ci-dessous sont ceux RÉELLEMENT stockés dans `kpi_values` (corrigés
+Les noms ci-dessous sont ceux RÉELLEMENT stockés dans `kpis` (corrigés
 par rapport à la liste d'origine fournie : accents/apostrophes normalisés,
 noms alignés sur ceux produits par les extracteurs). Certains KPI (ex:
 "Nombre d'agences par assureur") sont stockés sous une forme éclatée par
-entité, ex: "Nombre d'agences par assureur - STAR" : get_kpi_values_by_use_case
+entité, ex: "Nombre d'agences par assureur - STAR" : get_kpis_by_use_case
 les retrouve par préfixe automatiquement, pas besoin de lister chaque société
 ici.
 

@@ -21,7 +21,7 @@ from openpyxl.drawing.image import Image as XLImage
 from PIL import Image as PILImage
 
 from api.utils.formatters import kpis_by_year
-from database.repository import get_connection, list_documents_by_source, get_kpi_values_for_document
+from database.repository import get_connection, list_documents_by_source, get_kpis_for_document
 
 DARK = "2E2E38"
 YELLOW = "FFE600"
@@ -122,10 +122,10 @@ def build_analyse_comparative_xlsx(annee):
     conn = get_connection()
     try:
         raw_by_company = {}
-        for doc_id, _cmf_id, code, doc_annee in list_documents_by_source(conn, "CMF"):
+        for doc_id, _societe_id, code, doc_annee in list_documents_by_source(conn, "CMF"):
             if doc_annee != annee or not code:
                 continue
-            kpis = get_kpi_values_for_document(conn, doc_id)
+            kpis = get_kpis_for_document(conn, doc_id)
             if any(kpis.get(k) is not None for k in _RAW_KPIS):
                 raw_by_company[code] = kpis
 

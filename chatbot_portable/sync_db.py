@@ -52,19 +52,19 @@ CREATE TABLE societes (
     nom_entreprise TEXT NOT NULL
 );
 
-CREATE TABLE documents (
+CREATE TABLE documents_pdf (
     id         INTEGER PRIMARY KEY,
     source_id  INTEGER NOT NULL,
-    cmf_id     INTEGER NULL,
+    societe_id     INTEGER NULL,
     nom_pdf    TEXT NOT NULL,
     annee      INTEGER NOT NULL,
     lien       TEXT NOT NULL,
     date_ajout TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (source_id) REFERENCES sources(id),
-    FOREIGN KEY (cmf_id) REFERENCES societes(id)
+    FOREIGN KEY (societe_id) REFERENCES societes(id)
 );
 
-CREATE TABLE kpi_values (
+CREATE TABLE kpis (
     id            INTEGER PRIMARY KEY,
     document_id   INTEGER NOT NULL,
     tableau       TEXT NOT NULL,
@@ -76,9 +76,9 @@ CREATE TABLE kpi_values (
     FOREIGN KEY (document_id) REFERENCES documents(id)
 );
 
-CREATE INDEX idx_kpi_values_document ON kpi_values(document_id);
-CREATE INDEX idx_kpi_values_kpi ON kpi_values(kpi);
-CREATE INDEX idx_documents_cmf ON documents(cmf_id);
+CREATE INDEX idx_kpis_document ON kpis(document_id);
+CREATE INDEX idx_kpis_kpi ON kpis(kpi);
+CREATE INDEX idx_documents_cmf ON documents(societe_id);
 CREATE INDEX idx_documents_source ON documents(source_id);
 """
 
@@ -109,24 +109,24 @@ def _rebuild_sqlite(sqlite_path: str) -> dict:
             sqlite_conn.executemany("INSERT INTO societes (id, code, nom_entreprise) VALUES (?, ?, ?)", rows)
             counts["societes"] = len(rows)
 
-            cur.execute("SELECT id, source_id, cmf_id, nom_pdf, annee, lien FROM documents")
+            cur.execute("SELECT id, source_id, societe_id, nom_pdf, annee, lien FROM documents_pdf")
             rows = cur.fetchall()
             sqlite_conn.executemany(
-                "INSERT INTO documents (id, source_id, cmf_id, nom_pdf, annee, lien) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO documents_pdf (id, source_id, societe_id, nom_pdf, annee, lien) VALUES (?, ?, ?, ?, ?, ?)",
                 rows,
             )
-            counts["documents"] = len(rows)
+            counts["documents_pdf"] = len(rows)
 
             cur.execute(
-                "SELECT id, document_id, tableau, kpi, valeur_nombre, valeur_texte FROM kpi_values"
+                "SELECT id, document_id, tableau, kpi, valeur_nombre, valeur_texte FROM kpis"
             )
             rows = cur.fetchall()
             sqlite_conn.executemany(
-                "INSERT INTO kpi_values (id, document_id, tableau, kpi, valeur_nombre, valeur_texte) "
+                "INSERT INTO kpis (id, document_id, tableau, kpi, valeur_nombre, valeur_texte) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 rows,
             )
-            counts["kpi_values"] = len(rows)
+            counts["kpis"] = len(rows)
     finally:
         mysql_conn.close()
 

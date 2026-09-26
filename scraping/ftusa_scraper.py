@@ -4,9 +4,9 @@ Scraper pour le site de la Fédération Tunisienne des Sociétés d'Assurances
 
 Contrairement au portail CMF, FTUSA ne publie pas des documents par société
 mais des rapports sectoriels sur le marché tunisien des assurances dans son
-ensemble -> pas de boucle sur une liste de sociétés, et pas de `cmf_id`
-associé aux documents enregistrés (voir database.repository : cmf_id est
-NULL pour les documents d'une source sectorielle).
+ensemble -> pas de boucle sur une liste de sociétés, et pas de `societe_id`
+associé aux documents enregistrés (voir database.repository : societe_id est
+NULL pour les documents_pdf d'une source sectorielle).
 
 La page liste les liens PDF des rapports annuels dans une zone principale,
 et quelques publications sans rapport avec les rapports annuels (classement
@@ -161,7 +161,7 @@ def sync_documents():
     saved = 0  # compteur enregistrés
     for year in kept_years:
         nom_pdf = f"FTUSA_{year}.pdf"  # nom construit, pas écrit
-        save_document(conn, source_id, None, nom_pdf, year, by_year[year])  # cmf_id=None : sectorielle
+        save_document(conn, source_id, None, nom_pdf, year, by_year[year])  # societe_id=None : sectorielle
         saved += 1
 
     conn.close()  # ferme la connexion

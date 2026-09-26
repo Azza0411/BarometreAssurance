@@ -1,7 +1,7 @@
 """Orchestration de la pipeline complète FTUSA "Compte d'exploitation par
 branche & par entreprise" — même finalité que
 tableau_pipeline_service_bilan.py (extraction pleine grille + stockage
-tableau_cellules), mais pour une source SANS société associée : un seul
+tableaux_excel), mais pour une source SANS société associée : un seul
 document par ANNÉE, agrégé pour le marché entier (voir
 extraction/ftusa_full_extractor.py et
 extraction/kpi_extraction_pipeline.py::_run_ftusa pour le contexte).
@@ -34,7 +34,7 @@ def _ftusa_documents(conn):
         cur.execute(
             """
             SELECT d.id, d.annee
-            FROM documents d
+            FROM documents_pdf d
             JOIN sources s ON s.id = d.source_id
             WHERE s.nom = 'FTUSA'
             ORDER BY d.annee

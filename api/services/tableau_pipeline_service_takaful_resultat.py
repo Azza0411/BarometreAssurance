@@ -1,7 +1,7 @@
 """Orchestration de la pipeline complète Takaful Annexe 5.1 ("État de
 résultat de l'entreprise d'assurance Takaful et/ou Rétakaful") — même
 schéma que `tableau_pipeline_service_takaful_surplus.py` (une seule clé
-`tableau_cellules` ici, ce tableau n'a pas de distinction Familial/
+`tableaux_excel` ici, ce tableau n'a pas de distinction Familial/
 Général : c'est le compte de résultat de l'OPÉRATEUR).
 
 Restreint aux sociétés Takaful dont le PDF est en français : AT_TAKAFULIA

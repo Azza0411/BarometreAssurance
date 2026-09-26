@@ -1,0 +1,277 @@
+<title>Global Architecture — Proposed Solution</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,500;0,600;0,700;0,800;1,500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --yellow:#F4D925;
+    --ink:#1B1B1E;
+    --white:#FFFFFF;
+    --muted:#C9C9CE;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:#e9e9e9;
+    font-family:'Poppins','Segoe UI',system-ui,sans-serif;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:32px 16px;
+  }
+
+  .slide{
+    position:relative;
+    width:1280px;
+    max-width:100%;
+    aspect-ratio:16/9;
+    border-radius:14px;
+    overflow:hidden;
+    background:
+      radial-gradient(ellipse 1000px 650px at 20% 10%, #7a7a82 0%, #4c4c53 45%, #29292e 100%);
+    display:flex;
+    flex-direction:column;
+    padding:0;
+    color:var(--white);
+  }
+
+  .head{
+    position:relative;
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    padding:26px 40px 0;
+  }
+  .head-left{ display:flex; align-items:center; }
+  .chip{
+    background:var(--yellow);
+    border:2px solid var(--ink);
+    color:var(--ink);
+    font-weight:800;
+    font-size:16px;
+    padding:8px 14px;
+    border-radius:2px;
+  }
+  .connector{ width:26px; height:2px; background:var(--ink); }
+  .ribbon{
+    position:relative;
+    background:var(--yellow);
+    color:var(--ink);
+    font-weight:700;
+    font-size:19px;
+    padding:11px 40px 11px 22px;
+    clip-path:polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
+    box-shadow:6px 6px 0 rgba(0,0,0,0.35);
+  }
+  .tag{
+    background:var(--yellow);
+    color:var(--ink);
+    font-weight:700;
+    font-size:16px;
+    padding:11px 22px;
+    letter-spacing:0.01em;
+  }
+
+  .frame{
+    margin:22px auto 0;
+    width:1180px;
+    max-width:calc(100% - 80px);
+    flex:1;
+    background:rgba(255,255,255,0.05);
+    border:1.5px solid rgba(255,255,255,0.55);
+    border-radius:26px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:20px 30px 14px;
+  }
+
+  .flow{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:100%;
+    gap:0;
+  }
+
+  .col-end{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    width:160px;
+    flex-shrink:0;
+  }
+  .col-end .icon-box{
+    width:78px; height:78px;
+    border:1.6px solid var(--white);
+    border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .col-end svg.big-icon{ width:42px; height:42px; }
+  .col-end .cap{
+    margin-top:10px;
+    color:var(--yellow);
+    font-weight:700;
+    font-size:14px;
+    text-align:center;
+    line-height:1.25;
+  }
+  .col-end .sub{
+    color:var(--muted);
+    font-size:10.5px;
+    text-align:center;
+  }
+
+  .arrow-zone{ width:60px; flex-shrink:0; align-self:stretch; display:flex; align-items:center; }
+  .arrow-zone svg{ width:100%; height:100%; }
+
+  .center-col{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    flex-shrink:0;
+  }
+  .banner{
+    background:var(--yellow);
+    color:var(--ink);
+    font-weight:800;
+    font-size:13px;
+    letter-spacing:0.02em;
+    padding:8px 22px;
+    border-radius:3px;
+    box-shadow:4px 4px 0 rgba(0,0,0,0.3);
+  }
+  .brackets{ width:280px; height:16px; }
+
+  .grid2{
+    display:grid;
+    grid-template-columns:repeat(2, 155px);
+    gap:10px;
+  }
+  .box{
+    background:#2b2b30;
+    border:1.5px solid rgba(255,255,255,0.7);
+    border-radius:8px;
+    padding:10px 8px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .box svg{ width:26px; height:26px; flex-shrink:0; }
+  .box .t{
+    font-size:11px;
+    font-weight:700;
+    line-height:1.2;
+    color:var(--white);
+  }
+  .box .s{
+    font-size:8.5px;
+    font-weight:500;
+    color:var(--muted);
+    font-style:italic;
+  }
+
+  .satellites{
+    display:flex;
+    justify-content:space-between;
+    width:1180px;
+    max-width:calc(100% - 80px);
+    margin:10px auto 0;
+    padding:0 60px;
+  }
+  .sat{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:11px;
+    color:var(--muted);
+    font-style:italic;
+  }
+  .sat .dash{ width:20px; height:0; border-top:2px dashed var(--yellow); flex-shrink:0; }
+  .sat b{ color:var(--white); font-weight:700; font-style:normal; }
+
+  .footer{
+    text-align:center;
+    font-size:19px;
+    font-style:italic;
+    color:var(--white);
+    margin:12px 0 8px;
+  }
+  .pageno{
+    position:absolute;
+    bottom:14px; right:24px;
+    font-weight:700;
+    font-size:14px;
+    color:var(--white);
+  }
+</style>
+
+<div class="slide">
+  <div class="head">
+    <div class="head-left">
+      <span class="chip">02</span>
+      <span class="connector"></span>
+      <span class="ribbon">Proposed solution</span>
+    </div>
+    <span class="tag">D . Architecture</span>
+  </div>
+
+  <div class="frame">
+    <div class="flow">
+      <div class="col-end">
+        <div class="icon-box">
+          <svg class="big-icon" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8">
+            <rect x="3" y="4" width="18" height="12" rx="1.5"/>
+            <line x1="8" y1="20" x2="16" y2="20"/>
+            <line x1="12" y1="16" x2="12" y2="20"/>
+          </svg>
+        </div>
+        <div class="cap">Clients</div>
+        <div class="sub">Web app · React.js</div>
+      </div>
+
+      <div class="arrow-zone">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+          <line x1="2" y1="28" x2="88" y2="20" stroke="#FFFFFF" stroke-width="1.6" stroke-dasharray="6 5"/>
+          <path d="M82 15 L94 20 L82 25 Z" fill="#FFFFFF"/>
+          <line x1="2" y1="72" x2="88" y2="80" stroke="#FFFFFF" stroke-width="1.6" stroke-dasharray="6 5"/>
+          <path d="M82 75 L94 80 L82 85 Z" fill="#FFFFFF"/>
+          <text x="8" y="50" fill="#FFFFFF" font-size="9" font-weight="600" font-family="Poppins, sans-serif">REST API</text>
+        </svg>
+      </div>
+
+      <div class="center-col">
+        <span class="banner">DOCKER ENVIRONMENT</span>
+        <svg class="brackets" viewBox="0 0 280 16"><path d="M20 0 V8 H260 V0 M140 8 V16" stroke="#F4D925" stroke-width="1.6" fill="none"/></svg>
+        <div class="grid2">
+          <div class="box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#7CD9A0" stroke-width="2"><path d="M10 4 v4 l-4 8a2.5 2.5 0 0 0 2 4h8a2.5 2.5 0 0 0 2 -4l-4 -8v-4" /><line x1="9" y1="4" x2="15" y2="4"/></svg>
+            <div><div class="t">Backend</div><div class="s">Flask · REST API</div></div>
+          </div>
+          <div class="box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8DB4F7" stroke-width="2"><ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v12a7 2.6 0 0 0 14 0V6"/><path d="M5 12a7 2.6 0 0 0 14 0"/></svg>
+            <div><div class="t">MySQL 8</div><div class="s">:3306</div></div>
+          </div>
+          <div class="box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#C4AEF5" stroke-width="2"><rect x="4" y="6" width="16" height="10" rx="4"/><path d="M9 16 v3 l4 -3z"/></svg>
+            <div><div class="t">Chatbot (AI)</div><div class="s">assistant</div></div>
+          </div>
+          <div class="box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#F0B36E" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+            <div><div class="t">Monitoring</div><div class="s">news &amp; alerts</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="satellites">
+    <div class="sat"><span class="dash"></span>Batch pipeline (outside Docker) → <b>MySQL</b></div>
+    <div class="sat">Monitoring → <b>MySQL</b> · alerts every 30 min<span class="dash"></span></div>
+    <div class="sat">Chatbot → <b>Groq API</b> (external LLM)<span class="dash"></span></div>
+  </div>
+
+  <div class="footer">- Global Architecture -</div>
+  <div class="pageno">14</div>
+</div>

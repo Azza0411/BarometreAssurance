@@ -32,7 +32,7 @@ Stratégie sans re-scan PDF (évite les timeouts) :
 
 import os
 from database.repository import (
-    get_anomalies, get_kpi_values_for_document, list_documents_by_source, get_document_meta,
+    get_anomalies, get_kpis_for_document, list_documents_by_source, get_document_meta,
 )
 from api.services.kpi_builder import build_company_row
 from api.services.quality import build_quality_report
@@ -166,7 +166,7 @@ def _sections_inferees(kpis: dict) -> dict[str, bool]:
 def _audit_one(conn, doc_id: int, code: str, annee: int,
                total_ftusa) -> list[dict]:
     ctx  = get_context(code)
-    kpis = get_kpi_values_for_document(conn, doc_id)
+    kpis = get_kpis_for_document(conn, doc_id)
     nom_pdf, lien_cmf = get_document_meta(conn, code, annee)
 
     pdf_local = _pdf_ok(code, annee)
@@ -434,7 +434,7 @@ def build_pipeline_audit(conn, annee: int) -> dict:
 
     company_docs = [
         (doc_id, code)
-        for doc_id, _cmf_id, code, doc_annee in list_documents_by_source(conn, "CMF")
+        for doc_id, _societe_id, code, doc_annee in list_documents_by_source(conn, "CMF")
         if doc_annee == annee and code
     ]
 

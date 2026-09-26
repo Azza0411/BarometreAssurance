@@ -2,7 +2,7 @@
 
 Pendant Vie de `extraction/CAS_PARTICULIERS_FULL_TABLE.md` (Annexe 13
 Non-Vie) : même principe (grille complète par branche, normalisation,
-validation par identités comptables, stockage `tableau_cellules`), mais
+validation par identités comptables, stockage `tableaux_excel`), mais
 pour l'Annexe 12. Voir aussi `CAS_PARTICULIERS_ANNEXE12.txt` (extracteur
 KPI ciblé, plus ancien et plus léger — 6 KPI seulement) pour l'historique
 des cas particuliers de détection de page déjà résolus et réutilisés ici.
@@ -47,7 +47,7 @@ passait à tort le test. Corrigé en testant `_A13_NON_VIE_RE` EN PREMIER
 `tableau_pipeline_service.py` (pas un paramètre `tableau=`) pour zéro
 risque de régression sur la route Gestion de données déjà en production
 pour l'Annexe 13. Stocke sous `TABLEAU_KEY = "annexe12"` dans les mêmes
-tables `tableau_cellules`/`tableau_validations` (déjà génériques par
+tables `tableaux_excel`/`regles_validations` (déjà génériques par
 `tableau`, aucune migration de schéma nécessaire).
 
 `extraction/annexe12_verified.py` : même contrat que
@@ -161,7 +161,7 @@ STAR          10/11 -> 11/11  UIB      3/6 -> 3/6
 **Total global (191 documents, hors Takaful) : 127 → ~140/191 (73%)**,
 entièrement automatique (aucune valeur saisie/corrigée à la main). Les
 grilles extraites par OCR gardent leurs écarts de validation VISIBLES
-(`tableau_validations`, statut "ecart") plutôt que d'être silencieusement
+(`regles_validations`, statut "ecart") plutôt que d'être silencieusement
 présentées comme parfaites — même principe que la voie OCR déjà en
 production pour l'Annexe 13 (AMI 2019/2020/2023, COTUNACE 2017/2019/2023).
 Certaines cellules restent mal lues (chiffre tronqué, confusion 6/7 ou 2/7)

@@ -1,0 +1,170 @@
+<title>Architecture Globale</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page:#F7F6F3;
+    --panel:#FFFFFF;
+    --ink:#1E1E26;
+    --line:#3A3A42;
+    --muted:#767680;
+    --hair:#DAD8D0;
+    --accent:#B8971C;
+    --accent-ink:#1E1E26;
+    --accent-soft:#FFF4C2;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --page:#1B1B21;
+      --panel:#26262E;
+      --ink:#F0F0EC;
+      --line:#D8D8DC;
+      --muted:#9A9AA4;
+      --hair:#3A3A42;
+      --accent:#FFE600;
+      --accent-ink:#1E1E26;
+      --accent-soft:#3A3419;
+    }
+  }
+  :root[data-theme="dark"]{
+    --page:#1B1B21;
+    --panel:#26262E;
+    --ink:#F0F0EC;
+    --line:#D8D8DC;
+    --muted:#9A9AA4;
+    --hair:#3A3A42;
+    --accent:#FFE600;
+    --accent-ink:#1E1E26;
+    --accent-soft:#3A3419;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--page);
+    color:var(--ink);
+    font-family:'Barlow','Segoe UI',system-ui,sans-serif;
+    padding:48px 24px 72px;
+  }
+  main{
+    max-width:1000px;
+    margin:0 auto;
+  }
+  h1{
+    font-size:15px;
+    font-weight:700;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin:0 0 4px;
+  }
+  h2{
+    font-size:28px;
+    font-weight:800;
+    letter-spacing:0.01em;
+    margin:0 0 6px;
+    text-wrap:balance;
+  }
+  .lede{
+    font-size:15px;
+    color:var(--muted);
+    max-width:66ch;
+    line-height:1.5;
+    margin:0 0 28px;
+  }
+  figure{ margin:0; }
+  .fig-frame{
+    background:var(--panel);
+    border:1px solid var(--hair);
+    border-radius:16px;
+    padding:24px;
+    overflow-x:auto;
+  }
+  svg{ display:block; width:100%; height:auto; max-width:100%; color:var(--ink); }
+  figcaption{
+    margin-top:14px;
+    font-size:13.5px;
+    color:var(--muted);
+    line-height:1.5;
+  }
+  figcaption b{ color:var(--ink); font-weight:600; }
+  .box-title{ font-weight:700; font-size:14px; }
+  .box-sub{ font-weight:500; font-size:11px; fill:var(--muted); }
+  .edge-label{ font-size:11px; font-weight:500; fill:var(--muted); }
+  .edge-label.accent{ fill:var(--accent-ink); font-weight:700; }
+</style>
+
+<main>
+  <h1>Baromètre Assurance TN</h1>
+  <h2>Architecture globale</h2>
+  <p class="lede">Vue d'ensemble du système : de la collecte des données brutes jusqu'aux tableaux de bord, avec deux briques complémentaires — la veille automatique et l'assistant IA.</p>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 960 460" role="img" aria-label="Schéma d'architecture globale : les sources de données (sites web et rapports PDF) alimentent un module de traitement qui calcule les indicateurs, stockés en base de données, exposés par une API et affichés dans l'interface utilisateur. Un module de veille alimente la base en alertes en continu, et un assistant IA répond aux questions à partir des mêmes données.">
+        <defs>
+          <marker id="gl-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--line)"/>
+          </marker>
+          <marker id="gl-arrow-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+
+        <!-- Veille & Alertes (satellite, top) -->
+        <rect x="330" y="34" width="170" height="66" rx="10" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="415" y="61" text-anchor="middle" class="box-title">Veille &amp; Alertes</text>
+        <text x="415" y="78" text-anchor="middle" class="box-sub">actualités &amp; réglementation</text>
+
+        <path d="M 415 100 C 415 140, 470 150, 480 198" fill="none" stroke="var(--accent)" stroke-width="1.8" marker-end="url(#gl-arrow-accent)"/>
+        <text x="470" y="140" text-anchor="middle" class="edge-label accent">alimente la base</text>
+        <text x="470" y="153" text-anchor="middle" class="edge-label accent">en continu</text>
+
+        <!-- Main pipeline row: y 200-290 -->
+        <rect x="30" y="200" width="140" height="90" rx="10" fill="var(--panel)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="100" y="241" text-anchor="middle" class="box-title">Sources de</text>
+        <text x="100" y="257" text-anchor="middle" class="box-title">données</text>
+
+        <rect x="220" y="200" width="140" height="90" rx="10" fill="var(--panel)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="290" y="251" text-anchor="middle" class="box-title">Traitement</text>
+
+        <rect x="410" y="200" width="140" height="90" rx="10" fill="var(--panel)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="480" y="241" text-anchor="middle" class="box-title">Base de</text>
+        <text x="480" y="257" text-anchor="middle" class="box-title">données</text>
+
+        <rect x="600" y="200" width="140" height="90" rx="10" fill="var(--panel)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="670" y="251" text-anchor="middle" class="box-title">API</text>
+
+        <rect x="790" y="200" width="140" height="90" rx="10" fill="var(--panel)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="860" y="241" text-anchor="middle" class="box-title">Interface</text>
+        <text x="860" y="257" text-anchor="middle" class="box-title">utilisateur</text>
+
+        <line x1="170" y1="245" x2="216" y2="245" stroke="var(--line)" stroke-width="1.8" marker-end="url(#gl-arrow)"/>
+        <text x="193" y="193" text-anchor="middle" class="edge-label">pages web ·</text>
+        <text x="193" y="206" text-anchor="middle" class="edge-label">rapports PDF</text>
+
+        <line x1="360" y1="245" x2="406" y2="245" stroke="var(--line)" stroke-width="1.8" marker-end="url(#gl-arrow)"/>
+        <text x="383" y="193" text-anchor="middle" class="edge-label">indicateurs</text>
+
+        <line x1="550" y1="245" x2="596" y2="245" stroke="var(--line)" stroke-width="1.8" marker-end="url(#gl-arrow)"/>
+        <text x="573" y="193" text-anchor="middle" class="edge-label">lecture</text>
+
+        <line x1="740" y1="245" x2="786" y2="245" stroke="var(--line)" stroke-width="1.8" marker-end="url(#gl-arrow)"/>
+        <text x="763" y="193" text-anchor="middle" class="edge-label">résultats</text>
+
+        <!-- Assistant IA (satellite, bottom) -->
+        <rect x="600" y="350" width="190" height="80" rx="10" fill="var(--panel)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="695" y="394" text-anchor="middle" class="box-title">Assistant IA</text>
+        <text x="695" y="410" text-anchor="middle" class="box-sub">questions en langage naturel</text>
+
+        <path d="M 460 290 C 460 330, 560 340, 610 355" fill="none" stroke="var(--line)" stroke-width="1.8" marker-end="url(#gl-arrow)"/>
+        <text x="530" y="335" text-anchor="middle" class="edge-label">interroge la base</text>
+
+        <path d="M 780 355 C 830 340, 850 320, 855 294" fill="none" stroke="var(--line)" stroke-width="1.8" marker-end="url(#gl-arrow)"/>
+        <text x="850" y="335" text-anchor="middle" class="edge-label">réponses</text>
+      </svg>
+    </div>
+    <figcaption>Le trait plein décrit le parcours d'une donnée, de sa source jusqu'à l'écran de l'utilisateur. En <b>doré</b> : la veille alimente la base en continu, indépendamment des consultations de l'utilisateur.</figcaption>
+  </figure>
+</main>

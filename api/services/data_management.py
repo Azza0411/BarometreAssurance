@@ -4,7 +4,7 @@ d'options pour les filtres d'export, et génération de l'export Excel
 flexible (n'importe quelle combinaison Tableau × Société × Année).
 
 Séparé de excel_export.py (dédié à l'export figé "Analyse Comparative") —
-ici l'export est un extrait BRUT de kpi_values (format long : une ligne par
+ici l'export est un extrait BRUT de kpis (format long : une ligne par
 valeur de KPI), pas une mise en page métier avec formules recalculables.
 """
 
@@ -22,7 +22,7 @@ from openpyxl.drawing.xdr import XDRPositiveSize2D
 import io
 
 from database.repository import (
-    get_connection, list_all_documents, get_tableau_cellules, get_document_id,
+    get_connection, list_all_documents, get_tableaux_excel, get_document_id,
     get_cached_tableau_page, save_cached_tableau_page, TABLEAU_PAGE_MISS,
 )
 from extraction.annexe13_kpi_extractor import (
@@ -181,9 +181,9 @@ def get_local_pdf_path_for_document(conn, document_id):
         cur.execute(
             """
             SELECT s.nom, c.code, d.nom_pdf
-            FROM documents d
+            FROM documents_pdf d
             JOIN sources s ON s.id = d.source_id
-            LEFT JOIN societes c ON c.id = d.cmf_id
+            LEFT JOIN societes c ON c.id = d.societe_id
             WHERE d.id = %s
             """,
             (document_id,),
@@ -224,9 +224,9 @@ TABLEAU_GROUPS = [
     # différentes, totaux propres) — deux clés séparées plutôt qu'une
     # grille fusionnée, pour préserver cette structure côté Correction
     # manuelle. `raws=["Bilan"]` dupliqué sur les deux : le KPI narrow
-    # historique (bilan_kpi_extractor.py, kpi_values) ne distingue pas
+    # historique (bilan_kpi_extractor.py, kpis) ne distingue pas
     # Actif/Passif, donc les deux groupes s'appuient sur la même présence
-    # ; seule l'enrichissement `tableau_cellules` ci-dessous (tc.tableau=
+    # ; seule l'enrichissement `tableaux_excel` ci-dessous (tc.tableau=
     # 'bilan_actif'/'bilan_passif') les différencie réellement.
     # Pas de " — " dans ces deux libellés (contrairement aux groupes
     # ci-dessus) : le frontend (CorrectionManuelle.jsx) affiche
@@ -237,19 +237,19 @@ TABLEAU_GROUPS = [
     ("bilan_passif", "Bilan Passif", ["Bilan"]),
     # "État de résultat" / "Ratios calculés (interne)" / "Présentation de la
     # société" retirés du sélecteur (2026-09-09, retour utilisateur direct)
-    # — restent des libellés `tableau` réels dans kpi_values (un export
+    # — restent des libellés `tableau` réels dans kpis (un export
     # "tous les tableaux" sans filtre les inclut donc toujours), seulement
     # plus proposés comme filtre explicite.
-    # Takaful (2026-09-15) : 5 clés `tableau_cellules` pour les 5 annexes
+    # Takaful (2026-09-15) : 5 clés `tableaux_excel` pour les 5 annexes
     # utilisées par le pipeline KPI narrow Takaful (voir
     # extraction/CAS_PARTICULIERS_TAKAFUL_SURPLUS.md). `raws` reprend les 2
-    # libellés `kpi_values.tableau` réels de
+    # libellés `kpis.tableau` réels de
     # extraction/kpi_extraction_pipeline.py::KPI_TABLE_LABEL — "Annexes
     # 3/4/5.1 - Fonds des Participants (Takaful)" est PARTAGÉ par 3 clés
-    # tableau_cellules distinctes (Familial/Général/Entreprise, mêmes
+    # tableaux_excel distinctes (Familial/Général/Entreprise, mêmes
     # raisons que bilan_actif/bilan_passif ci-dessus : le KPI narrow
     # historique ne distingue pas l'annexe d'origine, seule
-    # `tableau_cellules` le fait réellement). PAS de " — " dans ces
+    # `tableaux_excel` le fait réellement). PAS de " — " dans ces
     # libellés, même raison que Bilan Actif/Passif ci-dessus : le frontend
     # tronque sur ce séparateur pour le texte d'onglet, et les 5 libellés
     # commencent tous par "Takaful" — un " — " les rendrait tous
@@ -271,10 +271,10 @@ _TABLEAU_GROUP_TO_RAW = {key: raws for key, _label, raws in TABLEAU_GROUPS}
 
 
 def kpi_raw_labels_for(tableau):
-    """Libellés bruts `kpi_values.tableau` correspondant à une clé
-    `tableau_cellules` (ex. 'annexe12' -> ["Annexe12", "Annexe 12 - ...",
+    """Libellés bruts `kpis.tableau` correspondant à une clé
+    `tableaux_excel` (ex. 'annexe12' -> ["Annexe12", "Annexe 12 - ...",
     "Annexe 12/13"]) — sert à retrouver, après une correction manuelle, le
-    KPI narrow (kpi_values) qui pourrait représenter la même donnée que la
+    KPI narrow (kpis) qui pourrait représenter la même donnée que la
     cellule corrigée (voir database/repository.py::apply_manual_corrections,
     propagation par VALEUR plutôt que par nom — voir sa docstring)."""
     return _TABLEAU_GROUP_TO_RAW.get(tableau, [])
@@ -297,7 +297,7 @@ def get_filter_options(conn):
         societes = [{"code": c, "nom": n} for c, n in cur.fetchall()]
         cur.execute(
             """
-            SELECT DISTINCT d.annee FROM documents d
+            SELECT DISTINCT d.annee FROM documents_pdf d
             JOIN sources s ON s.id = d.source_id
             WHERE s.nom = 'CMF'
             ORDER BY d.annee DESC
@@ -309,10 +309,10 @@ def get_filter_options(conn):
         cur.execute(
             """
             SELECT DISTINCT c.code, k.tableau
-            FROM kpi_values k
-            JOIN documents d ON d.id = k.document_id
+            FROM kpis k
+            JOIN documents_pdf d ON d.id = k.document_id
             JOIN sources s ON s.id = d.source_id
-            JOIN societes c ON c.id = d.cmf_id
+            JOIN societes c ON c.id = d.societe_id
             WHERE s.nom = 'CMF'
             """
         )
@@ -321,16 +321,16 @@ def get_filter_options(conn):
                 if raw in raws:
                     societes_par_tableau[key].add(code)
         # Annexe 13 grille complète (extraction/annexe13_pipeline.py) : une
-        # source de vérité SÉPARÉE de kpi_values (tableau_cellules) — une
+        # source de vérité SÉPARÉE de kpis (tableaux_excel) — une
         # société peut y avoir un résultat que le sous-ensemble narrow 7-KPI
         # n'a pas (ou l'inverse), les deux comptent comme "a ce tableau".
         cur.execute(
             """
             SELECT DISTINCT c.code
-            FROM tableau_cellules tc
-            JOIN documents d ON d.id = tc.document_id
+            FROM tableaux_excel tc
+            JOIN documents_pdf d ON d.id = tc.document_id
             JOIN sources s ON s.id = d.source_id
-            JOIN societes c ON c.id = d.cmf_id
+            JOIN societes c ON c.id = d.societe_id
             WHERE s.nom = 'CMF' AND tc.tableau = 'annexe13'
             """
         )
@@ -338,14 +338,14 @@ def get_filter_options(conn):
             societes_par_tableau.setdefault("annexe13", set()).add(code)
         # Annexe 12 grille complète (extraction/annexe12_pipeline.py) — même
         # principe que l'Annexe 13 ci-dessus, source de vérité séparée de
-        # kpi_values.
+        # kpis.
         cur.execute(
             """
             SELECT DISTINCT c.code
-            FROM tableau_cellules tc
-            JOIN documents d ON d.id = tc.document_id
+            FROM tableaux_excel tc
+            JOIN documents_pdf d ON d.id = tc.document_id
             JOIN sources s ON s.id = d.source_id
-            JOIN societes c ON c.id = d.cmf_id
+            JOIN societes c ON c.id = d.societe_id
             WHERE s.nom = 'CMF' AND tc.tableau = 'annexe12'
             """
         )
@@ -354,16 +354,16 @@ def get_filter_options(conn):
         # Bilan Actif / Passif grille complète (extraction/bilan_full_extractor.py)
         # — même principe, deux clés séparées (voir TABLEAU_GROUPS ci-dessus) :
         # sans ce bloc, la présence des onglets Bilan dans Correction manuelle ne
-        # reposerait que sur le KPI narrow historique (kpi_values, tableau='Bilan'),
+        # reposerait que sur le KPI narrow historique (kpis, tableau='Bilan'),
         # qui peut être vide alors que la grille complète existe (ou l'inverse).
         for cle in ("bilan_actif", "bilan_passif"):
             cur.execute(
                 """
                 SELECT DISTINCT c.code
-                FROM tableau_cellules tc
-                JOIN documents d ON d.id = tc.document_id
+                FROM tableaux_excel tc
+                JOIN documents_pdf d ON d.id = tc.document_id
                 JOIN sources s ON s.id = d.source_id
-                JOIN societes c ON c.id = d.cmf_id
+                JOIN societes c ON c.id = d.societe_id
                 WHERE s.nom = 'CMF' AND tc.tableau = %s
                 """,
                 (cle,),
@@ -371,8 +371,8 @@ def get_filter_options(conn):
             for (code,) in cur.fetchall():
                 societes_par_tableau.setdefault(cle, set()).add(code)
         # Takaful (2026-09-15) — même principe que Bilan ci-dessus : les 5
-        # clés tableau_cellules Takaful (voir TABLEAU_GROUPS) peuvent avoir
-        # des sociétés que le KPI narrow (kpi_values, raws partagés entre
+        # clés tableaux_excel Takaful (voir TABLEAU_GROUPS) peuvent avoir
+        # des sociétés que le KPI narrow (kpis, raws partagés entre
         # plusieurs clés) ne reflète pas fidèlement une par une.
         for cle in (
             "takaful_surplus_familial", "takaful_surplus_general", "takaful_resultat_entreprise",
@@ -381,10 +381,10 @@ def get_filter_options(conn):
             cur.execute(
                 """
                 SELECT DISTINCT c.code
-                FROM tableau_cellules tc
-                JOIN documents d ON d.id = tc.document_id
+                FROM tableaux_excel tc
+                JOIN documents_pdf d ON d.id = tc.document_id
                 JOIN sources s ON s.id = d.source_id
-                JOIN societes c ON c.id = d.cmf_id
+                JOIN societes c ON c.id = d.societe_id
                 WHERE s.nom = 'CMF' AND tc.tableau = %s
                 """,
                 (cle,),
@@ -392,15 +392,15 @@ def get_filter_options(conn):
             for (code,) in cur.fetchall():
                 societes_par_tableau.setdefault(cle, set()).add(code)
 
-    # Garde-fou pour Annexe 13 : kpi_values (ancien extracteur 7-KPI) peut
+    # Garde-fou pour Annexe 13 : kpis (ancien extracteur 7-KPI) peut
     # taguer à tort une société structurellement Vie-only comme ayant un
     # résultat "Non-Vie" — constaté sur ATTIJARI (page de raccordement Vie
     # non qualifiée "Vie" dans son titre, passe le contrôle de vraisemblance
     # par accident, voir CAS_PARTICULIERS_FULL_TABLE.md). Le référentiel
     # `ANNEXE13_NON_VIE_EXCLUSIONS` (construit à partir du texte réel des
     # PDF, pas d'une heuristique de titre) reste la source de vérité — il
-    # exclut TOUJOURS ces sociétés ici, quoi que dise kpi_values/
-    # tableau_cellules.
+    # exclut TOUJOURS ces sociétés ici, quoi que dise kpis/
+    # tableaux_excel.
     from extraction.annexe13_pipeline import ANNEXE13_NON_VIE_EXCLUSIONS
     societes_par_tableau["annexe13"] -= ANNEXE13_NON_VIE_EXCLUSIONS
 
@@ -434,7 +434,7 @@ def get_reliability_stats(conn):
     2. Fiabilité de l'extraction (Annexe 13) : part des DOCUMENTS (pas des
        lignes/règles comptables individuelles — un document reste "fiable"
        même avec un écart mineur sur une règle) dont l'extraction complète
-       a réellement abouti en base (`tableau_cellules`) PARMI TOUS CEUX OÙ
+       a réellement abouti en base (`tableaux_excel`) PARMI TOUS CEUX OÙ
        ELLE ÉTAIT ATTENDUE : documents CMF collectés d'une société
        structurellement éligible à l'Annexe 13 Non-Vie (exclut les sociétés
        Vie exclusivement/Takaful, voir `annexe13_pipeline.
@@ -463,7 +463,7 @@ def get_reliability_stats(conn):
 
     # --- 2. Fiabilité de l'extraction Annexe 13 : documents éligibles
     # (société Non-Vie-eligible, PDF présent) vs documents réellement
-    # stockés en base après extraction (tableau_cellules).
+    # stockés en base après extraction (tableaux_excel).
     eligibles_ids = {
         doc_id for code, entries in by_code.items() if code in COMPANY_REGISTRY
         and code not in ANNEXE13_NON_VIE_EXCLUSIONS
@@ -471,7 +471,7 @@ def get_reliability_stats(conn):
         if _has_local_pdf(code, nom_pdf)
     }
     with conn.cursor() as cur:
-        cur.execute("SELECT DISTINCT document_id FROM tableau_cellules WHERE tableau = 'annexe13'")
+        cur.execute("SELECT DISTINCT document_id FROM tableaux_excel WHERE tableau = 'annexe13'")
         reussis_ids = {row[0] for row in cur.fetchall()}
     reussis = len(eligibles_ids & reussis_ids)
     total_eligibles = len(eligibles_ids)
@@ -487,17 +487,17 @@ def get_reliability_stats(conn):
 
 
 def get_document_grid(conn, code, annee, tableau):
-    """Grille de cellules déjà stockée (`tableau_cellules`) pour UN document
+    """Grille de cellules déjà stockée (`tableaux_excel`) pour UN document
     CMF (société + année), pour la page de correction manuelle — un pur
     aperçu en lecture de ce qui est déjà en base, aucune ré-extraction. Les
     lignes sont ordonnées selon l'ordre canonique métier (même référentiel
     que l'export Excel) quand il existe pour ce tableau, sinon dans l'ordre
-    où `tableau_cellules` les restitue. Renvoie None si aucun document
+    où `tableaux_excel` les restitue. Renvoie None si aucun document
     CMF (code, annee) n'existe encore en base."""
     doc_id = get_document_id(conn, code, annee)
     if not doc_id:
         return None
-    rows = get_tableau_cellules(conn, [doc_id], tableau)
+    rows = get_tableaux_excel(conn, [doc_id], tableau)
     colonnes = []
     lignes_map = {}
     for _doc_id, ligne, colonne, valeur in rows:
@@ -607,7 +607,7 @@ def locate_source_page(conn, code, annee, tableau):
     Retrouvée par CONTENU (voir `_find_page_matching_grid_values`) — la
     grille déjà stockée fait foi, jamais une ré-extraction indépendante qui
     pourrait diverger de ce qui est réellement affiché à l'écran. Mis en
-    cache dans `tableau_pages` (voir schema.sql) dès le premier appel pour ce
+    cache dans `num_page_tableau` (voir schema.sql) dès le premier appel pour ce
     document : un document déjà publié ne change pas de pagination. None si
     le tableau n'a pas encore de pipeline de repérage dédié (bilan, pas
     encore construit), s'il n'y a aucune cellule stockée, ou si la page n'a
@@ -821,7 +821,7 @@ def _write_sheet_title(ws, last_col, title, subtitle):
 
 
 # ── Annexe 13 — tableau complet (toutes lignes × toutes colonnes) ──────────
-# Contrairement aux autres tableaux ci-dessus (lus depuis kpi_values, donc
+# Contrairement aux autres tableaux ci-dessus (lus depuis kpis, donc
 # limités aux 7 KPI déjà extraits pour les dashboards), l'Annexe 13 est
 # ré-extraite directement depuis le PDF source via
 # extraction/full_table_extractor.py — la grille réelle par branche, telle
@@ -871,10 +871,10 @@ def _extract_annexe12_full_grid(pdf_path):
 
 
 def _fetch_full_grid_by_doc(conn, document_ids, tableau):
-    """Grilles déjà stockées (`tableau_cellules`) pour un ensemble de
+    """Grilles déjà stockées (`tableaux_excel`) pour un ensemble de
     documents, une clé `tableau` donnée — {document_id: {"colonnes": [...],
     "lignes": {ligne: {colonne: valeur}}}}. Contrairement à
-    `get_tableau_cellules` (triée par `colonne_ordre`, donc COLONNE-majeure
+    `get_tableaux_excel` (triée par `colonne_ordre`, donc COLONNE-majeure
     — plusieurs lignes différentes se mélangent pour une même colonne),
     trie ici par `id` (ordre d'insertion réel = ordre d'apparition dans le
     PDF pour ces pipelines grille) pour que l'ordre des LIGNES du dict
@@ -889,7 +889,7 @@ def _fetch_full_grid_by_doc(conn, document_ids, tableau):
         cur.execute(
             f"""
             SELECT document_id, ligne, colonne, valeur
-            FROM tableau_cellules
+            FROM tableaux_excel
             WHERE tableau = %s AND document_id IN ({placeholders})
             ORDER BY id
             """,
@@ -1265,7 +1265,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
     grilles Takaful (Surplus/Ventilation/État de résultat) sont TOUTES
     rendues comme une grille complète (`_write_full_grid_block` — toutes
     les lignes du tableau source, pas seulement le sous-ensemble de KPI
-    utilisé par les dashboards), lue depuis `tableau_cellules`. Annexe
+    utilisé par les dashboards), lue depuis `tableaux_excel`. Annexe
     12/13 gardent en plus un repli d'extraction LIVE sur le PDF (voir
     `_extract_annexe13_full_grid`/`_extract_annexe12_full_grid`) pour les
     quelques documents jamais repassés par la validation de fond — les
@@ -1300,7 +1300,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                 exclusions_module=None, exclusions_name=None, live_extractor=None,
             )
     active_full_grid_keys = [k for k in _FULL_GRID_SPECS if not tableau_keys or k in tableau_keys]
-    # Libellés bruts (kpi_values.tableau) déjà couverts par une grille
+    # Libellés bruts (kpis.tableau) déjà couverts par une grille
     # complète ci-dessus — leur bloc "KPI narrow" (dashboards) ne doit
     # jamais s'afficher EN PLUS de la grille complète, sinon la même
     # donnée apparaîtrait deux fois, une fois résumée et une fois en
@@ -1322,10 +1322,10 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
         query = """
             SELECT c.code, c.nom_entreprise, d.annee, k.tableau, k.kpi,
                    k.valeur_nombre, k.valeur_texte
-            FROM kpi_values k
-            JOIN documents d ON d.id = k.document_id
+            FROM kpis k
+            JOIN documents_pdf d ON d.id = k.document_id
             JOIN sources s ON s.id = d.source_id
-            JOIN societes c ON c.id = d.cmf_id
+            JOIN societes c ON c.id = d.societe_id
             WHERE s.nom = 'CMF'
         """
         params = []
@@ -1349,7 +1349,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
 
         # Documents CMF candidats + cellules déjà stockées, POUR CHAQUE
         # tableau à grille complète actif — repose directement sur la
-        # table `documents` (indépendant de ce que `kpi_values` contient
+        # table `documents` (indépendant de ce que `kpis` contient
         # déjà), puisque Annexe 12/13 peuvent ré-extraire en direct depuis
         # le PDF, sans jamais dépendre du narrow KPI déjà en base.
         full_grid_docs = {}       # key -> [(doc_id, code, nom, annee, nom_pdf), ...]
@@ -1358,9 +1358,9 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             spec = _FULL_GRID_SPECS[key]
             qk = """
                 SELECT d.id, c.code, c.nom_entreprise, d.annee, d.nom_pdf
-                FROM documents d
+                FROM documents_pdf d
                 JOIN sources s ON s.id = d.source_id
-                JOIN societes c ON c.id = d.cmf_id
+                JOIN societes c ON c.id = d.societe_id
                 WHERE s.nom = 'CMF'
             """
             pk = []
@@ -1389,7 +1389,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                 full_grid_cellules[key] = _fetch_full_grid_by_doc(conn, [d[0] for d in docs], key)
             else:
                 cellules = {}
-                for doc_id, ligne, colonne, valeur in get_tableau_cellules(conn, [d[0] for d in docs], key):
+                for doc_id, ligne, colonne, valeur in get_tableaux_excel(conn, [d[0] for d in docs], key):
                     grid = cellules.setdefault(doc_id, {"colonnes": [], "lignes": {}})
                     if colonne not in grid["colonnes"]:
                         grid["colonnes"].append(colonne)

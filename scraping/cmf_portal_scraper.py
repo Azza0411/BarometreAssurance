@@ -332,23 +332,23 @@ class CMFPortalScraper:
         statements = self.collect_annual_statements()  # {annee: pdf_url} filtré
 
         cmf_name = self.registry[company_key]["cmf_name"]  # nom de la société
-        cmf_id = get_or_create_company(self.db_conn, company_key, cmf_name)  # id de la société
+        societe_id = get_or_create_company(self.db_conn, company_key, cmf_name)  # id de la société
 
         saved = 0  # compteur enregistrés
         for year in sorted(statements):  # ordre chronologique
             pdf_url = statements[year]  # lien du PDF
-            if document_exists(self.db_conn, self.source_id, cmf_id, year):
+            if document_exists(self.db_conn, self.source_id, societe_id, year):
                 print(f"[INFO] Déjà en base : {company_key} {year}")  # info console
                 continue  # déduplication
             if not self._verify_pdf_link(pdf_url):
                 print(f"[WARN] Lien PDF invalide, ignoré : {pdf_url}")  # avertissement
                 continue  # lien mort, ignoré
             nom_pdf = f"{company_key}_{year}.pdf"  # nom construit, pas le fichier
-            save_document(self.db_conn, self.source_id, cmf_id, nom_pdf, year, pdf_url)  # écrit les métadonnées
+            save_document(self.db_conn, self.source_id, societe_id, nom_pdf, year, pdf_url)  # écrit les métadonnées
             saved += 1  # +1 enregistré
             print(f"[OK] Enregistré en base : {nom_pdf}")  # confirmation
 
-        total = count_documents(self.db_conn, cmf_id)  # total cumulé
+        total = count_documents(self.db_conn, societe_id)  # total cumulé
         print(f"[INFO] {saved} nouveau(x) document(s) pour {company_key} ({total} au total en base)")  # résumé
         return saved  # documents ajoutés
 

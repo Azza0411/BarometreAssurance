@@ -5,7 +5,7 @@ Fournit aussi les métadonnées PDF source et les formules de calcul.
 
 import os
 from database.repository import (
-    get_anomalies, get_kpi_values_for_document, list_documents_by_source, get_document_meta
+    get_anomalies, get_kpis_for_document, list_documents_by_source, get_document_meta
 )
 from api.services.kpi_builder import build_company_row, _raw_ratio
 from api.utils.formatters import PRIMES_UNIT_DIVISOR, kpis_by_year
@@ -162,13 +162,13 @@ def build_quality_report(conn, annee: int) -> dict:
 
     company_docs = [
         (doc_id, code)
-        for doc_id, _cmf_id, code, doc_annee in list_documents_by_source(conn, "CMF")
+        for doc_id, _societe_id, code, doc_annee in list_documents_by_source(conn, "CMF")
         if doc_annee == annee and code
     ]
     total_companies = len({code for _, code in company_docs})
 
     for doc_id, code in company_docs:
-        kpis = get_kpi_values_for_document(conn, doc_id)
+        kpis = get_kpis_for_document(conn, doc_id)
 
         # ── Métadonnées PDF ────────────────────────────────────────────────
         nom_pdf, lien_cmf = get_document_meta(conn, code, annee)

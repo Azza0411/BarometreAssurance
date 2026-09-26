@@ -1,7 +1,7 @@
 """Orchestration de la pipeline complète par annexe (Phase 1, 2026-09-08) :
 traite les documents CMF (extraction + normalisation + validation, voir
 extraction/annexe13_pipeline.py) et stocke le résultat en base
-(tableau_cellules / tableau_validations, database/schema.sql).
+(tableaux_excel / regles_validations, database/schema.sql).
 
 Séparé de data_management.py (qui reste responsable de la liste des
 documents / l'export Excel) pour garder ce fichier concentré sur UNE
@@ -41,9 +41,9 @@ def _cmf_documents(conn, codes=None, annees=None):
     mal-étiquetées "Non-Vie" alors qu'elles sont Vie."""
     query = """
         SELECT d.id, c.code, d.nom_pdf
-        FROM documents d
+        FROM documents_pdf d
         JOIN sources s ON s.id = d.source_id
-        JOIN societes c ON c.id = d.cmf_id
+        JOIN societes c ON c.id = d.societe_id
         WHERE s.nom = 'CMF'
     """
     params = []

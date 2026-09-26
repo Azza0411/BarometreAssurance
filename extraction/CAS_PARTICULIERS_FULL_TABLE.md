@@ -479,8 +479,8 @@ dans son titre — passe le contrôle de vraisemblance par accident) et
 produisaient un résultat "réussi" mais garbage (ex. un unique nom de colonne
 de 90 caractères concaténant tout l'en-tête). **Vérifié en base : 6
 documents contaminés au total** — ATTIJARI (3), AT_TAKAFULIA (1), GAT_VIE
-(1), ZITOUNA_TAKAFUL (1) — supprimés de `tableau_cellules`/
-`tableau_validations`. Fix définitif : `_cmf_documents` exclut désormais
+(1), ZITOUNA_TAKAFUL (1) — supprimés de `tableaux_excel`/
+`regles_validations`. Fix définitif : `_cmf_documents` exclut désormais
 `ANNEXE13_NON_VIE_EXCLUSIONS` à la source (jamais retenté), donc plus de
 recontamination possible aux prochaines revalidations.
 
@@ -488,10 +488,10 @@ recontamination possible aux prochaines revalidations.
 (`annexe13_kpi_extractor.py`, alimente les dashboards, jamais touché dans
 cette session par consigne explicite) a le MÊME bug de fond — il tague
 aussi à tort des valeurs Vie d'ATTIJARI 2021-2023 sous le libellé brut
-"Annexe 13 - Resultat technique Non-Vie" dans `kpi_values` (racine commune :
+"Annexe 13 - Resultat technique Non-Vie" dans `kpis` (racine commune :
 la page de raccordement d'ATTIJARI ne contient pas le mot "vie" dans ses 4
 premières lignes, seul signal utilisé par `_is_target_page`). Cette table
-`kpi_values` n'a pas été nettoyée (hors périmètre — sert aux dashboards) ;
+`kpis` n'a pas été nettoyée (hors périmètre — sert aux dashboards) ;
 un export "tous les tableaux" ou "Annexe 12" pourrait donc encore afficher
 ces valeurs contaminées via le repli narrow (`_write_narrow_fallback_block`).
 Le nouveau garde-fou `societes_par_tableau` (voir `get_filter_options`) évite
@@ -506,7 +506,7 @@ page, comme fait ici côté grille complète.
 Après le fix COTUNACE (ce fichier, entrée du dessous) et le repli "Notes sur
 les Comptes de Résultats" pour BNA/AMI (tâche de fond séparée, voir commit
 `4bee905`, module `extraction/notes_resultat_extractor.py`), vérifié en base
-(`tableau_cellules`) : **plus AUCUNE société "conventionnelle" éligible à
+(`tableaux_excel`) : **plus AUCUNE société "conventionnelle" éligible à
 l'Annexe 13 Non-Vie ne manque pour l'exercice 2024.** Les seules sociétés
 sans résultat 2024 sont, sans exception, celles structurellement hors
 périmètre (`annexe13_pipeline.ANNEXE13_NON_VIE_EXCLUSIONS` : Vie
@@ -771,7 +771,7 @@ correct, même si le chiffre de couverture brute baisse légèrement.
 ## 2026-09-08 (Phase 1 — pipeline complète) — colonnes homonymes
 
 En branchant l'extraction complète à `extraction/annexe13_pipeline.py`
-(normalisation + validation + stockage `tableau_cellules`, voir plus bas) et
+(normalisation + validation + stockage `tableaux_excel`, voir plus bas) et
 en traitant TOUS les documents, un cas jusque-là invisible est apparu :
 `Duplicate entry '...-primes_acquises-31/12/2018'` au stockage, sur les
 années STAR encore sur le gabarit agrégé (page 4, pas de vraie page Annexe
@@ -1623,7 +1623,7 @@ CTAMA (mutuelle agricole) ne publie que :
 - des ventilations **par branche des seules PROVISIONS** (primes non
   acquises, sinistres à payer) dans les notes (Note 8).
 
-Le cache `tableau_cellules` contenait pour docs 164 (2018) et 165 (2020) des
+Le cache `tableaux_excel` contenait pour docs 164 (2018) et 165 (2020) des
 cellules camelot extraites par erreur de la page Brut/Cessions/Net (colonnes
 « Opérations brutes / Cessions et/ou rétrocessions / Opérations nettes /
 Opérations nettes (2) », libellés mutilés « Rtnv sous total… », « Montant
@@ -1991,7 +1991,7 @@ court-circuite cette extraction pour la quasi-totalité des documents
 sont donc en grande partie des faux positifs : ils testent une voie que
 `process_one_document` n'emprunte jamais pour ces documents. Un audit
 corrigé (scratchpad, hors dépôt) qui compare plutôt le contenu RÉELLEMENT
-stocké (`tableau_cellules`) au texte du PDF, en sautant les `(code, année)`
+stocké (`tableaux_excel`) au texte du PDF, en sautant les `(code, année)`
 présents dans `VERIFIED`, donne un tableau bien plus court :
 
 - **114/122 déjà vérifiés à la main** — non retestés.
@@ -2066,7 +2066,7 @@ branches + Total (`_STAR_COLS`, comme les autres années STAR).
 
 **Correctif de fond associé** (`api/services/tableau_pipeline_service.py`
 et `..._annexe12.py`) : la page connue par une saisie manuelle est
-maintenant mise en cache directement (`tableau_pages`) au moment de
+maintenant mise en cache directement (`num_page_tableau`) au moment de
 l'enregistrement, au lieu d'être retrouvée après coup par correspondance
 de contenu (`locate_source_page`, texte pdfplumber) — qui échoue justement
 pour ces pages à couche texte vide/cassée, l'exacte raison pour laquelle

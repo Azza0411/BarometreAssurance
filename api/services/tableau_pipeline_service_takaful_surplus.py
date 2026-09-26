@@ -1,7 +1,7 @@
 """Orchestration de la pipeline complète Takaful Annexes 3/4 ("État de
 Surplus ou Déficit du fonds Takaful Familial/Général") — même schéma que
 `tableau_pipeline_service_bilan.py` : extraction + stockage
-(tableau_cellules), Familial et Général sous deux clés séparées (comme
+(tableaux_excel), Familial et Général sous deux clés séparées (comme
 Actif/Passif pour le Bilan, pour les mêmes raisons — tableaux distincts du
 PDF source, pages et totaux propres).
 
@@ -26,9 +26,9 @@ def _takaful_documents(conn, codes=None, annees=None):
     codes = [c for c in (codes or TAKAFUL_FR_COMPANIES) if c in TAKAFUL_FR_COMPANIES] or list(TAKAFUL_FR_COMPANIES)
     query = """
         SELECT d.id, c.code, d.nom_pdf
-        FROM documents d
+        FROM documents_pdf d
         JOIN sources s ON s.id = d.source_id
-        JOIN societes c ON c.id = d.cmf_id
+        JOIN societes c ON c.id = d.societe_id
         WHERE s.nom = 'CMF' AND c.code IN (%s)
     """ % ",".join(["%s"] * len(codes))
     params = list(codes)

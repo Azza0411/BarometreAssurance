@@ -75,7 +75,7 @@ BarometreAssurance/
 
 **Important** : les scrapers "Atlas Magazine"/"IlBoursa" ne sont **pas** dans `scraping/` — ils vivent dans `api/routes/veille.py` et alimentent le module Actualités/Réglementation (distinct du pipeline KPI), avec un cache mémoire TTL 1h.
 
-**Déduplication** : chaque scraper vérifie l'existence en base avant d'enregistrer (clé `(source_id, cmf_id, annee)`), aucun re-téléchargement inutile.
+**Déduplication** : chaque scraper vérifie l'existence en base avant d'enregistrer (clé `(source_id, societe_id, annee)`), aucun re-téléchargement inutile.
 
 **`config/company_registry.py`** — `COMPANY_REGISTRY` (24 sociétés, `{cmf_name, aliases}`), `TAKAFUL_CODES` (3 codes), `find_code_by_name()` : rapprochement par **similarité de Jaccard pondérée** (les mots rares comme "VIE" pèsent plus qu'un mot générique comme "ASSURANCES") avec liste de stopwords français — corrige un bug réel où "El Amana Takaful" matchait à tort "AMI".
 
@@ -86,15 +86,15 @@ BarometreAssurance/
 **Schéma** (6 tables, `database/schema.sql`) :
 - `sources` (CMF/FTUSA/CGA/INS/BVMT)
 - `cmf` (référentiel société : id, code, nom)
-- `documents` (source_id, cmf_id **nullable** pour sources sectorielles, annee, lien) — clé unique `(source_id, cmf_id, annee)`
-- `kpi_values` (document_id, **tableau**, kpi, valeur_nombre/valeur_texte) — clé unique `(document_id, tableau, kpi)` : `tableau` fait partie de la clé pour qu'un même nom de KPI produit par deux tableaux différents ne s'écrase jamais silencieusement
+- `documents` (source_id, societe_id **nullable** pour sources sectorielles, annee, lien) — clé unique `(source_id, societe_id, annee)`
+- `kpis` (document_id, **tableau**, kpi, valeur_nombre/valeur_texte) — clé unique `(document_id, tableau, kpi)` : `tableau` fait partie de la clé pour qu'un même nom de KPI produit par deux tableaux différents ne s'écrase jamais silencieusement
 - `anomalies_detectees` (aussi utilisée comme journal d'instantanés du score qualité pour l'historique de tendance)
-- `notifications`, `actualites_vues`, `reglementation_vues` (déduplication veille)
+- `notifications`, `veille_actualites`, `veille_reglementaire` (déduplication veille)
 
 **`repository.py`** — accès direct `pymysql`, pas d'ORM. Points clés :
 - `init_schema()` : migrations idempotentes basées sur `information_schema` (jamais de `DROP TABLE`), appelées à chaque démarrage de Flask.
-- `save_document()` fait un upsert manuel (pas `ON DUPLICATE KEY`) car MySQL n'impose pas l'unicité entre plusieurs `cmf_id NULL`.
-- `get_kpi_values_for_document(..., exclude_tableaux=...)` : le paramètre existe pour éviter une **corruption auto-référentielle** documentée (bug réel ASTREE 2025 : une valeur calculée relue comme donnée brute lors d'un recalcul suivant, 2,86 milliards TND au lieu de ~148M).
+- `save_document()` fait un upsert manuel (pas `ON DUPLICATE KEY`) car MySQL n'impose pas l'unicité entre plusieurs `societe_id NULL`.
+- `get_kpis_for_document(..., exclude_tableaux=...)` : le paramètre existe pour éviter une **corruption auto-référentielle** documentée (bug réel ASTREE 2025 : une valeur calculée relue comme donnée brute lors d'un recalcul suivant, 2,86 milliards TND au lieu de ~148M).
 - Principe central répété partout : **aucune valeur manquante n'est jamais reconstituée** (pas d'interpolation, pas de report d'année précédente, pas de moyenne sectorielle).
 
 ---

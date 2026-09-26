@@ -9,7 +9,7 @@ Comme FTUSA (voir ftusa_full_extractor.py) : un document CGA est UNIQUE
 par année, agrégé pour le marché entier — mais ICI chaque LIGNE de la
 grille est une compagnie différente (+ la ligne "TOTAL" du marché), pas
 un poste comptable fixe. La grille est directement la donnée finale,
-stockée dans `tableau_cellules` avec `document_id` = celui du document
+stockée dans `tableaux_excel` avec `document_id` = celui du document
 CGA de cette année (pas de société associée à CE document — chaque
 COMPAGNIE apparaît comme une LIGNE, pas comme un document séparé).
 

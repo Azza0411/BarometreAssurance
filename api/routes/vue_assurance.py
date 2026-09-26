@@ -2,7 +2,7 @@
 
 from flask import Blueprint, jsonify, request
 from database.repository import (
-    get_connection, get_kpi_values_for_document, list_documents_by_source
+    get_connection, get_kpis_for_document, list_documents_by_source
 )
 from api.utils.formatters import PRIMES_UNIT_DIVISOR, round1
 from api.routes.comparative import PROBLEMATIC_COMPANIES, _ROW_KEY_TO_KPI
@@ -39,7 +39,7 @@ def vue_assurance_annees():
         for doc_id, _, c, annee in list_documents_by_source(conn, "CMF"):
             if c != code or not annee:
                 continue
-            kpis = get_kpi_values_for_document(conn, doc_id)
+            kpis = get_kpis_for_document(conn, doc_id)
             if any(kpis.get(k) is not None for k in _KEY_KPIS_PROFIL):
                 annees.append(annee)
         # Contrairement à apercu_marche.py/qualite.py, aucun plafond figé ici
@@ -66,7 +66,7 @@ def vue_assurance_profil():
 
         def _first_with_key_kpis(docs):
             for doc_id, _, _, doc_annee in docs:
-                candidate = get_kpi_values_for_document(conn, doc_id)
+                candidate = get_kpis_for_document(conn, doc_id)
                 if any(candidate.get(k) is not None for k in _KEY_KPIS_PROFIL):
                     return candidate, doc_annee
             return {}, None
@@ -95,7 +95,7 @@ def vue_assurance_profil():
         total_key = f"Nombre d'agences par assureur - {code}"
         for doc_id, _, _, doc_annee in sorted(
                 list_documents_by_source(conn, "CGA"), key=lambda x: x[3], reverse=True):
-            cga         = get_kpi_values_for_document(conn, doc_id)
+            cga         = get_kpis_for_document(conn, doc_id)
             region_data = {k[len(prefix):]: int(v) for k, v in cga.items() if k.startswith(prefix)}
             if region_data:
                 agences_region = region_data
@@ -110,7 +110,7 @@ def vue_assurance_profil():
             if primes:
                 for doc_id, _, _, doc_annee in sorted(
                         list_documents_by_source(conn, "FTUSA"), key=lambda x: x[3], reverse=True):
-                    ftusa = get_kpi_values_for_document(conn, doc_id)
+                    ftusa = get_kpis_for_document(conn, doc_id)
                     total = ftusa.get("Total Primes émises")
                     if total:
                         pdm       = primes / total * 100
@@ -142,7 +142,7 @@ def vue_assurance_profil():
             for doc_id, _, c_p, doc_annee_p in list_documents_by_source(conn, "CMF"):
                 if c_p != code or doc_annee_p != annee_prev:
                     continue
-                kpis_p = get_kpi_values_for_document(conn, doc_id)
+                kpis_p = get_kpis_for_document(conn, doc_id)
                 pnv_p, pv_p, pr_p = (kpis_p.get("Primes émises Non-Vie par assurance"),
                                       kpis_p.get("Primes émises Vie par assurance"),
                                       kpis_p.get("Primes émises par assurance"))
@@ -157,7 +157,7 @@ def vue_assurance_profil():
                 list_documents_by_source(conn, "FTUSA"), key=lambda x: x[3], reverse=True):
             if annee_cmf is not None and doc_annee != annee_cmf:
                 continue
-            total_ftusa = get_kpi_values_for_document(conn, doc_id).get("Total Primes émises")
+            total_ftusa = get_kpis_for_document(conn, doc_id).get("Total Primes émises")
             break
 
         built_row = build_company_row(kpis, primes_prev_year, total_ftusa, code)
@@ -226,7 +226,7 @@ def vue_assurance_bilan():
             if c != code:
                 continue
             if annee is None or doc_annee == annee:
-                kpis = get_kpi_values_for_document(conn, doc_id)
+                kpis = get_kpis_for_document(conn, doc_id)
                 if kpis.get("Total actif") or kpis.get("Placements"):
                     target_doc = (doc_annee, kpis)
                     break
@@ -292,7 +292,7 @@ def vue_assurance_evolution():
         ftusa_total_by_year = {}
         for doc_id, _, _, doc_annee in list_documents_by_source(conn, "FTUSA"):
             if doc_annee and doc_annee not in ftusa_total_by_year:
-                ftusa_data = get_kpi_values_for_document(conn, doc_id)
+                ftusa_data = get_kpis_for_document(conn, doc_id)
                 total = ftusa_data.get("Total Primes émises")
                 if total:
                     ftusa_total_by_year[doc_annee] = total
@@ -312,7 +312,7 @@ def vue_assurance_evolution():
         )
         primes_by_year = {}
         for doc_id, _, _, annee in company_docs:
-            k = get_kpi_values_for_document(conn, doc_id)
+            k = get_kpis_for_document(conn, doc_id)
             pnv, pv, pr = (k.get("Primes émises Non-Vie par assurance"),
                            k.get("Primes émises Vie par assurance"),
                            k.get("Primes émises par assurance"))
@@ -323,7 +323,7 @@ def vue_assurance_evolution():
 
         series = {}
         for doc_id, _, c, annee in company_docs:
-            kpis = get_kpi_values_for_document(conn, doc_id)
+            kpis = get_kpis_for_document(conn, doc_id)
             pdm  = round1(filter_reliable("Part de marché (%)", kpis.get("Part de marché (%)")))
             if pdm is None:
                 primes_raw = kpis.get("Primes émises par assurance")

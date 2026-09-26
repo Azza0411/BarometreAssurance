@@ -73,10 +73,10 @@ def _extract_kpi_count(result):
     if not isinstance(result, dict) or not isinstance(result.get("kpi"), dict):
         return None
     kpi = result["kpi"]
-    total = kpi.get("kpi_values_saved") or 0
+    total = kpi.get("kpis_saved") or 0
     for sub_source in ("ftusa", "bvmt", "bvmt_bulletin", "cga"):
-        total += (kpi.get(sub_source) or {}).get("kpi_values_saved") or 0
-    total += kpi.get("calculated_kpi_values_saved") or 0
+        total += (kpi.get(sub_source) or {}).get("kpis_saved") or 0
+    total += kpi.get("calculated_kpis_saved") or 0
     return total
 
 
@@ -120,7 +120,7 @@ def _run_cmf():
 
 
 def _run_bilan_full():
-    """Grille complète Bilan Actif/Passif (tableau_cellules) — nécessite les
+    """Grille complète Bilan Actif/Passif (tableaux_excel) — nécessite les
     PDF CMF déjà présents localement (voir _save_cmf_pdf_local, appelé par
     _run_cmf juste avant dans SOURCES) : toujours placé APRÈS "CMF" pour
     qu'un document tout juste synchronisé soit déjà sur disque."""
@@ -214,10 +214,10 @@ def _run_bvmt():
 
 SOURCES = [
     ("CMF", _run_cmf),
-    # Grilles complètes (tableau_cellules, Correction manuelle) — ajoutées
+    # Grilles complètes (tableaux_excel, Correction manuelle) — ajoutées
     # 2026-09-15 : avant cela, RIEN ne les relançait automatiquement sur un
     # document tout juste synchronisé par "CMF" ci-dessus (seule
-    # l'extraction KPI narrow, kpi_values, était rafraîchie par le pipeline
+    # l'extraction KPI narrow, kpis, était rafraîchie par le pipeline
     # planifié ; la grille complète restait figée tant que quelqu'un ne
     # relançait pas process_all() à la main). Chacune est une entrée SOURCE
     # séparée (pas un seul appel groupé) pour la même raison que
@@ -243,7 +243,7 @@ SOURCES = [
 # séquentiel en premier, inclut l'extraction Takaful narrow des 3 sociétés
 # Takaful-extractibles, donc les DEUX familles sont déjà couvertes sans
 # entrée séparée ici). Les 6 grilles complètes restantes n'alimentent QUE
-# "Correction manuelle" (tableau_cellules) — jamais ces 3 pages — donc
+# "Correction manuelle" (tableaux_excel) — jamais ces 3 pages — donc
 # reportées après, pour rendre la plateforme utilisable plus tôt (retour
 # utilisateur direct, insistant : "on va restreindre notre terrain de
 # travail... et prioriser les données qui vont nous servir à calculer les
@@ -266,7 +266,7 @@ def _check_quality():
 
         conn = get_connection()
         years = [
-            annee for _doc_id, _cmf_id, _code, annee in list_documents_by_source(conn, "CMF")
+            annee for _doc_id, _societe_id, _code, annee in list_documents_by_source(conn, "CMF")
             if annee
         ]
         if not years:
@@ -551,7 +551,7 @@ def main():
     #      assurance (voir PRIORITY_SOURCE_NAMES) — une fois ce lot fini,
     #      la plateforme a tout ce qu'il faut pour ces 3 pages.
     #   2. REPORTÉ (les 6 grilles complètes) : n'alimentent QUE
-    #      "Correction manuelle" (tableau_cellules), jamais ces 3 pages —
+    #      "Correction manuelle" (tableaux_excel), jamais ces 3 pages —
     #      continuent en arrière-plan après le signal "prêt", sans jamais
     #      retarder l'utilisabilité de la plateforme (retour utilisateur
     #      direct, insistant : la plateforme doit être utilisable même si

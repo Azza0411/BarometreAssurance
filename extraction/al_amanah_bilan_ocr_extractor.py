@@ -2,7 +2,7 @@
 documents SCANNÉS (images, pas de texte réel — voir `is_scanned_page`) :
 2023, 2024, 2025 à ce jour, PAR OPPOSITION à
 `al_amanah_bilan_full_extractor.py` (texte réel, 2017/2020/2021/2022).
-Mêmes clés `tableau_cellules` ('bilan_actif'/'bilan_passif'), même
+Mêmes clés `tableaux_excel` ('bilan_actif'/'bilan_passif'), même
 contrat de sortie — utilisé en REPLI par
 `tableau_pipeline_service_bilan.py` quand l'extracteur texte réel ne
 trouve rien pour AL_AMANAH_TAKAFUL.

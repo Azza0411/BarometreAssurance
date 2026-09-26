@@ -27,7 +27,7 @@ en base. Voir extraction/CAS_PARTICULIERS_CALCULS.md.
 from config.region_mapping import GOVERNORATE_TO_REGION, REGIONS
 from database.repository import (
     delete_kpi_value,
-    get_kpi_values_for_document,
+    get_kpis_for_document,
     list_documents_by_source,
     save_kpi_value,
 )
@@ -218,13 +218,13 @@ def compute_cmf_derived_kpis(conn):
     total sectoriel FTUSA de la même année pour "Part de marché (%)"."""
     ftusa_docs = list_documents_by_source(conn, "FTUSA")
     sector_totals_by_year = {
-        annee: get_kpi_values_for_document(conn, doc_id) for doc_id, _cmf_id, _code, annee in ftusa_docs
+        annee: get_kpis_for_document(conn, doc_id) for doc_id, _societe_id, _code, annee in ftusa_docs
     }
 
     cmf_docs = list_documents_by_source(conn, "CMF")
     saved = documents_updated = 0
-    for document_id, _cmf_id, code, annee in cmf_docs:
-        kpis = get_kpi_values_for_document(conn, document_id, exclude_tableaux=(TABLEAU_LABEL,))
+    for document_id, _societe_id, code, annee in cmf_docs:
+        kpis = get_kpis_for_document(conn, document_id, exclude_tableaux=(TABLEAU_LABEL,))
         computed = _compute_cmf_kpis_for_document(kpis, sector_totals_by_year.get(annee))
         touched = False
         for name, value in computed.items():
@@ -238,7 +238,7 @@ def compute_cmf_derived_kpis(conn):
             documents_updated += 1
 
     print(f"[CMF] {documents_updated} document(s) mis a jour, {saved} valeur(s) de KPI calculees")
-    return {"documents_updated": documents_updated, "kpi_values_saved": saved}
+    return {"documents_updated": documents_updated, "kpis_saved": saved}
 
 
 
@@ -309,12 +309,12 @@ def compute_sector_derived_kpis(conn):
     ftusa_docs = list_documents_by_source(conn, "FTUSA")
     ins_docs = list_documents_by_source(conn, "INS")
     ins_kpis_by_year = {}
-    for doc_id, _cmf_id, _code, annee in ins_docs:
-        ins_kpis_by_year.setdefault(annee, {}).update(get_kpi_values_for_document(conn, doc_id))
+    for doc_id, _societe_id, _code, annee in ins_docs:
+        ins_kpis_by_year.setdefault(annee, {}).update(get_kpis_for_document(conn, doc_id))
 
     saved = years_updated = 0
-    for document_id, _cmf_id, _code, annee in ftusa_docs:
-        ftusa_kpis = get_kpi_values_for_document(conn, document_id)
+    for document_id, _societe_id, _code, annee in ftusa_docs:
+        ftusa_kpis = get_kpis_for_document(conn, document_id)
         computed = _compute_sector_kpis(ftusa_kpis, ins_kpis_by_year.get(annee))
         touched = False
         for name, value in computed.items():
@@ -328,7 +328,7 @@ def compute_sector_derived_kpis(conn):
             years_updated += 1
 
     print(f"[Secteur] {years_updated} annee(s) mise(s) a jour, {saved} valeur(s) de KPI calculees")
-    return {"years_updated": years_updated, "kpi_values_saved": saved}
+    return {"years_updated": years_updated, "kpis_saved": saved}
 
 
 
@@ -418,8 +418,8 @@ def compute_cga_derived_kpis(conn):
     """Calcule les KPI dérivés du réseau d'agences (CGA), par année."""
     cga_docs = list_documents_by_source(conn, "CGA")
     saved = years_updated = 0
-    for document_id, _cmf_id, _code, annee in cga_docs:
-        kpis = get_kpi_values_for_document(conn, document_id)
+    for document_id, _societe_id, _code, annee in cga_docs:
+        kpis = get_kpis_for_document(conn, document_id)
         computed = _compute_cga_kpis(kpis)
         touched = False
         for name, value in computed.items():
@@ -436,7 +436,7 @@ def compute_cga_derived_kpis(conn):
             years_updated += 1
 
     print(f"[CGA] {years_updated} annee(s) mise(s) a jour, {saved} valeur(s) de KPI calculees")
-    return {"years_updated": years_updated, "kpi_values_saved": saved}
+    return {"years_updated": years_updated, "kpis_saved": saved}
 
 
 
@@ -459,14 +459,14 @@ def _compute_bvmt_kpis_for_document(kpis, code, annee, bvmt_bulletin_by_year, bv
 def compute_bvmt_market_kpis(conn):
     """Calcule "Cours de l'action" et "Capitalisation Boursière" (MDT) pour
     chaque document CMF d'une société cotée, à partir des bulletins BVMT
-    (documents sectoriels, cmf_id NULL) et du Nombre d'actions (CMF ou repli
+    (documents sectoriels, societe_id NULL) et du Nombre d'actions (CMF ou repli
     BVMT, voir _compute_bvmt_kpis_for_document)."""
     bvmt_docs = list_documents_by_source(conn, "BVMT")
     bvmt_bulletin_by_year = {}
     bvmt_fallback_actions = {}
-    for document_id, cmf_id, code, annee in bvmt_docs:
-        kpis = get_kpi_values_for_document(conn, document_id)
-        if cmf_id is None:
+    for document_id, societe_id, code, annee in bvmt_docs:
+        kpis = get_kpis_for_document(conn, document_id)
+        if societe_id is None:
             bvmt_bulletin_by_year[annee] = kpis
         elif code:
             nombre_actions = kpis.get("Nombre d'actions (BVMT)")
@@ -475,8 +475,8 @@ def compute_bvmt_market_kpis(conn):
 
     cmf_docs = list_documents_by_source(conn, "CMF")
     saved = documents_updated = 0
-    for document_id, _cmf_id, code, annee in cmf_docs:
-        kpis = get_kpi_values_for_document(conn, document_id)
+    for document_id, _societe_id, code, annee in cmf_docs:
+        kpis = get_kpis_for_document(conn, document_id)
         computed = _compute_bvmt_kpis_for_document(kpis, code, annee, bvmt_bulletin_by_year, bvmt_fallback_actions)
         touched = False
         for name, value in computed.items():
@@ -490,7 +490,7 @@ def compute_bvmt_market_kpis(conn):
             documents_updated += 1
 
     print(f"[BVMT] {documents_updated} document(s) mis a jour, {saved} valeur(s) de KPI calculees")
-    return {"documents_updated": documents_updated, "kpi_values_saved": saved}
+    return {"documents_updated": documents_updated, "kpis_saved": saved}
 
 
 def run(conn):

@@ -12,7 +12,7 @@ le code et les commentaires de conception.
 agrégé pour le marché entier — aucune société associée (voir
 `kpi_extraction_pipeline.py::_run_ftusa`). La grille produite EST
 directement la donnée finale, pas une ventilation par société. Stockée
-dans `tableau_cellules` sous `tableau='ftusa_branche'`, `document_id` =
+dans `tableaux_excel` sous `tableau='ftusa_branche'`, `document_id` =
 celui du document FTUSA de cette année.
 
 **Réutilise** les primitives déjà éprouvées de `ftusa_kpi_extractor.py` :
@@ -31,7 +31,7 @@ utilisées par elle ("Total (Aff. Directes)", "Acceptations", "Total
 (Aff. Dir+Acc)") — 12 au total. Capture TOUTES les lignes du tableau
 (~22 postes comptables, "Primes acquises" → "Solde de réassurance"), pas
 seulement les 3 lignes KPI ciblées — chaque ligne devient une clé de
-`tableau_cellules` nommée d'après son libellé normalisé (pas de code
+`tableaux_excel` nommée d'après son libellé normalisé (pas de code
 réglementaire ici, contrairement à CMF/AC-PA-CP).
 
 **Résultat mesuré** : 16/23 documents disponibles exploités (2005-2024,

@@ -74,15 +74,15 @@ def _db():
         conn.close()
 
 
-def get_kpi_values_for_document(conn, document_id: int) -> dict:
+def get_kpis_for_document(conn, document_id: int) -> dict:
     # Exclut "Calcul interne" : un meme nom de KPI peut coexister comme
     # valeur brute et comme valeur recalculee sous ce tableau (ex: "Primes
     # acquises" Non-Vie brut vs somme Vie+Non-Vie) -- voir
-    # database/repository.py::get_kpi_values_for_document (meme convention
+    # database/repository.py::get_kpis_for_document (meme convention
     # cote app principale) et prediction/data/data_loader.py pour
     # l'incident deja rencontre (ASTREE 2025).
     rows = conn.execute(
-        "SELECT kpi, valeur_nombre, valeur_texte FROM kpi_values "
+        "SELECT kpi, valeur_nombre, valeur_texte FROM kpis "
         "WHERE document_id = ? AND tableau != 'Calcul interne'",
         (document_id,)
     ).fetchall()
@@ -94,10 +94,10 @@ def get_kpi_values_for_document(conn, document_id: int) -> dict:
 
 def list_documents_by_source(conn, source_nom: str):
     return conn.execute("""
-        SELECT d.id, d.cmf_id, c.code, d.annee
-        FROM documents d
+        SELECT d.id, d.societe_id, c.code, d.annee
+        FROM documents_pdf d
         JOIN sources s ON s.id = d.source_id
-        LEFT JOIN societes c ON c.id = d.cmf_id
+        LEFT JOIN societes c ON c.id = d.societe_id
         WHERE s.nom = ?
         ORDER BY d.annee DESC
     """, (source_nom,)).fetchall()
@@ -659,9 +659,9 @@ def _fmt_number(value, kpi_name: str = "", source: str = "") -> dict:
 
 def _kpis_by_year(conn, source_nom: str) -> dict:
     result = {}
-    for document_id, _cmf_id, _code, annee in list_documents_by_source(conn, source_nom):
+    for document_id, _societe_id, _code, annee in list_documents_by_source(conn, source_nom):
         if annee:
-            result[annee] = get_kpi_values_for_document(conn, document_id)
+            result[annee] = get_kpis_for_document(conn, document_id)
     return result
 
 
@@ -671,12 +671,12 @@ def fetch_kpi_for_market(conn, kpi_name: str, year: int | None) -> list[dict]:
     results = []
     for source in sources_to_try:
         q = ("""SELECT d.annee, MAX(CASE WHEN k.valeur_nombre IS NOT NULL THEN k.valeur_nombre END), MAX(k.valeur_texte)
-               FROM kpi_values k JOIN documents d ON d.id=k.document_id JOIN sources s ON s.id=d.source_id
-               WHERE s.nom=? AND k.kpi=? AND d.annee=? AND d.cmf_id IS NULL GROUP BY d.annee ORDER BY d.annee""",
+               FROM kpis k JOIN documents_pdf d ON d.id=k.document_id JOIN sources s ON s.id=d.source_id
+               WHERE s.nom=? AND k.kpi=? AND d.annee=? AND d.societe_id IS NULL GROUP BY d.annee ORDER BY d.annee""",
               (source, kpi_name, year)) if year else (
              """SELECT d.annee, MAX(CASE WHEN k.valeur_nombre IS NOT NULL THEN k.valeur_nombre END), MAX(k.valeur_texte)
-               FROM kpi_values k JOIN documents d ON d.id=k.document_id JOIN sources s ON s.id=d.source_id
-               WHERE s.nom=? AND k.kpi=? AND d.cmf_id IS NULL GROUP BY d.annee ORDER BY d.annee""",
+               FROM kpis k JOIN documents_pdf d ON d.id=k.document_id JOIN sources s ON s.id=d.source_id
+               WHERE s.nom=? AND k.kpi=? AND d.societe_id IS NULL GROUP BY d.annee ORDER BY d.annee""",
               (source, kpi_name))
         rows = conn.execute(*q).fetchall()
         if rows:
@@ -697,8 +697,8 @@ def _fetch_kpi_for_company_exact(conn, kpi_name: str, company_code: str, year: i
     year_clause = "AND d.annee=?" if year else ""
     rows = conn.execute(f"""
         SELECT d.annee, k.valeur_nombre, k.valeur_texte, s.nom
-        FROM kpi_values k JOIN documents d ON d.id=k.document_id
-        JOIN sources s ON s.id=d.source_id JOIN societes c ON c.id=d.cmf_id
+        FROM kpis k JOIN documents_pdf d ON d.id=k.document_id
+        JOIN sources s ON s.id=d.source_id JOIN societes c ON c.id=d.societe_id
         WHERE c.code=? AND k.kpi=? {year_clause} ORDER BY d.annee
     """, params).fetchall()
     results = []
@@ -770,12 +770,12 @@ def fetch_explain_context(conn, kpi_name: str, company_code: str, year: int) -> 
             yoy_pct = round((cv - pv) / abs(pv) * 100, 1)
 
     # INNER JOIN sur societes exclut naturellement les sources sectorielles
-    # (FTUSA/CGA/INS, cmf_id NULL) — ne garde que les vraies compagnies.
+    # (FTUSA/CGA/INS, societe_id NULL) — ne garde que les vraies compagnies.
     sector_rows = conn.execute("""
         SELECT c.code, k.valeur_nombre
-        FROM kpi_values k
-        JOIN documents d ON d.id = k.document_id
-        JOIN societes c ON c.id = d.cmf_id
+        FROM kpis k
+        JOIN documents_pdf d ON d.id = k.document_id
+        JOIN societes c ON c.id = d.societe_id
         WHERE k.kpi = ? AND d.annee = ? AND k.valeur_nombre IS NOT NULL
     """, (resolved_kpi, year)).fetchall()
     values = [(code, v) for code, v in sector_rows if v is not None]
@@ -802,8 +802,8 @@ def fetch_ranking(conn, kpi_name: str, year: int, limit: int = 10) -> list[dict]
     if max_val:
         rows = conn.execute("""
             SELECT c.code, c.nom_entreprise, k.valeur_nombre, k.valeur_texte, s.nom
-            FROM kpi_values k JOIN documents d ON d.id=k.document_id
-            JOIN sources s ON s.id=d.source_id JOIN societes c ON c.id=d.cmf_id
+            FROM kpis k JOIN documents_pdf d ON d.id=k.document_id
+            JOIN sources s ON s.id=d.source_id JOIN societes c ON c.id=d.societe_id
             WHERE k.kpi=? AND d.annee=? AND k.valeur_nombre IS NOT NULL
               AND k.valeur_nombre BETWEEN -500 AND ?
             ORDER BY k.valeur_nombre DESC LIMIT ?
@@ -811,8 +811,8 @@ def fetch_ranking(conn, kpi_name: str, year: int, limit: int = 10) -> list[dict]
     else:
         rows = conn.execute("""
             SELECT c.code, c.nom_entreprise, k.valeur_nombre, k.valeur_texte, s.nom
-            FROM kpi_values k JOIN documents d ON d.id=k.document_id
-            JOIN sources s ON s.id=d.source_id JOIN societes c ON c.id=d.cmf_id
+            FROM kpis k JOIN documents_pdf d ON d.id=k.document_id
+            JOIN sources s ON s.id=d.source_id JOIN societes c ON c.id=d.societe_id
             WHERE k.kpi=? AND d.annee=? AND k.valeur_nombre IS NOT NULL
             ORDER BY k.valeur_nombre DESC LIMIT ?
         """, (kpi_name, year, limit)).fetchall()
@@ -835,7 +835,7 @@ def fetch_company_profile(conn, company_code: str, year: int) -> dict:
         if doc_annee != year and doc_annee != actual_year:
             if kpis:
                 break
-        candidate = get_kpi_values_for_document(conn, doc_id)
+        candidate = get_kpis_for_document(conn, doc_id)
         if any(candidate.get(k) is not None for k in _KEY_KPIS) or doc_annee == year:
             kpis = candidate
             actual_year = doc_annee
@@ -909,7 +909,7 @@ def fetch_available_years(conn) -> list[int]:
 
 def fetch_available_companies(conn) -> list[str]:
     rows = conn.execute("""
-        SELECT DISTINCT c.code FROM societes c JOIN documents d ON d.cmf_id=c.id ORDER BY c.code
+        SELECT DISTINCT c.code FROM societes c JOIN documents_pdf d ON d.societe_id=c.id ORDER BY c.code
     """).fetchall()
     return [r[0] for r in rows]
 
@@ -924,8 +924,8 @@ BASE DE DONNÉES SQLite — marché des assurances en Tunisie
 TABLES :
   sources(id, nom)           -- nom ∈ {'CMF','FTUSA','INS','CGA'}
   societes(id, code, nom_entreprise)  -- compagnies d'assurance
-  documents(id, source_id, cmf_id, annee)
-  kpi_values(id, document_id, kpi, valeur_nombre, valeur_texte)
+  documents(id, source_id, societe_id, annee)
+  kpis(id, document_id, kpi, valeur_nombre, valeur_texte)
 
 COMPAGNIES : STAR, AMI, COMAR, GAT, MAGHREBIA, ASTREE, BH, CARTE, CTAMA,
   ATTIJARI, BNA, AL_AMANAH_TAKAFUL, AT_TAKAFULIA, BIAT, CARTE_VIE,
@@ -948,8 +948,8 @@ RÈGLES SQL :
   1. Primes/actifs CMF : diviser valeur_nombre par 1000000 pour MDT
   2. Classements : filtrer valeur_nombre BETWEEN 0.1 AND 500 pour '%'
   3. TOUJOURS utiliser d.annee = <année> dans le WHERE
-  4. Données compagnie : JOIN societes c ON c.id = d.cmf_id AND c.code = '<CODE>'
-  5. Données marché : WHERE s.nom = 'FTUSA' AND d.cmf_id IS NULL
+  4. Données compagnie : JOIN societes c ON c.id = d.societe_id AND c.code = '<CODE>'
+  5. Données marché : WHERE s.nom = 'FTUSA' AND d.societe_id IS NULL
 """
 
 _SQL_SYSTEM_PROMPT = (

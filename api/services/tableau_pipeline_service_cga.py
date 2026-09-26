@@ -2,7 +2,7 @@
 agents d'assurance" (Annexe 2) — même schéma que
 tableau_pipeline_service_ftusa.py : un seul document par ANNÉE (source
 CGA, sans société associée au document lui-même — voir
-extraction/cga_full_extractor.py), stocké sous `tableau_cellules`
+extraction/cga_full_extractor.py), stocké sous `tableaux_excel`
 (`tableau='cga_agences'`), chaque LIGNE étant une compagnie différente
 (+ "TOTAL" marché) plutôt qu'un poste comptable fixe.
 
@@ -31,7 +31,7 @@ def _cga_documents(conn):
         cur.execute(
             """
             SELECT d.id, d.annee
-            FROM documents d
+            FROM documents_pdf d
             JOIN sources s ON s.id = d.source_id
             WHERE s.nom = 'CGA'
             ORDER BY d.annee

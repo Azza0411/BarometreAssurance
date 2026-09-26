@@ -1,0 +1,169 @@
+<title>Architecture Globale</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page:#FFFFFF;
+    --panel:#FFFFFF;
+    --ink:#22242B;
+    --muted:#6B6E76;
+    --hair:#D9DCE2;
+    --title:#1F3A63;
+    --blue:#3266CC;
+    --blue-soft:#EAF1FF;
+    --green:#2E8B57;
+    --green-soft:#EAF7EF;
+    --purple:#7C5CD6;
+    --purple-soft:#F1ECFC;
+    --orange:#E08B2A;
+    --orange-soft:#FDF1E3;
+    --neutral-soft:#F3F4F6;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--page);
+    color:var(--ink);
+    font-family:'Barlow','Segoe UI',system-ui,sans-serif;
+    padding:48px 24px 72px;
+  }
+  main{ max-width:1040px; margin:0 auto; }
+  .fig-frame{
+    background:var(--panel);
+    border:1px solid var(--hair);
+    border-radius:16px;
+    padding:20px 24px 24px;
+    overflow-x:auto;
+  }
+  svg{ display:block; width:100%; height:auto; max-width:100%; color:var(--ink); }
+  figcaption{
+    margin-top:14px;
+    font-size:13px;
+    color:var(--muted);
+    line-height:1.5;
+    max-width:72ch;
+  }
+  .title{ font-family:'Playfair Display', Georgia, serif; font-size:26px; font-weight:700; fill:var(--title); }
+  .box-title{ font-weight:700; font-size:13.5px; fill:var(--ink); }
+  .box-sub{ font-weight:500; font-size:10.5px; fill:var(--muted); }
+  .group-label{ font-weight:700; font-size:11px; letter-spacing:0.04em; fill:var(--blue); }
+  .edge-label{ font-size:10px; font-weight:500; fill:var(--muted); }
+  .legend-title{ font-weight:700; font-size:12px; fill:var(--ink); }
+  .legend-text{ font-size:10.5px; fill:var(--muted); }
+</style>
+
+<main>
+  <div class="fig-frame">
+    <svg viewBox="0 0 1000 650" role="img" aria-label="Architecture globale complète : le client web React appelle en API REST le Backend Flask et le Chatbot ; le Backend échange en SQL avec MySQL et démarre un thread de veille interne qui écrit des alertes dans MySQL toutes les 30 minutes ; un pipeline d'extraction hors Docker insère des données dans MySQL ; le Chatbot appelle l'API externe Groq. Backend, MySQL, Chatbot et Veille sont regroupés dans l'environnement Docker.">
+      <defs>
+        <marker id="c-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+        </marker>
+      </defs>
+
+      <text x="500" y="42" text-anchor="middle" class="title">Architecture globale</text>
+
+      <!-- Clients -->
+      <rect x="40" y="150" width="190" height="140" rx="14" fill="none" stroke="var(--blue)" stroke-width="1.6"/>
+      <text x="60" y="172" class="group-label">CLIENTS</text>
+      <rect x="60" y="188" width="150" height="86" rx="10" fill="var(--blue-soft)" stroke="var(--blue)" stroke-width="1.2"/>
+      <rect x="112" y="200" width="46" height="32" rx="3" fill="none" stroke="var(--blue)" stroke-width="1.6"/>
+      <line x1="135" y1="232" x2="135" y2="240" stroke="var(--blue)" stroke-width="1.6"/>
+      <line x1="122" y1="240" x2="148" y2="240" stroke="var(--blue)" stroke-width="1.6"/>
+      <text x="135" y="254" text-anchor="middle" class="box-title" style="font-size:12px">Application Web</text>
+      <text x="135" y="267" text-anchor="middle" class="box-sub">React.js</text>
+
+      <!-- Docker environment -->
+      <rect x="260" y="95" width="670" height="380" rx="16" fill="none" stroke="var(--blue)" stroke-width="1.4" stroke-dasharray="6 5"/>
+      <text x="910" y="118" text-anchor="end" class="group-label">ENVIRONNEMENT DOCKER</text>
+
+      <!-- Backend (tall, central hub) -->
+      <rect x="290" y="150" width="210" height="270" rx="12" fill="var(--green-soft)" stroke="var(--green)" stroke-width="1.6"/>
+      <path d="M 383 178 L 383 194 L 368 222 A 8 8 0 0 0 375 234 L 415 234 A 8 8 0 0 0 422 222 L 407 194 L 407 178 Z" fill="none" stroke="var(--green)" stroke-width="1.6"/>
+      <line x1="378" y1="178" x2="412" y2="178" stroke="var(--green)" stroke-width="1.6"/>
+      <line x1="372" y1="218" x2="418" y2="218" stroke="var(--green)" stroke-width="1.4"/>
+      <text x="395" y="258" text-anchor="middle" class="box-title">Backend</text>
+      <text x="395" y="276" text-anchor="middle" class="box-sub">Flask · API REST</text>
+      <line x1="330" y1="300" x2="460" y2="300" stroke="var(--hair)" stroke-width="1.2"/>
+      <text x="395" y="325" text-anchor="middle" class="box-sub" style="font-style:italic">démarre au lancement :</text>
+      <text x="395" y="342" text-anchor="middle" class="box-sub" style="font-style:italic">thread de veille</text>
+      <text x="395" y="365" text-anchor="middle" class="box-sub" style="font-style:italic">interne, autonome,</text>
+      <text x="395" y="382" text-anchor="middle" class="box-sub" style="font-style:italic">tourne tant que</text>
+      <text x="395" y="399" text-anchor="middle" class="box-sub" style="font-style:italic">l'API est active</text>
+
+      <!-- MySQL -->
+      <rect x="530" y="150" width="170" height="110" rx="12" fill="var(--blue-soft)" stroke="var(--blue)" stroke-width="1.6"/>
+      <ellipse cx="615" cy="172" rx="15" ry="5.5" fill="none" stroke="var(--blue)" stroke-width="1.5"/>
+      <path d="M 600 172 L 600 188 A 15 5.5 0 0 0 630 188 L 630 172" fill="none" stroke="var(--blue)" stroke-width="1.5"/>
+      <path d="M 600 180 A 15 5.5 0 0 0 630 180" fill="none" stroke="var(--blue)" stroke-width="1.2"/>
+      <text x="615" y="215" text-anchor="middle" class="box-title">MySQL 8</text>
+      <text x="615" y="231" text-anchor="middle" class="box-sub">:3306</text>
+
+      <!-- Chatbot -->
+      <rect x="530" y="300" width="170" height="110" rx="12" fill="var(--purple-soft)" stroke="var(--purple)" stroke-width="1.6"/>
+      <rect x="590" y="318" width="40" height="26" rx="7" fill="none" stroke="var(--purple)" stroke-width="1.5"/>
+      <path d="M 603 344 L 603 352 L 612 344 Z" fill="none" stroke="var(--purple)" stroke-width="1.5"/>
+      <circle cx="600" cy="331" r="1.7" fill="var(--purple)"/>
+      <circle cx="610" cy="331" r="1.7" fill="var(--purple)"/>
+      <circle cx="620" cy="331" r="1.7" fill="var(--purple)"/>
+      <text x="615" y="372" text-anchor="middle" class="box-title">Chatbot (IA)</text>
+      <text x="615" y="388" text-anchor="middle" class="box-sub">assistant conversationnel</text>
+
+      <!-- Veille -->
+      <rect x="730" y="300" width="170" height="110" rx="12" fill="var(--orange-soft)" stroke="var(--orange)" stroke-width="1.6"/>
+      <circle cx="815" cy="332" r="14" fill="none" stroke="var(--orange)" stroke-width="1.6"/>
+      <path d="M 815 322 v 10 l 8 5" stroke="var(--orange)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <text x="815" y="372" text-anchor="middle" class="box-title">Veille</text>
+      <text x="815" y="388" text-anchor="middle" class="box-sub">actualités &amp; alertes</text>
+
+      <!-- Pipeline (outside) -->
+      <rect x="290" y="500" width="210" height="90" rx="12" fill="var(--neutral-soft)" stroke="var(--muted)" stroke-width="1.4"/>
+      <rect x="358" y="516" width="34" height="22" rx="4" fill="none" stroke="var(--muted)" stroke-width="1.4"/>
+      <rect x="364" y="510" width="34" height="22" rx="4" fill="none" stroke="var(--muted)" stroke-width="1.4"/>
+      <text x="395" y="560" text-anchor="middle" class="box-title" style="font-size:12.5px">Pipeline d'extraction</text>
+      <text x="395" y="576" text-anchor="middle" class="box-sub">batch · hors Docker</text>
+
+      <!-- Groq (external) -->
+      <rect x="610" y="500" width="210" height="90" rx="12" fill="var(--neutral-soft)" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="5 4"/>
+      <path d="M 688 528 a 10 10 0 0 1 5 -18 a 13 13 0 0 1 25 -4 a 9 9 0 0 1 3 17 z" fill="none" stroke="var(--muted)" stroke-width="1.4"/>
+      <text x="715" y="560" text-anchor="middle" class="box-title" style="font-size:12.5px">Groq API</text>
+      <text x="715" y="576" text-anchor="middle" class="box-sub">cloud · externe</text>
+
+      <!-- Legend -->
+      <rect x="40" y="500" width="210" height="90" rx="12" fill="none" stroke="var(--hair)" stroke-width="1.4"/>
+      <text x="58" y="523" class="legend-title">Légende</text>
+      <line x1="58" y1="543" x2="92" y2="543" stroke="var(--muted)" stroke-width="1.8" marker-end="url(#c-arrow)"/>
+      <text x="98" y="546" class="legend-text">Synchrone (REST / SQL)</text>
+      <line x1="58" y1="565" x2="92" y2="565" stroke="var(--muted)" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#c-arrow)"/>
+      <text x="98" y="568" class="legend-text">Asynchrone / externe</text>
+
+      <!-- arrows -->
+      <line x1="230" y1="220" x2="286" y2="230" stroke="var(--muted)" stroke-width="1.8" marker-end="url(#c-arrow)"/>
+      <text x="255" y="205" text-anchor="middle" class="edge-label">API REST</text>
+
+      <path d="M 230 280 C 235 500, 460 465, 600 414" fill="none" stroke="var(--muted)" stroke-width="1.8" marker-end="url(#c-arrow)"/>
+      <text x="410" y="450" text-anchor="middle" class="edge-label">API REST</text>
+
+      <line x1="500" y1="205" x2="526" y2="205" stroke="var(--muted)" stroke-width="1.8" marker-end="url(#c-arrow)"/>
+      <line x1="526" y1="222" x2="500" y2="222" stroke="var(--muted)" stroke-width="1.8" marker-end="url(#c-arrow)"/>
+      <text x="513" y="196" text-anchor="middle" class="edge-label">SQL</text>
+
+      <path d="M 500 285 C 610 270, 690 275, 726 300" fill="none" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#c-arrow)"/>
+      <text x="613" y="278" text-anchor="middle" class="edge-label">démarre</text>
+
+      <path d="M 802 300 C 780 280, 745 262, 704 256" fill="none" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#c-arrow)"/>
+      <text x="770" y="242" text-anchor="middle" class="edge-label">écrit alertes</text>
+      <text x="770" y="254" text-anchor="middle" class="edge-label">· 30 min</text>
+
+      <path d="M 330 500 C 258 460, 256 320, 260 160 C 262 118, 400 116, 526 150" fill="none" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#c-arrow)"/>
+      <text x="255" y="400" text-anchor="middle" class="edge-label">INSERT</text>
+      <text x="255" y="412" text-anchor="middle" class="edge-label">(pymysql)</text>
+
+      <path d="M 660 410 C 675 450, 700 475, 712 496" fill="none" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#c-arrow)"/>
+      <text x="700" y="460" text-anchor="middle" class="edge-label">requête LLM</text>
+      <text x="700" y="472" text-anchor="middle" class="edge-label">(HTTPS)</text>
+    </svg>
+  </div>
+  <figcaption>Trait plein = échange synchrone (REST, SQL). Pointillé = traitement d'arrière-plan ou appel externe. La Veille est un vrai composant fonctionnel (elle surveille l'actualité et écrit des alertes), mais techniquement c'est un thread lancé par le Backend, pas un conteneur séparé — d'où son rattachement au même environnement Docker.</figcaption>
+</main>

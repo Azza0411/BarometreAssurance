@@ -1,7 +1,7 @@
 """Orchestration de la pipeline complète Bilan Actif/Passif — même schéma
 que `tableau_pipeline_service.py` (Annexe 13) : extraction + validation
 (voir extraction/bilan_full_extractor.py::process_bilan) puis stockage en
-base (tableau_cellules/tableau_validations). Fichier séparé (comme pour
+base (tableaux_excel/regles_validations). Fichier séparé (comme pour
 Annexe 12) pour garder chaque pipeline concentrée sur UNE responsabilité.
 
 Actif et Passif sont deux tableaux DISTINCTS du PDF source (pas une seule
@@ -28,9 +28,9 @@ TABLEAU_KEY_PASSIF = "bilan_passif"
 def _cmf_documents(conn, codes=None, annees=None):
     query = """
         SELECT d.id, c.code, d.nom_pdf
-        FROM documents d
+        FROM documents_pdf d
         JOIN sources s ON s.id = d.source_id
-        JOIN societes c ON c.id = d.cmf_id
+        JOIN societes c ON c.id = d.societe_id
         WHERE s.nom = 'CMF'
     """
     params = []

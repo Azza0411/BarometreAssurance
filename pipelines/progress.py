@@ -52,7 +52,7 @@ PHASE_SHORT = {
 PHASE_UNITS = {
     "scraping": "sociétés",
     "rattrapage_pdf": "PDF",
-    "extraction_kpi": "documents",
+    "extraction_kpi": "documents_pdf",
     "sources_prioritaires": "sources",
     "grilles": "sources",
 }

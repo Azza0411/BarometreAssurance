@@ -18,7 +18,7 @@ paragraphe narratif :
 Pour chaque document :
   - télécharge le PDF en mémoire (aucune écriture du PDF lui-même sur disque) ;
   - extrait tous les KPI des trois tableaux ;
-  - enregistre chaque KPI trouvé dans la table MySQL `kpi_values`
+  - enregistre chaque KPI trouvé dans la table MySQL `kpis`
     (document_id, tableau, kpi, valeur_nombre ou valeur_texte selon le type
     du KPI) — réexécuter le pipeline met à jour les valeurs existantes sans
     les dupliquer ;
@@ -52,7 +52,7 @@ from database.repository import (
     get_document_ids_with_kpi,
     get_documents_in_backoff,
     record_document_failures,
-    get_kpi_values_for_document,
+    get_kpis_for_document,
     init_schema,
     list_all_documents,
     save_anomaly,
@@ -377,16 +377,16 @@ def _classify_cause(pdf, company_code):
     return "Motif introuvable, ligne absente du document, ou format non reconnu"
 
 
-def _log_source_result(source, kpi_values_saved, documents_with_kpi, download_errors, **extra):
+def _log_source_result(source, kpis_saved, documents_with_kpi, download_errors, **extra):
     """Journalise le resultat d'une sous-pipeline d'extraction dans
     logs/pipeline.log, avec la meme distinction ok/empty que
     pipelines/run_pipeline.py pour la collecte : 0 valeur de KPI enregistree
     n'est pas forcement une panne (aucun nouveau document ce cycle), mais
     doit rester visible separement d'un succes normal plutot que d'etre
     invisible entre deux print() console."""
-    event = "kpi_extraction_empty" if kpi_values_saved == 0 else "kpi_extraction_ok"
+    event = "kpi_extraction_empty" if kpis_saved == 0 else "kpi_extraction_ok"
     log_json(
-        _logger, event, source=source, kpi_values_saved=kpi_values_saved,
+        _logger, event, source=source, kpis_saved=kpis_saved,
         documents_with_kpi=documents_with_kpi, download_errors=download_errors, **extra,
     )
 
@@ -425,7 +425,7 @@ def _run_ftusa(conn, already_done=None):
         documents = [doc for doc in documents if doc[0] not in already_done]
     print(f"\n===== EXTRACTION KPI FTUSA : {len(documents)} document(s), {len(FTUSA_KPI_NAMES)} KPI =====\n")
 
-    kpi_values_saved = documents_with_kpi = download_errors = 0
+    kpis_saved = documents_with_kpi = download_errors = 0
     for document_id, _source_nom, _code, _nom_entreprise, nom_pdf, annee, lien in documents:
         if is_cancel_requested():
             print("[ANNULE] Extraction KPI FTUSA interrompue par l'utilisateur.")
@@ -445,20 +445,20 @@ def _run_ftusa(conn, already_done=None):
         for name, value in kpis.items():
             if value is not None:
                 save_kpi_value(conn, document_id, "FTUSA - Compte exploitation par branche", name, valeur_nombre=value)
-                kpi_values_saved += 1
+                kpis_saved += 1
         if found_count > 0:
             documents_with_kpi += 1
         print(f"  [{'OK' if found_count else 'WARN'}] {found_count}/{len(FTUSA_KPI_NAMES)} KPI enregistres en base")
 
     print("\n===== RESUME EXTRACTION KPI FTUSA =====")
     print(f"  Documents avec au moins 1 KPI   : {documents_with_kpi}")
-    print(f"  Valeurs de KPI enregistrees      : {kpi_values_saved}")
+    print(f"  Valeurs de KPI enregistrees      : {kpis_saved}")
     print(f"  Erreurs telechargement/lecture  : {download_errors}\n")
-    _log_source_result("FTUSA", kpi_values_saved, documents_with_kpi, download_errors)
+    _log_source_result("FTUSA", kpis_saved, documents_with_kpi, download_errors)
 
     return {
         "documents_with_kpi": documents_with_kpi,
-        "kpi_values_saved": kpi_values_saved,
+        "kpis_saved": kpis_saved,
         "download_errors": download_errors,
     }
 
@@ -478,7 +478,7 @@ def _run_bvmt(conn, already_done=None):
         documents = [doc for doc in documents if doc[0] not in already_done]
     print(f"\n===== EXTRACTION KPI BVMT : {len(documents)} document(s), {len(BVMT_KPI_NAMES)} KPI =====\n")
 
-    kpi_values_saved = documents_with_kpi = download_errors = 0
+    kpis_saved = documents_with_kpi = download_errors = 0
     for document_id, _source_nom, code, _nom_entreprise, nom_pdf, annee, lien in documents:
         if is_cancel_requested():
             print("[ANNULE] Extraction KPI BVMT interrompue par l'utilisateur.")
@@ -497,32 +497,32 @@ def _run_bvmt(conn, already_done=None):
         for name, value in kpis.items():
             if value is not None:
                 save_kpi_value(conn, document_id, "BVMT - Gouvernance", name, valeur_texte=value)
-                kpi_values_saved += 1
+                kpis_saved += 1
         if found_count > 0:
             documents_with_kpi += 1
         print(f"  [{'OK' if found_count else 'WARN'}] {found_count}/{len(BVMT_KPI_NAMES)} KPI enregistres en base")
 
     print("\n===== RESUME EXTRACTION KPI BVMT =====")
     print(f"  Documents avec au moins 1 KPI   : {documents_with_kpi}")
-    print(f"  Valeurs de KPI enregistrees      : {kpi_values_saved}")
+    print(f"  Valeurs de KPI enregistrees      : {kpis_saved}")
     print(f"  Erreurs telechargement/lecture  : {download_errors}\n")
-    _log_source_result("BVMT", kpi_values_saved, documents_with_kpi, download_errors)
+    _log_source_result("BVMT", kpis_saved, documents_with_kpi, download_errors)
 
     return {
         "documents_with_kpi": documents_with_kpi,
-        "kpi_values_saved": kpi_values_saved,
+        "kpis_saved": kpis_saved,
         "download_errors": download_errors,
     }
 
 
 def _run_bvmt_bulletin(conn, already_done=None):
     """Pipeline separe pour les bulletins officiels de la cote BVMT
-    (documents sectoriels, cmf_id NULL, un par annee, nom_pdf de la forme
+    (documents sectoriels, societe_id NULL, un par annee, nom_pdf de la forme
     "bulletin_{annee}.pdf" -> voir scraping.bvmt_scraper.sync_market_data) :
     extrait "Cours de l'action - {code}" pour chaque societe cotee reconnue
     (voir bvmt_bulletin_kpi_extractor). Le MNEMO et la denomination BVMT de
     chaque societe, necessaires a cette reconnaissance, sont lus depuis les
-    KPI deja enregistres sur son document de profil (cmf_id non NULL, meme
+    KPI deja enregistres sur son document de profil (societe_id non NULL, meme
     source) plutot que re-scrapes ici.
 
     `already_done` : voir `_run_ftusa` — appliqué seulement aux bulletins
@@ -533,7 +533,7 @@ def _run_bvmt_bulletin(conn, already_done=None):
 
     mnemo_to_code, name_to_code = {}, {}
     for document_id, _source_nom, code, _nom_entreprise, _nom_pdf, _annee, _lien in company_docs:
-        kpis = get_kpi_values_for_document(conn, document_id)
+        kpis = get_kpis_for_document(conn, document_id)
         mnemo = kpis.get("Mnemo (BVMT)")
         if isinstance(mnemo, str):
             mnemo_to_code[mnemo] = code
@@ -546,7 +546,7 @@ def _run_bvmt_bulletin(conn, already_done=None):
         bulletin_docs = [doc for doc in bulletin_docs if doc[0] not in already_done]
     print(f"\n===== EXTRACTION KPI BVMT - Bulletins : {len(bulletin_docs)} document(s) =====\n")
 
-    kpi_values_saved = documents_with_kpi = download_errors = 0
+    kpis_saved = documents_with_kpi = download_errors = 0
     for document_id, _source_nom, _code, _nom_entreprise, _nom_pdf, annee, lien in bulletin_docs:
         if is_cancel_requested():
             print("[ANNULE] Extraction KPI BVMT bulletins interrompue par l'utilisateur.")
@@ -565,20 +565,20 @@ def _run_bvmt_bulletin(conn, already_done=None):
             save_kpi_value(
                 conn, document_id, "BVMT - Bulletin officiel de la cote", f"Cours de l'action - {code}", valeur_nombre=value
             )
-            kpi_values_saved += 1
+            kpis_saved += 1
         if cloture_by_code:
             documents_with_kpi += 1
         print(f"  [{'OK' if cloture_by_code else 'WARN'}] {len(cloture_by_code)} societe(s) trouvee(s)")
 
     print("\n===== RESUME EXTRACTION KPI BVMT - Bulletins =====")
     print(f"  Documents avec au moins 1 KPI   : {documents_with_kpi}")
-    print(f"  Valeurs de KPI enregistrees      : {kpi_values_saved}")
+    print(f"  Valeurs de KPI enregistrees      : {kpis_saved}")
     print(f"  Erreurs telechargement/lecture  : {download_errors}\n")
-    _log_source_result("BVMT_BULLETIN", kpi_values_saved, documents_with_kpi, download_errors)
+    _log_source_result("BVMT_BULLETIN", kpis_saved, documents_with_kpi, download_errors)
 
     return {
         "documents_with_kpi": documents_with_kpi,
-        "kpi_values_saved": kpi_values_saved,
+        "kpis_saved": kpis_saved,
         "download_errors": download_errors,
     }
 
@@ -599,7 +599,7 @@ def _run_cga(conn, already_done=None):
         documents = [doc for doc in documents if doc[0] not in already_done]
     print(f"\n===== EXTRACTION KPI CGA : {len(documents)} document(s) =====\n")
 
-    kpi_values_saved = documents_with_kpi = download_errors = 0
+    kpis_saved = documents_with_kpi = download_errors = 0
     for document_id, _source_nom, _code, _nom_entreprise, nom_pdf, annee, lien in documents:
         if is_cancel_requested():
             print("[ANNULE] Extraction KPI CGA interrompue par l'utilisateur.")
@@ -622,7 +622,7 @@ def _run_cga(conn, already_done=None):
                            if name in ("Nombre d'assureurs", "Nombre d'assureurs Takaful", "Nombre d'assureurs Conventionnelle")
                            else "CGA - Annexe 2 - Distribution geographique des agents")
                 save_kpi_value(conn, document_id, tableau, name, valeur_nombre=value)
-                kpi_values_saved += 1
+                kpis_saved += 1
                 found_count += 1
         if found_count > 0:
             documents_with_kpi += 1
@@ -630,13 +630,13 @@ def _run_cga(conn, already_done=None):
 
     print("\n===== RESUME EXTRACTION KPI CGA =====")
     print(f"  Documents avec au moins 1 KPI   : {documents_with_kpi}")
-    print(f"  Valeurs de KPI enregistrees      : {kpi_values_saved}")
+    print(f"  Valeurs de KPI enregistrees      : {kpis_saved}")
     print(f"  Erreurs telechargement/lecture  : {download_errors}\n")
-    _log_source_result("CGA", kpi_values_saved, documents_with_kpi, download_errors)
+    _log_source_result("CGA", kpis_saved, documents_with_kpi, download_errors)
 
     return {
         "documents_with_kpi": documents_with_kpi,
-        "kpi_values_saved": kpi_values_saved,
+        "kpis_saved": kpis_saved,
         "download_errors": download_errors,
     }
 
@@ -718,7 +718,7 @@ def _tail_candidate_ids(conn, skip):
 def _update_failure_memory(conn, attempted_ids):
     """Après un passage complet : un document tenté qui n'a toujours AUCUN KPI
     est noté en échec (essai +1, prochain essai repoussé) ; un document tenté
-    qui a fini par donner des KPI est oublié. Voir schema.sql::documents_echecs."""
+    qui a fini par donner des KPI est oublié. Voir schema.sql::echecs_extraction."""
     after = get_document_ids_with_kpi(conn)
     record_document_failures(conn, sorted(i for i in attempted_ids if i not in after))
     clear_document_failures(conn, sorted(i for i in attempted_ids if i in after))
@@ -786,7 +786,7 @@ def run(force=False, years=None, respect_backoff=False):
           f"({len(already_done)} deja extraits, sautes), {len(KPI_NAMES)} KPI =====\n")
 
     failures = {name: [] for name in KPI_NAMES}
-    kpi_values_saved = documents_with_kpi = download_errors = balance_mismatches = yoy_anomalies = 0
+    kpis_saved = documents_with_kpi = download_errors = balance_mismatches = yoy_anomalies = 0
 
     from pipelines.progress import enter_phase_if_planned, reset_progress, set_progress
     enter_phase_if_planned("extraction_kpi")
@@ -847,7 +847,7 @@ def run(force=False, years=None, respect_backoff=False):
                         save_kpi_value(conn, document_id, KPI_TABLE_LABEL[name], name, valeur_texte=value)
                     else:
                         save_kpi_value(conn, document_id, KPI_TABLE_LABEL[name], name, valeur_nombre=value)
-                    kpi_values_saved += 1
+                    kpis_saved += 1
             documents_with_kpi += 1
             print(f"  [OK] {found_count}/{len(KPI_NAMES)} KPI enregistres en base")
         else:
@@ -861,7 +861,7 @@ def run(force=False, years=None, respect_backoff=False):
 
     print("\n===== RESUME EXTRACTION KPI =====")
     print(f"  Documents avec au moins 1 KPI   : {documents_with_kpi}")
-    print(f"  Valeurs de KPI enregistrees      : {kpi_values_saved}")
+    print(f"  Valeurs de KPI enregistrees      : {kpis_saved}")
     print(f"  Erreurs telechargement/lecture  : {download_errors}")
     print(f"  Desequilibres Bilan (Actif!=Passif) : {balance_mismatches}")
     print(f"  Anomalies annee sur annee (YoY)  : {yoy_anomalies}")
@@ -869,7 +869,7 @@ def run(force=False, years=None, respect_backoff=False):
         print(f"  Echecs {name:60s} : {len(failures[name])}")
     print(f"  Rapport d'echecs                : {FAILURE_REPORT_PATH}\n")
     _log_source_result(
-        "CMF", kpi_values_saved, documents_with_kpi, download_errors,
+        "CMF", kpis_saved, documents_with_kpi, download_errors,
         nb_documents=len(documents), nb_failures_total=sum(len(v) for v in failures.values()),
         balance_mismatches=balance_mismatches, yoy_anomalies=yoy_anomalies,
     )
@@ -887,17 +887,17 @@ def run(force=False, years=None, respect_backoff=False):
     print("\n===== MODELISATION : KPI CALCULES =====\n")
     calculated_stats = calculated_kpi_extractor.run(conn)
     calculated_total_saved = sum(
-        stats.get("kpi_values_saved", 0) for stats in calculated_stats.values()
+        stats.get("kpis_saved", 0) for stats in calculated_stats.values()
     )
     log_json(_logger, "modelisation_done", **{
-        family: stats.get("kpi_values_saved", 0) for family, stats in calculated_stats.items()
+        family: stats.get("kpis_saved", 0) for family, stats in calculated_stats.items()
     })
 
     conn.close()
 
     return {
         "documents_with_kpi": documents_with_kpi,
-        "kpi_values_saved": kpi_values_saved,
+        "kpis_saved": kpis_saved,
         "download_errors": download_errors,
         "balance_mismatches": balance_mismatches,
         "yoy_anomalies": yoy_anomalies,
@@ -907,7 +907,7 @@ def run(force=False, years=None, respect_backoff=False):
         "bvmt_bulletin": bvmt_bulletin_stats,
         "cga": cga_stats,
         "calculated": calculated_stats,
-        "calculated_kpi_values_saved": calculated_total_saved,
+        "calculated_kpis_saved": calculated_total_saved,
     }
 
 

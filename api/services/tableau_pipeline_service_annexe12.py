@@ -3,8 +3,8 @@ catégorie d'assurance Vie) — pendant Vie de tableau_pipeline_service.py
 (Annexe 13 Non-Vie), dont ce module reprend exactement le même schéma
 (localisation + extraction + normalisation + validation, voir
 extraction/annexe12_pipeline.py, puis stockage en base sous une clé de
-tableau distincte "annexe12" — même table `tableau_cellules` /
-`tableau_validations`, voir database/schema.sql).
+tableau distincte "annexe12" — même table `tableaux_excel` /
+`regles_validations`, voir database/schema.sql).
 
 Fichier SÉPARÉ de tableau_pipeline_service.py (plutôt qu'un paramètre
 `tableau` sur ses fonctions) pour ne prendre AUCUN risque de régression sur
@@ -38,9 +38,9 @@ def _cmf_documents(conn, codes=None, annees=None):
     société n'est présumée hors périmètre Vie a priori)."""
     query = """
         SELECT d.id, c.code, d.nom_pdf
-        FROM documents d
+        FROM documents_pdf d
         JOIN sources s ON s.id = d.source_id
-        JOIN societes c ON c.id = d.cmf_id
+        JOIN societes c ON c.id = d.societe_id
         WHERE s.nom = 'CMF'
     """
     params = []

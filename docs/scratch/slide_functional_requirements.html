@@ -1,0 +1,318 @@
+<title>Functional Requirements</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page:#E9E7E0;
+    --card:#FFFFFF;
+    --ink:#1E1E26;
+    --panel:#F5F4EF;
+    --panel-2:#F2F0E7;
+    --yellow:#FFE600;
+    --yellow-dim:#A8890A;
+    --mist:#6B6B76;
+    --mist-dim:#8C8C95;
+    --hair:#E3E1D8;
+    --white:#FFFFFF;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--page);
+    color:var(--ink);
+    font-family:'Barlow','Segoe UI',system-ui,sans-serif;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:40px 16px;
+  }
+
+  .slide{
+    position:relative;
+    width:1280px;
+    max-width:100%;
+    aspect-ratio:16/9;
+    background:var(--card);
+    border:1px solid var(--hair);
+    border-radius:22px;
+    overflow:hidden;
+    box-shadow:0 24px 60px -24px rgba(30,30,38,0.22);
+    display:flex;
+    flex-direction:column;
+    padding:44px 56px 40px;
+  }
+
+  /* ── faint structural grid, subject-appropriate (a market dashboard lives on a grid) ── */
+  .slide::before{
+    content:"";
+    position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(30,30,38,0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30,30,38,0.045) 1px, transparent 1px);
+    background-size:64px 64px;
+    pointer-events:none;
+  }
+
+  /* ── header ── */
+  .head{
+    position:relative;
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:24px;
+    flex-shrink:0;
+    margin-bottom:34px;
+  }
+  .head-left{ display:flex; align-items:center; gap:0; }
+  .chip{
+    background:var(--ink);
+    color:var(--white);
+    font-weight:800;
+    font-size:15px;
+    letter-spacing:0.02em;
+    padding:11px 16px;
+    border-radius:3px 0 0 3px;
+    flex-shrink:0;
+  }
+  .ribbon{
+    position:relative;
+    background:var(--yellow);
+    color:var(--ink);
+    font-weight:800;
+    font-size:19px;
+    letter-spacing:0.01em;
+    padding:11px 34px 11px 22px;
+    clip-path:polygon(0 0, 100% 0, calc(100% - 18px) 100%, 0 100%);
+    margin-left:-1px;
+  }
+  .eyebrow{
+    text-align:right;
+  }
+  .eyebrow .kicker{
+    display:block;
+    font-size:10.5px;
+    font-weight:700;
+    letter-spacing:0.22em;
+    text-transform:uppercase;
+    color:var(--yellow-dim);
+    margin-bottom:6px;
+  }
+  .eyebrow .question{
+    font-size:15px;
+    color:var(--mist);
+    font-weight:400;
+    font-style:italic;
+  }
+
+  /* ── process row ── */
+  .flow{
+    position:relative;
+    display:grid;
+    grid-template-columns:1fr auto 1fr auto 1fr;
+    align-items:stretch;
+    gap:0 18px;
+    flex:1;
+    min-height:0;
+  }
+
+  .stage{
+    position:relative;
+    background:var(--panel);
+    border:1px solid var(--hair);
+    border-radius:14px;
+    padding:26px 24px 24px;
+    display:flex;
+    flex-direction:column;
+    min-width:0;
+  }
+  .stage .n{
+    position:absolute;
+    top:16px; right:18px;
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:0.14em;
+    color:var(--mist-dim);
+    font-variant-numeric:tabular-nums;
+  }
+  .stage .glyph{
+    width:46px; height:46px;
+    border-radius:50%;
+    background:var(--yellow);
+    display:flex; align-items:center; justify-content:center;
+    margin-bottom:18px;
+    flex-shrink:0;
+  }
+  .stage .glyph svg{ width:22px; height:22px; }
+  .stage h3{
+    margin:0 0 4px;
+    font-size:22px;
+    font-weight:800;
+    letter-spacing:0.01em;
+    color:var(--ink);
+  }
+  .stage .sub{
+    margin:0 0 18px;
+    font-size:12.5px;
+    color:var(--mist);
+    line-height:1.4;
+  }
+  .stage ul{
+    list-style:none;
+    margin:0; padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:9px;
+    margin-top:auto;
+  }
+  .stage li{
+    display:flex;
+    align-items:baseline;
+    gap:9px;
+    font-size:14.5px;
+    color:#3A3A42;
+    font-weight:500;
+  }
+  .stage li::before{
+    content:"";
+    width:5px; height:5px;
+    border-radius:1px;
+    background:var(--yellow-dim);
+    flex-shrink:0;
+    transform:translateY(-3px);
+  }
+
+  .arrow{
+    align-self:center;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .arrow svg{ width:30px; height:14px; }
+
+  /* ── cross-cutting band — visually NOT a 4th sequential step ── */
+  .band{
+    position:relative;
+    margin-top:22px;
+    border-radius:14px;
+    padding:1px;
+    background:linear-gradient(90deg, var(--yellow), rgba(255,230,0,0.15) 55%, transparent);
+    flex-shrink:0;
+  }
+  .band-inner{
+    background:var(--panel-2);
+    border-radius:13px;
+    padding:18px 26px;
+    display:flex;
+    align-items:center;
+    gap:18px;
+  }
+  .band .glyph{
+    width:38px; height:38px;
+    border-radius:50%;
+    background:var(--yellow);
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .band .glyph svg{ width:19px; height:19px; }
+  .band-text{ display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+  .band-text h4{
+    margin:0;
+    font-size:16.5px;
+    font-weight:800;
+    color:var(--ink);
+    letter-spacing:0.01em;
+    white-space:nowrap;
+  }
+  .band-text .items{
+    font-size:13.5px;
+    color:var(--mist);
+    font-weight:500;
+  }
+  .band-text .items b{ color:var(--yellow-dim); font-weight:700; }
+  .band-note{
+    margin-left:auto;
+    font-size:10.5px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--mist-dim);
+    white-space:nowrap;
+  }
+</style>
+
+<div class="slide">
+  <div class="head">
+    <div class="head-left">
+      <div class="chip">01</div>
+      <div class="ribbon">Functional Requirements</div>
+    </div>
+    <div class="eyebrow">
+      <span class="kicker">Cadrage &middot; Analyse</span>
+      <span class="question">What should the platform enable a consultant to do?</span>
+    </div>
+  </div>
+
+  <div class="flow">
+    <div class="stage">
+      <span class="n">01</span>
+      <div class="glyph">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#1E1E26" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M12 19V5M20 19v-7"/></svg>
+      </div>
+      <h3>Explore</h3>
+      <p class="sub">See the whole market before zooming in</p>
+      <ul>
+        <li>Market overview</li>
+        <li>Key indicators (KPIs)</li>
+        <li>Company profiles</li>
+      </ul>
+    </div>
+
+    <div class="arrow">
+      <svg viewBox="0 0 30 14" fill="none"><path d="M0 7h26M20 1l6 6-6 6" stroke="#A8890A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+
+    <div class="stage">
+      <span class="n">02</span>
+      <div class="glyph">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#1E1E26" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v18M16 3v18M4 8h4M16 8h4M4 16h4M16 16h4"/></svg>
+      </div>
+      <h3>Compare</h3>
+      <p class="sub">Benchmark one company against the rest</p>
+      <ul>
+        <li>Company vs. company</li>
+        <li>Sector benchmarks</li>
+        <li>Financial ratios</li>
+      </ul>
+    </div>
+
+    <div class="arrow">
+      <svg viewBox="0 0 30 14" fill="none"><path d="M0 7h26M20 1l6 6-6 6" stroke="#A8890A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+
+    <div class="stage">
+      <span class="n">03</span>
+      <div class="glyph">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#1E1E26" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M19.5 19.5L15.5 15.5"/></svg>
+      </div>
+      <h3>Monitor</h3>
+      <p class="sub">Know the moment something changes</p>
+      <ul>
+        <li>News &amp; regulatory watch</li>
+        <li>Real-time alerts</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="band">
+    <div class="band-inner">
+      <div class="glyph">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#1E1E26" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M3 12h3M18 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/><circle cx="12" cy="12" r="3.3"/></svg>
+      </div>
+      <div class="band-text">
+        <h4>Intelligent interaction</h4>
+        <span class="items">Available across every step &mdash; <b>AI assistant</b> to query the data in plain language, <b>predictive analytics</b> to anticipate what's next.</span>
+      </div>
+      <span class="band-note">Cross-cutting</span>
+    </div>
+  </div>
+</div>

@@ -3,7 +3,7 @@ Déficit du fonds Takaful Familial/Général" — l'équivalent Takaful
 d'Annexe 12/13 (résultat technique) pour les assureurs conventionnels :
 même finalité (grille complète, pas seulement les quelques KPI ciblés de
 extraction/takaful_kpi_extractor.py::extract_fonds_participants_kpis),
-stockée dans `tableau_cellules` sous 'takaful_surplus_familial'/
+stockée dans `tableaux_excel` sous 'takaful_surplus_familial'/
 'takaful_surplus_general'.
 
 Chaque ligne porte un code réglementaire — PRF/CHF (Fonds Familial,

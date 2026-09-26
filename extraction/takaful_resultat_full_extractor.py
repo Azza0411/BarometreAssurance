@@ -4,7 +4,7 @@ de l'OPÉRATEUR (Commissions Wakala/Moudharaba, charges générales,
 résultat net), par opposition aux Annexes 3/4 qui portent sur les FONDS.
 Source du KPI narrow existant "Commission Wakala"/"Commission Moudharaba"
 (voir extraction/takaful_kpi_extractor.py::extract_fonds_participants_kpis).
-Stockée dans `tableau_cellules` sous 'takaful_resultat_entreprise'.
+Stockée dans `tableaux_excel` sous 'takaful_resultat_entreprise'.
 
 Structure BEAUCOUP plus simple que les Annexes 3/4 : SEULEMENT 2 colonnes
 (exercice courant / exercice précédent, pas de distinction Brut/Cessions),

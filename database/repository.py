@@ -3,7 +3,7 @@ Accès MySQL : création du schéma et opérations sur les tables `sources`
 (origines des documents : CMF, FTUSA...), `societes` (les compagnies suivies,
 toutes sources confondues — ex-nommée `cmf`, renommée pour ne pas la
 confondre avec la source "CMF" de la table `sources`), `documents`
-(métadonnées des documents, toutes sources confondues) et `kpi_values`.
+(métadonnées des documents, toutes sources confondues) et `kpis`.
 
 Aucun contenu binaire n'est stocké : seuls le nom du PDF, l'année et le lien
 d'origine sont conservés.
@@ -52,8 +52,8 @@ def get_connection():
     )
 
 
-def _migrate_kpi_values_schema(conn):
-    """Fait évoluer une table `kpi_values` déjà existante (ancienne colonne
+def _migrate_kpis_schema(conn):
+    """Fait évoluer une table `kpis` déjà existante (ancienne colonne
     unique `valeur` DOUBLE NOT NULL) vers `valeur_nombre` / `valeur_texte`,
     pour que les KPI textuels (Date de création, Siège social...) puissent
     cohabiter avec les KPI numériques sans perdre les valeurs déjà stockées."""
@@ -61,20 +61,20 @@ def _migrate_kpi_values_schema(conn):
         cur.execute(
             """
             SELECT COLUMN_NAME FROM information_schema.columns
-            WHERE table_schema = DATABASE() AND table_name = 'kpi_values'
+            WHERE table_schema = DATABASE() AND table_name = 'kpis'
             """
         )
         columns = {row[0] for row in cur.fetchall()}
         if not columns:
             return
         if "valeur" in columns and "valeur_nombre" not in columns:
-            cur.execute("ALTER TABLE kpi_values CHANGE COLUMN valeur valeur_nombre DOUBLE NULL")
+            cur.execute("ALTER TABLE kpis CHANGE COLUMN valeur valeur_nombre DOUBLE NULL")
         if "valeur_texte" not in columns:
-            cur.execute("ALTER TABLE kpi_values ADD COLUMN valeur_texte VARCHAR(500) NULL AFTER valeur_nombre")
+            cur.execute("ALTER TABLE kpis ADD COLUMN valeur_texte VARCHAR(500) NULL AFTER valeur_nombre")
 
 
-def _migrate_tableau_cellules_schema(conn):
-    """Ajoute `colonne_ordre` à une table `tableau_cellules` créée avant son
+def _migrate_tableaux_excel_schema(conn):
+    """Ajoute `colonne_ordre` à une table `tableaux_excel` créée avant son
     introduction (2026-09-08) — sans quoi l'ordre physique des colonnes du
     tableau source est perdu (un SELECT sans ORDER BY explicite ne le
     garantit pas ; MySQL s'est avéré trier alphabétiquement via l'index
@@ -86,7 +86,7 @@ def _migrate_tableau_cellules_schema(conn):
         cur.execute(
             """
             SELECT COLUMN_NAME FROM information_schema.columns
-            WHERE table_schema = DATABASE() AND table_name = 'tableau_cellules'
+            WHERE table_schema = DATABASE() AND table_name = 'tableaux_excel'
             """
         )
         columns = {row[0] for row in cur.fetchall()}
@@ -94,14 +94,14 @@ def _migrate_tableau_cellules_schema(conn):
             return
         if "colonne_ordre" not in columns:
             cur.execute(
-                "ALTER TABLE tableau_cellules ADD COLUMN colonne_ordre INT NOT NULL DEFAULT 0 AFTER colonne"
+                "ALTER TABLE tableaux_excel ADD COLUMN colonne_ordre INT NOT NULL DEFAULT 0 AFTER colonne"
             )
 
 
 def _migrate_documents_schema(conn):
     """Fait évoluer une table `documents` déjà existante (ancien schéma
-    100% CMF : `cmf_id NOT NULL`, sans notion de source) vers un schéma
-    multi-source : ajoute `source_id`, rend `cmf_id` nullable (pour les
+    100% CMF : `societe_id NOT NULL`, sans notion de source) vers un schéma
+    multi-source : ajoute `source_id`, rend `societe_id` nullable (pour les
     sources sectorielles comme FTUSA, sans société associée), rattache les
     documents déjà en base à la source CMF, et met à jour la clé unique en
     conséquence. Chaque étape est vérifiée indépendamment via
@@ -112,7 +112,7 @@ def _migrate_documents_schema(conn):
         cur.execute(
             """
             SELECT COLUMN_NAME FROM information_schema.columns
-            WHERE table_schema = DATABASE() AND table_name = 'documents'
+            WHERE table_schema = DATABASE() AND table_name = 'documents_pdf'
             """
         )
         columns = {row[0] for row in cur.fetchall()}
@@ -126,64 +126,64 @@ def _migrate_documents_schema(conn):
             )
             cur.execute("SELECT id FROM sources WHERE nom = 'CMF'")
             cmf_source_id = cur.fetchone()[0]
-            cur.execute("ALTER TABLE documents ADD COLUMN source_id INT NULL AFTER id")
-            cur.execute("UPDATE documents SET source_id = %s", (cmf_source_id,))
-            cur.execute("ALTER TABLE documents MODIFY source_id INT NOT NULL")
+            cur.execute("ALTER TABLE documents_pdf ADD COLUMN source_id INT NULL AFTER id")
+            cur.execute("UPDATE documents_pdf SET source_id = %s", (cmf_source_id,))
+            cur.execute("ALTER TABLE documents_pdf MODIFY source_id INT NOT NULL")
 
         cur.execute(
             """
             SELECT IS_NULLABLE FROM information_schema.columns
-            WHERE table_schema = DATABASE() AND table_name = 'documents' AND column_name = 'cmf_id'
+            WHERE table_schema = DATABASE() AND table_name = 'documents_pdf' AND column_name = 'societe_id'
             """
         )
         if cur.fetchone()[0] == "NO":
-            cur.execute("ALTER TABLE documents MODIFY cmf_id INT NULL")
+            cur.execute("ALTER TABLE documents_pdf MODIFY societe_id INT NULL")
 
-        cur.execute("SHOW INDEX FROM documents")
+        cur.execute("SHOW INDEX FROM documents_pdf")
         indexes = {row[2] for row in cur.fetchall()}
         if "uq_document_cmf_annee" in indexes:
-            # Cet ancien index unique (cmf_id, annee) sert aussi de support à
-            # la FK cmf_id -> societes(id) : il faut retirer la FK avant de
+            # Cet ancien index unique (societe_id, annee) sert aussi de support à
+            # la FK societe_id -> societes(id) : il faut retirer la FK avant de
             # pouvoir le supprimer, puis lui fournir un nouvel index dédié.
             cur.execute(
                 """
                 SELECT CONSTRAINT_NAME FROM information_schema.table_constraints
-                WHERE table_schema = DATABASE() AND table_name = 'documents'
+                WHERE table_schema = DATABASE() AND table_name = 'documents_pdf'
                   AND constraint_type = 'FOREIGN KEY' AND constraint_name = 'fk_documents_cmf'
                 """
             )
             if cur.fetchone():
-                cur.execute("ALTER TABLE documents DROP FOREIGN KEY fk_documents_cmf")
-            cur.execute("ALTER TABLE documents DROP INDEX uq_document_cmf_annee")
-            cur.execute("ALTER TABLE documents ADD INDEX idx_documents_cmf_id (cmf_id)")
+                cur.execute("ALTER TABLE documents_pdf DROP FOREIGN KEY fk_documents_cmf")
+            cur.execute("ALTER TABLE documents_pdf DROP INDEX uq_document_cmf_annee")
+            cur.execute("ALTER TABLE documents_pdf ADD INDEX idx_documents_societe_id (societe_id)")
             cur.execute(
-                "ALTER TABLE documents ADD CONSTRAINT fk_documents_cmf "
-                "FOREIGN KEY (cmf_id) REFERENCES societes(id)"
+                "ALTER TABLE documents_pdf ADD CONSTRAINT fk_documents_cmf "
+                "FOREIGN KEY (societe_id) REFERENCES societes(id)"
             )
 
-        cur.execute("SHOW INDEX FROM documents")
+        cur.execute("SHOW INDEX FROM documents_pdf")
         indexes = {row[2] for row in cur.fetchall()}
         if "uq_document_source_cmf_annee" not in indexes:
             cur.execute(
-                "ALTER TABLE documents ADD UNIQUE KEY uq_document_source_cmf_annee (source_id, cmf_id, annee)"
+                "ALTER TABLE documents_pdf ADD UNIQUE KEY uq_document_source_cmf_annee (source_id, societe_id, annee)"
             )
 
         cur.execute(
             """
             SELECT CONSTRAINT_NAME FROM information_schema.table_constraints
-            WHERE table_schema = DATABASE() AND table_name = 'documents'
+            WHERE table_schema = DATABASE() AND table_name = 'documents_pdf'
               AND constraint_type = 'FOREIGN KEY' AND constraint_name = 'fk_documents_source'
             """
         )
         if not cur.fetchone():
             cur.execute(
-                "ALTER TABLE documents ADD CONSTRAINT fk_documents_source "
+                "ALTER TABLE documents_pdf ADD CONSTRAINT fk_documents_source "
                 "FOREIGN KEY (source_id) REFERENCES sources(id)"
             )
 
 
-def _migrate_kpi_values_unique_key(conn):
-    """Élargit la clé unique de `kpi_values` de (document_id, kpi) à
+def _migrate_kpis_unique_key(conn):
+    """Élargit la clé unique de `kpis` de (document_id, kpi) à
     (document_id, tableau, kpi). L'ancienne clé permettait à deux tableaux
     différents produisant par erreur le même nom de KPI de s'écraser
     silencieusement l'un l'autre (aucune erreur, aucun log) — seule la
@@ -193,38 +193,38 @@ def _migrate_kpi_values_unique_key(conn):
 
     `uq_document_kpi` sert aussi de support à la FK fk_kpi_document
     (document_id -> documents.id) : comme pour l'ancien index
-    (cmf_id, annee) de `documents` (voir _migrate_documents_schema), il faut
+    (societe_id, annee) de `documents` (voir _migrate_documents_schema), il faut
     retirer la FK avant de pouvoir le supprimer, puis la recréer une fois le
     nouvel index en place. Bug trouvé en production (juillet 2026) : la
     première version de cette migration ne le faisait pas et échouait avec
     "Cannot drop index ... needed in a foreign key constraint"."""
     with conn.cursor() as cur:
-        cur.execute("SHOW INDEX FROM kpi_values")
+        cur.execute("SHOW INDEX FROM kpis")
         indexes = {row[2] for row in cur.fetchall()}
         if "uq_document_kpi" in indexes and "uq_document_tableau_kpi" not in indexes:
             cur.execute(
                 """
                 SELECT CONSTRAINT_NAME FROM information_schema.table_constraints
-                WHERE table_schema = DATABASE() AND table_name = 'kpi_values'
+                WHERE table_schema = DATABASE() AND table_name = 'kpis'
                   AND constraint_type = 'FOREIGN KEY' AND constraint_name = 'fk_kpi_document'
                 """
             )
             has_fk = cur.fetchone() is not None
             if has_fk:
-                cur.execute("ALTER TABLE kpi_values DROP FOREIGN KEY fk_kpi_document")
-            cur.execute("ALTER TABLE kpi_values DROP INDEX uq_document_kpi")
+                cur.execute("ALTER TABLE kpis DROP FOREIGN KEY fk_kpi_document")
+            cur.execute("ALTER TABLE kpis DROP INDEX uq_document_kpi")
             cur.execute(
-                "ALTER TABLE kpi_values ADD UNIQUE KEY uq_document_tableau_kpi (document_id, tableau, kpi)"
+                "ALTER TABLE kpis ADD UNIQUE KEY uq_document_tableau_kpi (document_id, tableau, kpi)"
             )
             if has_fk:
                 cur.execute(
-                    "ALTER TABLE kpi_values ADD CONSTRAINT fk_kpi_document "
+                    "ALTER TABLE kpis ADD CONSTRAINT fk_kpi_document "
                     "FOREIGN KEY (document_id) REFERENCES documents(id)"
                 )
 
 
 def init_schema(conn):
-    """Crée les tables `sources`, `societes`, `documents` et `kpi_values` si
+    """Crée les tables `sources`, `societes`, `documents` et `kpis` si
     elles n'existent pas, et fait évoluer le schéma existant si besoin."""
     with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
         # Retire les commentaires "-- ..." avant de découper sur ";" : un ";"
@@ -236,10 +236,10 @@ def init_schema(conn):
             statement = statement.strip()
             if statement:
                 cur.execute(statement)
-    _migrate_kpi_values_schema(conn)
+    _migrate_kpis_schema(conn)
     _migrate_documents_schema(conn)
-    _migrate_kpi_values_unique_key(conn)
-    _migrate_tableau_cellules_schema(conn)
+    _migrate_kpis_unique_key(conn)
+    _migrate_tableaux_excel_schema(conn)
 
 
 def get_or_create_source(conn, nom, lien):
@@ -274,17 +274,17 @@ def get_or_create_company(conn, code, nom_entreprise):
         return cur.lastrowid
 
 
-def document_exists(conn, source_id, cmf_id, annee):
+def document_exists(conn, source_id, societe_id, annee):
     with conn.cursor() as cur:
-        if cmf_id is None:
+        if societe_id is None:
             cur.execute(
-                "SELECT id FROM documents WHERE source_id = %s AND cmf_id IS NULL AND annee = %s",
+                "SELECT id FROM documents_pdf WHERE source_id = %s AND societe_id IS NULL AND annee = %s",
                 (source_id, annee),
             )
         else:
             cur.execute(
-                "SELECT id FROM documents WHERE source_id = %s AND cmf_id = %s AND annee = %s",
-                (source_id, cmf_id, annee),
+                "SELECT id FROM documents_pdf WHERE source_id = %s AND societe_id = %s AND annee = %s",
+                (source_id, societe_id, annee),
             )
         return cur.fetchone() is not None
 
@@ -293,49 +293,49 @@ def known_document_liens(conn, source_id):
     """Renvoie l'ensemble des URLs (`lien`) déjà enregistrées pour une
     source — utile quand l'ANNÉE d'un document ne peut être connue
     qu'APRÈS téléchargement (ex: FTUSA, qui la lit dans le contenu du PDF,
-    pas dans l'URL) : `document_exists(source_id, cmf_id, annee)` est alors
+    pas dans l'URL) : `document_exists(source_id, societe_id, annee)` est alors
     inutilisable comme garde-fou AVANT de télécharger. L'URL d'un rapport
     déjà publié reste stable d'une collecte à l'autre, donc un lien déjà
     connu peut être sauté sans le retélécharger (2026-09-09, retour
     utilisateur — la collecte retéléchargeait tous les rapports FTUSA à
     chaque clic, ~9 minutes rien que pour ~10 documents déjà en base)."""
     with conn.cursor() as cur:
-        cur.execute("SELECT lien FROM documents WHERE source_id = %s", (source_id,))
+        cur.execute("SELECT lien FROM documents_pdf WHERE source_id = %s", (source_id,))
         return {row[0] for row in cur.fetchall()}
 
 
-def save_document(conn, source_id, cmf_id, nom_pdf, annee, lien):
+def save_document(conn, source_id, societe_id, nom_pdf, annee, lien):
     """Insère ou met à jour un document. Un SELECT explicite (plutôt qu'un
     ON DUPLICATE KEY) est utilisé car MySQL n'applique pas l'unicité entre
-    plusieurs `cmf_id` NULL (cas des sources sectorielles comme FTUSA)."""
+    plusieurs `societe_id` NULL (cas des sources sectorielles comme FTUSA)."""
     with conn.cursor() as cur:
-        if cmf_id is None:
+        if societe_id is None:
             cur.execute(
-                "SELECT id FROM documents WHERE source_id = %s AND cmf_id IS NULL AND annee = %s",
+                "SELECT id FROM documents_pdf WHERE source_id = %s AND societe_id IS NULL AND annee = %s",
                 (source_id, annee),
             )
         else:
             cur.execute(
-                "SELECT id FROM documents WHERE source_id = %s AND cmf_id = %s AND annee = %s",
-                (source_id, cmf_id, annee),
+                "SELECT id FROM documents_pdf WHERE source_id = %s AND societe_id = %s AND annee = %s",
+                (source_id, societe_id, annee),
             )
         row = cur.fetchone()
         if row:
             cur.execute(
-                "UPDATE documents SET nom_pdf = %s, lien = %s WHERE id = %s",
+                "UPDATE documents_pdf SET nom_pdf = %s, lien = %s WHERE id = %s",
                 (nom_pdf, lien, row[0]),
             )
             return row[0]
         cur.execute(
-            "INSERT INTO documents (source_id, cmf_id, nom_pdf, annee, lien) VALUES (%s, %s, %s, %s, %s)",
-            (source_id, cmf_id, nom_pdf, annee, lien),
+            "INSERT INTO documents_pdf (source_id, societe_id, nom_pdf, annee, lien) VALUES (%s, %s, %s, %s, %s)",
+            (source_id, societe_id, nom_pdf, annee, lien),
         )
         return cur.lastrowid
 
 
-def count_documents(conn, cmf_id):
+def count_documents(conn, societe_id):
     with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM documents WHERE cmf_id = %s", (cmf_id,))
+        cur.execute("SELECT COUNT(*) FROM documents_pdf WHERE societe_id = %s", (societe_id,))
         return cur.fetchone()[0]
 
 
@@ -343,15 +343,15 @@ def list_all_documents(conn):
     """Renvoie tous les documents en base, jointés à leur source et (le cas
     échéant) à leur société :
     [(document_id, source_nom, code, nom_entreprise, nom_pdf, annee, lien), ...].
-    `code`/`nom_entreprise` sont NULL pour les documents d'une source
+    `code`/`nom_entreprise` sont NULL pour les documents_pdf d'une source
     sectorielle sans société associée (ex: FTUSA)."""
     with conn.cursor() as cur:
         cur.execute(
             """
             SELECT d.id, s.nom, c.code, c.nom_entreprise, d.nom_pdf, d.annee, d.lien
-            FROM documents d
+            FROM documents_pdf d
             JOIN sources s ON s.id = d.source_id
-            LEFT JOIN societes c ON c.id = d.cmf_id
+            LEFT JOIN societes c ON c.id = d.societe_id
             ORDER BY s.nom, c.code, d.annee
             """
         )
@@ -360,7 +360,7 @@ def list_all_documents(conn):
 
 def get_document_ids_with_kpi(conn):
     """Renvoie l'ensemble des `document_id` ayant déjà AU MOINS une valeur de
-    KPI enregistrée (`kpi_values`), toutes sources confondues — sert à
+    KPI enregistrée (`kpis`), toutes sources confondues — sert à
     l'extraction KPI incrémentale (extraction/kpi_extraction_pipeline.py) :
     sauter un document déjà traité avec succès plutôt que de le
     retélécharger et le reparser à chaque collecte (2026-09-09, retour
@@ -368,17 +368,17 @@ def get_document_ids_with_kpi(conn):
     à chaque clic, plusieurs dizaines de minutes pour, la plupart du temps,
     0 document réellement nouveau)."""
     with conn.cursor() as cur:
-        cur.execute("SELECT DISTINCT document_id FROM kpi_values")
+        cur.execute("SELECT DISTINCT document_id FROM kpis")
         return {row[0] for row in cur.fetchall()}
 
 
 def get_documents_in_backoff(conn):
     """`document_id` dont la prochaine tentative d'extraction n'est pas encore
-    due (table `documents_echecs`, voir schema.sql) — le rattrapage au
+    due (table `echecs_extraction`, voir schema.sql) — le rattrapage au
     démarrage les saute pour ne pas retélécharger à chaque ouverture un PDF
     qui a déjà échoué."""
     with conn.cursor() as cur:
-        cur.execute("SELECT document_id FROM documents_echecs WHERE prochain_essai > NOW()")
+        cur.execute("SELECT document_id FROM echecs_extraction WHERE prochain_essai > NOW()")
         return {row[0] for row in cur.fetchall()}
 
 
@@ -393,7 +393,7 @@ def record_document_failures(conn, document_ids):
         for document_id in document_ids:
             cur.execute(
                 """
-                INSERT INTO documents_echecs (document_id, nb_tentatives, dernier_essai, prochain_essai)
+                INSERT INTO echecs_extraction (document_id, nb_tentatives, dernier_essai, prochain_essai)
                 VALUES (%s, 1, NOW(), DATE_ADD(NOW(), INTERVAL 1 DAY))
                 ON DUPLICATE KEY UPDATE
                     nb_tentatives = nb_tentatives + 1,
@@ -413,7 +413,7 @@ def clear_document_failures(conn, document_ids):
     if not document_ids:
         return
     with conn.cursor() as cur:
-        cur.executemany("DELETE FROM documents_echecs WHERE document_id = %s", [(i,) for i in document_ids])
+        cur.executemany("DELETE FROM echecs_extraction WHERE document_id = %s", [(i,) for i in document_ids])
     conn.commit()
 
 
@@ -423,7 +423,7 @@ def save_kpi_value(conn, document_id, tableau, kpi, valeur_nombre=None, valeur_t
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO kpi_values (document_id, tableau, kpi, valeur_nombre, valeur_texte)
+            INSERT INTO kpis (document_id, tableau, kpi, valeur_nombre, valeur_texte)
             VALUES (%s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE tableau = VALUES(tableau),
                                     valeur_nombre = VALUES(valeur_nombre),
@@ -437,20 +437,20 @@ def delete_kpi_value(conn, document_id, tableau, kpi):
     """Supprime un KPI calculé en base (utilisé pour invalider un ratio dont les données sources sont incomplètes)."""
     with conn.cursor() as cur:
         cur.execute(
-            "DELETE FROM kpi_values WHERE document_id = %s AND tableau = %s AND kpi = %s",
+            "DELETE FROM kpis WHERE document_id = %s AND tableau = %s AND kpi = %s",
             (document_id, tableau, kpi),
         )
 
 
-def count_kpi_values(conn, document_id):
+def count_kpis(conn, document_id):
     with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM kpi_values WHERE document_id = %s", (document_id,))
+        cur.execute("SELECT COUNT(*) FROM kpis WHERE document_id = %s", (document_id,))
         return cur.fetchone()[0]
 
 
-# ── Pipeline complète par annexe (tableau_cellules / tableau_validations) ──
+# ── Pipeline complète par annexe (tableaux_excel / regles_validations) ──
 # Voir extraction/annexe13_pipeline.py — stocke le tableau COMPLET normalisé
-# et validé, séparé de kpi_values (7 KPI narrow, dashboards existants).
+# et validé, séparé de kpis (7 KPI narrow, dashboards existants).
 
 def save_tableau_result(conn, document_id, tableau, result):
     """Enregistre le résultat complet de `annexe13_pipeline.process_annexe13`
@@ -461,11 +461,11 @@ def save_tableau_result(conn, document_id, tableau, result):
     validation obsolète d'un passage précédent."""
     with conn.cursor() as cur:
         cur.execute(
-            "DELETE FROM tableau_cellules WHERE document_id = %s AND tableau = %s",
+            "DELETE FROM tableaux_excel WHERE document_id = %s AND tableau = %s",
             (document_id, tableau),
         )
         cur.execute(
-            "DELETE FROM tableau_validations WHERE document_id = %s AND tableau = %s",
+            "DELETE FROM regles_validations WHERE document_id = %s AND tableau = %s",
             (document_id, tableau),
         )
         # Position gauche->droite de chaque colonne telle qu'elle apparaît
@@ -487,7 +487,7 @@ def save_tableau_result(conn, document_id, tableau, result):
             # qu'un crash sur une contrainte d'unicité.
             cur.executemany(
                 """
-                INSERT INTO tableau_cellules (document_id, tableau, ligne, colonne, colonne_ordre, valeur)
+                INSERT INTO tableaux_excel (document_id, tableau, ligne, colonne, colonne_ordre, valeur)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE valeur = VALUES(valeur), colonne_ordre = VALUES(colonne_ordre)
                 """,
@@ -501,7 +501,7 @@ def save_tableau_result(conn, document_id, tableau, result):
         if validation_rows:
             cur.executemany(
                 """
-                INSERT INTO tableau_validations
+                INSERT INTO regles_validations
                     (document_id, tableau, regle_code, regle, colonne, attendu, trouve, ecart, statut)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE attendu = VALUES(attendu), trouve = VALUES(trouve),
@@ -512,7 +512,7 @@ def save_tableau_result(conn, document_id, tableau, result):
     conn.commit()
 
 
-def get_tableau_cellules(conn, document_ids, tableau):
+def get_tableaux_excel(conn, document_ids, tableau):
     """Cellules stockées pour un ensemble de documents et une annexe donnée —
     renvoie [(document_id, ligne, colonne, valeur), ...], colonnes triées
     selon leur ORDRE PHYSIQUE réel dans le tableau source (colonne_ordre) —
@@ -525,7 +525,7 @@ def get_tableau_cellules(conn, document_ids, tableau):
         cur.execute(
             f"""
             SELECT document_id, ligne, colonne, valeur
-            FROM tableau_cellules
+            FROM tableaux_excel
             WHERE tableau = %s AND document_id IN ({placeholders})
             ORDER BY colonne_ordre
             """,
@@ -534,8 +534,8 @@ def get_tableau_cellules(conn, document_ids, tableau):
         return cur.fetchall()
 
 
-# ── Cache de repérage de page (tableau_pages) ───────────────────────────────
-# Voir schema.sql::tableau_pages — évite de refaire le repérage complet
+# ── Cache de repérage de page (num_page_tableau) ───────────────────────────────
+# Voir schema.sql::num_page_tableau — évite de refaire le repérage complet
 # (camelot inclus, plusieurs secondes) à chaque ouverture de la page de
 # correction manuelle pour un document déjà consulté.
 
@@ -549,7 +549,7 @@ def get_cached_tableau_page(conn, document_id, tableau):
     base), sous peine de re-scanner en vain à chaque appel."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT page FROM tableau_pages WHERE document_id = %s AND tableau = %s",
+            "SELECT page FROM num_page_tableau WHERE document_id = %s AND tableau = %s",
             (document_id, tableau),
         )
         row = cur.fetchone()
@@ -562,7 +562,7 @@ def save_cached_tableau_page(conn, document_id, tableau, page):
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO tableau_pages (document_id, tableau, page)
+            INSERT INTO num_page_tableau (document_id, tableau, page)
             VALUES (%s, %s, %s)
             ON DUPLICATE KEY UPDATE page = VALUES(page)
             """,
@@ -571,9 +571,9 @@ def save_cached_tableau_page(conn, document_id, tableau, page):
     conn.commit()
 
 
-# ── Corrections manuelles (tableau_corrections + mutation de tableau_cellules) ──
-# Voir schema.sql::tableau_corrections. Chaque correction est appliquée
-# directement sur tableau_cellules (source de vérité servie par
+# ── Corrections manuelles (corrections_manuelles + mutation de tableaux_excel) ──
+# Voir schema.sql::corrections_manuelles. Chaque correction est appliquée
+# directement sur tableaux_excel (source de vérité servie par
 # get_document_grid/l'export Excel/le repérage de page) ET journalisée pour
 # garder une trace de qui a corrigé quoi et quand, indépendamment de la
 # mutation elle-même.
@@ -611,7 +611,7 @@ def _parse_correction_valeur(brut):
 
 def _propagate_correction_to_kpi(cur, document_id, kpi_raw_labels, ancienne_valeur, nouvelle_valeur):
     """Après une correction de VALEUR, répercute le même changement dans
-    kpi_values si un KPI y correspond de façon NON AMBIGUË — par VALEUR,
+    kpis si un KPI y correspond de façon NON AMBIGUË — par VALEUR,
     pas par nom : `kpi_definitions.py::SOURCE_PAR_KPI` (qui associe un nom
     de KPI à une ligne/colonne) n'est PAS garanti synchronisé avec la vraie
     extraction (son propre commentaire le dit), donc pas fiable pour une
@@ -627,12 +627,12 @@ def _propagate_correction_to_kpi(cur, document_id, kpi_raw_labels, ancienne_vale
         return
     placeholders = ",".join(["%s"] * len(kpi_raw_labels))
     cur.execute(
-        f"SELECT id, valeur_nombre FROM kpi_values WHERE document_id=%s AND tableau IN ({placeholders})",
+        f"SELECT id, valeur_nombre FROM kpis WHERE document_id=%s AND tableau IN ({placeholders})",
         [document_id] + list(kpi_raw_labels),
     )
     matches = [r for r in cur.fetchall() if r[1] is not None and abs(r[1] - ancienne_valeur) < 0.5]
     if len(matches) == 1:
-        cur.execute("UPDATE kpi_values SET valeur_nombre=%s WHERE id=%s", (nouvelle_valeur, matches[0][0]))
+        cur.execute("UPDATE kpis SET valeur_nombre=%s WHERE id=%s", (nouvelle_valeur, matches[0][0]))
 
 
 def apply_manual_corrections(conn, document_id, tableau, corrections, kpi_raw_labels=None):
@@ -647,7 +647,7 @@ def apply_manual_corrections(conn, document_id, tableau, corrections, kpi_raw_la
     français prêt pour l'utilisateur) si une correction est invalide ; ne
     modifie rien dans ce cas (rollback). `kpi_raw_labels` (voir
     data_management.py::kpi_raw_labels_for) active la propagation vers
-    kpi_values pour les corrections de valeur — voir
+    kpis pour les corrections de valeur — voir
     `_propagate_correction_to_kpi`."""
     try:
         with conn.cursor() as cur:
@@ -656,7 +656,7 @@ def apply_manual_corrections(conn, document_id, tableau, corrections, kpi_raw_la
                 if kind == "valeur":
                     nouvelle = _parse_correction_valeur(c["nouvelle"])
                     cur.execute(
-                        "SELECT valeur FROM tableau_cellules WHERE document_id=%s AND tableau=%s AND ligne=%s AND colonne=%s",
+                        "SELECT valeur FROM tableaux_excel WHERE document_id=%s AND tableau=%s AND ligne=%s AND colonne=%s",
                         (document_id, tableau, c["ligne"], c["colonne"]),
                     )
                     row = cur.fetchone()
@@ -670,12 +670,12 @@ def apply_manual_corrections(conn, document_id, tableau, corrections, kpi_raw_la
                         # (retour utilisateur direct, 2026-09-21 : saisir une
                         # valeur dans une case « — » échouait avec « introuvable »).
                         cur.execute(
-                            "SELECT colonne_ordre FROM tableau_cellules WHERE document_id=%s AND tableau=%s AND colonne=%s LIMIT 1",
+                            "SELECT colonne_ordre FROM tableaux_excel WHERE document_id=%s AND tableau=%s AND colonne=%s LIMIT 1",
                             (document_id, tableau, c["colonne"]),
                         )
                         col_row = cur.fetchone()
                         cur.execute(
-                            "SELECT 1 FROM tableau_cellules WHERE document_id=%s AND tableau=%s AND ligne=%s LIMIT 1",
+                            "SELECT 1 FROM tableaux_excel WHERE document_id=%s AND tableau=%s AND ligne=%s LIMIT 1",
                             (document_id, tableau, c["ligne"]),
                         )
                         ligne_row = cur.fetchone()
@@ -683,19 +683,19 @@ def apply_manual_corrections(conn, document_id, tableau, corrections, kpi_raw_la
                             raise CorrectionError(f"Cellule « {c['ligne']} / {c['colonne']} » introuvable — a-t-elle changé depuis le chargement de la page ?")
                         ancienne = None
                         cur.execute(
-                            """INSERT INTO tableau_cellules (document_id, tableau, ligne, colonne, colonne_ordre, valeur)
+                            """INSERT INTO tableaux_excel (document_id, tableau, ligne, colonne, colonne_ordre, valeur)
                                VALUES (%s, %s, %s, %s, %s, %s)""",
                             (document_id, tableau, c["ligne"], c["colonne"], col_row[0], nouvelle),
                         )
                     else:
                         ancienne = row[0]
                         cur.execute(
-                            "UPDATE tableau_cellules SET valeur=%s WHERE document_id=%s AND tableau=%s AND ligne=%s AND colonne=%s",
+                            "UPDATE tableaux_excel SET valeur=%s WHERE document_id=%s AND tableau=%s AND ligne=%s AND colonne=%s",
                             (nouvelle, document_id, tableau, c["ligne"], c["colonne"]),
                         )
                     _propagate_correction_to_kpi(cur, document_id, kpi_raw_labels, ancienne, nouvelle)
                     cur.execute(
-                        """INSERT INTO tableau_corrections
+                        """INSERT INTO corrections_manuelles
                            (document_id, tableau, kind, ligne, colonne, ancienne_valeur, nouvelle_valeur)
                            VALUES (%s, %s, 'valeur', %s, %s, %s, %s)""",
                         (document_id, tableau, c["ligne"], c["colonne"],
@@ -710,7 +710,7 @@ def apply_manual_corrections(conn, document_id, tableau, corrections, kpi_raw_la
                         continue
                     try:
                         cur.execute(
-                            f"UPDATE tableau_cellules SET {kind}=%s WHERE document_id=%s AND tableau=%s AND {kind}=%s",
+                            f"UPDATE tableaux_excel SET {kind}=%s WHERE document_id=%s AND tableau=%s AND {kind}=%s",
                             (nouveau_nom, document_id, tableau, ancien_nom),
                         )
                     except pymysql.err.IntegrityError:
@@ -722,15 +722,15 @@ def apply_manual_corrections(conn, document_id, tableau, corrections, kpi_raw_la
                     if cur.rowcount == 0:
                         raise CorrectionError(f"« {ancien_nom} » introuvable — a-t-il changé depuis le chargement de la page ?")
                     if kind == "colonne":
-                        # Les validations (tableau_validations.colonne) référencent
+                        # Les validations (regles_validations.colonne) référencent
                         # le même libellé de colonne — les renommer aussi évite un
                         # nom incohérent avec la grille corrigée à l'affichage.
                         cur.execute(
-                            "UPDATE tableau_validations SET colonne=%s WHERE document_id=%s AND tableau=%s AND colonne=%s",
+                            "UPDATE regles_validations SET colonne=%s WHERE document_id=%s AND tableau=%s AND colonne=%s",
                             (nouveau_nom, document_id, tableau, ancien_nom),
                         )
                     cur.execute(
-                        f"""INSERT INTO tableau_corrections
+                        f"""INSERT INTO corrections_manuelles
                            (document_id, tableau, kind, {kind}, ancienne_valeur, nouvelle_valeur)
                            VALUES (%s, %s, %s, %s, %s, %s)""",
                         (document_id, tableau, kind, ancien_nom, ancien_nom, nouveau_nom),
@@ -749,7 +749,7 @@ def get_tableau_validation_summary(conn, document_id, tableau):
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT statut, COUNT(*) FROM tableau_validations
+            SELECT statut, COUNT(*) FROM regles_validations
             WHERE document_id = %s AND tableau = %s
             GROUP BY statut
             """,
@@ -835,7 +835,7 @@ def get_quality_score_history(conn, annee=None, limit=90):
     return list(reversed(history))
 
 
-def get_kpi_values_for_document(conn, document_id, exclude_tableaux=None):
+def get_kpis_for_document(conn, document_id, exclude_tableaux=None):
     """Renvoie {kpi: valeur_nombre|valeur_texte} pour un document (les KPI
     numériques et textuels sont fusionnés dans le même dict, chaque KPI
     n'ayant jamais les deux à la fois).
@@ -868,13 +868,13 @@ def get_kpi_values_for_document(conn, document_id, exclude_tableaux=None):
         if exclude_tableaux:
             placeholders = ", ".join(["%s"] * len(exclude_tableaux))
             cur.execute(
-                f"SELECT kpi, valeur_nombre, valeur_texte FROM kpi_values "
+                f"SELECT kpi, valeur_nombre, valeur_texte FROM kpis "
                 f"WHERE document_id = %s AND tableau NOT IN ({placeholders})",
                 (document_id, *exclude_tableaux),
             )
         else:
             cur.execute(
-                "SELECT kpi, valeur_nombre, valeur_texte FROM kpi_values WHERE document_id = %s",
+                "SELECT kpi, valeur_nombre, valeur_texte FROM kpis WHERE document_id = %s",
                 (document_id,),
             )
         return {kpi: (nombre if nombre is not None else texte) for kpi, nombre, texte in cur.fetchall()}
@@ -886,9 +886,9 @@ def get_document_meta(conn, code, annee):
         cur.execute(
             """
             SELECT d.nom_pdf, d.lien
-            FROM documents d
+            FROM documents_pdf d
             JOIN sources s ON s.id = d.source_id
-            JOIN societes c ON c.id = d.cmf_id
+            JOIN societes c ON c.id = d.societe_id
             WHERE s.nom = 'CMF' AND c.code = %s AND d.annee = %s
             LIMIT 1
             """,
@@ -906,9 +906,9 @@ def get_document_id(conn, code, annee):
         cur.execute(
             """
             SELECT d.id
-            FROM documents d
+            FROM documents_pdf d
             JOIN sources s ON s.id = d.source_id
-            JOIN societes c ON c.id = d.cmf_id
+            JOIN societes c ON c.id = d.societe_id
             WHERE s.nom = 'CMF' AND c.code = %s AND d.annee = %s
             LIMIT 1
             """,
@@ -919,15 +919,15 @@ def get_document_id(conn, code, annee):
 
 
 def list_documents_by_source(conn, source_nom):
-    """Renvoie [(document_id, cmf_id, code, annee), ...] pour tous les
-    documents d'une source donnée (ex: "FTUSA", "CGA", "INS")."""
+    """Renvoie [(document_id, societe_id, code, annee), ...] pour tous les
+    documents_pdf d'une source donnée (ex: "FTUSA", "CGA", "INS")."""
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT d.id, d.cmf_id, c.code, d.annee
-            FROM documents d
+            SELECT d.id, d.societe_id, c.code, d.annee
+            FROM documents_pdf d
             JOIN sources s ON s.id = d.source_id
-            LEFT JOIN societes c ON c.id = d.cmf_id
+            LEFT JOIN societes c ON c.id = d.societe_id
             WHERE s.nom = %s
             ORDER BY d.annee
             """,
@@ -946,7 +946,7 @@ def get_available_years(conn, source_nom: str) -> list[int]:
         cur.execute(
             """
             SELECT DISTINCT d.annee
-            FROM documents d
+            FROM documents_pdf d
             JOIN sources s ON s.id = d.source_id
             WHERE s.nom = %s
             ORDER BY d.annee DESC
@@ -977,7 +977,7 @@ def _belongs_to_company_or_global(kpi_name, code):
     """True si `kpi_name` est soit un KPI global (aucun des préfixes
     éclatés par compagnie), soit spécifique à `code`. Sert à filtrer les
     KPI CGA par compagnie, qui vivent tous sous des documents sectoriels
-    (cmf_id NULL) et ne peuvent donc pas être filtrés par société via une
+    (societe_id NULL) et ne peuvent donc pas être filtrés par société via une
     jointure SQL."""
     for prefix in _PER_COMPANY_KPI_PREFIXES:
         if kpi_name.startswith(prefix):
@@ -986,23 +986,23 @@ def _belongs_to_company_or_global(kpi_name, code):
     return True
 
 
-def get_kpi_values_by_use_case(conn, use_case, annee=None, code=None):
+def get_kpis_by_use_case(conn, use_case, annee=None, code=None):
     """Renvoie les valeurs de KPI d'un use case (voir
     config.kpi_registry.KPI_REGISTRY), sous forme de
     [(source, code, annee, kpi, valeur_nombre, valeur_texte), ...].
 
-    `kpi_values` reste la seule source stockée : ceci ne fait qu'un filtre
+    `kpis` reste la seule source stockée : ceci ne fait qu'un filtre
     au moment de la requête, pas une duplication par use case. Un nom de
     KPI du registre sans suffixe (ex: "Nombre d'agences par assureur")
     retrouve aussi ses variantes éclatées par entité (ex: "... - STAR"),
     via une recherche par préfixe en plus de l'égalité exacte.
 
-    `code` filtre sur la société. Les documents sectoriels (cmf_id NULL,
+    `code` filtre sur la société. Les documents sectoriels (societe_id NULL,
     ex: FTUSA/INS/CGA) restent inclus pour leurs KPI globaux (ex: Total
     Primes émises), mais leurs KPI éclatés par compagnie (ex: CGA "Nombre
     d'agences par assureur - COMAR") sont exclus s'ils ne correspondent pas
     à `code` — voir _belongs_to_company_or_global (un filtre SQL simple sur
-    cmf_id ne suffit pas, ces KPI vivent sous des documents sectoriels)."""
+    societe_id ne suffit pas, ces KPI vivent sous des documents sectoriels)."""
     from config.kpi_registry import KPI_REGISTRY
 
     names = KPI_REGISTRY[use_case]
@@ -1014,17 +1014,17 @@ def get_kpi_values_by_use_case(conn, use_case, annee=None, code=None):
 
     query = f"""
         SELECT s.nom, c.code, d.annee, k.kpi, k.valeur_nombre, k.valeur_texte
-        FROM kpi_values k
-        JOIN documents d ON d.id = k.document_id
+        FROM kpis k
+        JOIN documents_pdf d ON d.id = k.document_id
         JOIN sources s ON s.id = d.source_id
-        LEFT JOIN societes c ON c.id = d.cmf_id
+        LEFT JOIN societes c ON c.id = d.societe_id
         WHERE ({" OR ".join(name_clauses)})
     """
     if annee is not None:
         query += " AND d.annee = %s"
         params.append(annee)
     if code is not None:
-        query += " AND (c.code = %s OR d.cmf_id IS NULL)"
+        query += " AND (c.code = %s OR d.societe_id IS NULL)"
         params.append(code)
     query += " ORDER BY d.annee, c.code, k.kpi"
 
@@ -1090,7 +1090,7 @@ def diff_and_mark_actualites(conn, items):
     """Reçoit la liste d'actualités fraîchement scrapée (dicts avec 'url',
     'titre', 'src', 'date'), renvoie le sous-ensemble jamais vu auparavant
     (clé = url), et persiste TOUS les items (nouveaux et déjà connus) dans
-    actualites_vues. Appelé uniquement par pipelines/run_pipeline.py -
+    veille_actualites. Appelé uniquement par pipelines/run_pipeline.py -
     /api/actualites reste un scrape live inchangé, cette table ne sert qu'à
     détecter les nouveautés pour la cloche de notification.
 
@@ -1099,7 +1099,7 @@ def diff_and_mark_actualites(conn, items):
     ce qui noierait l'utilisateur sous une notification "50 actualités"
     dès le premier lancement du pipeline après ce déploiement."""
     with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM actualites_vues")
+        cur.execute("SELECT COUNT(*) FROM veille_actualites")
         first_run = cur.fetchone()[0] == 0
 
     nouveaux = []
@@ -1108,12 +1108,12 @@ def diff_and_mark_actualites(conn, items):
             url = it.get("url")
             if not url:
                 continue
-            cur.execute("SELECT id FROM actualites_vues WHERE url = %s", (url,))
+            cur.execute("SELECT id FROM veille_actualites WHERE url = %s", (url,))
             if cur.fetchone() is None and not first_run:
                 nouveaux.append(it)
             cur.execute(
                 """
-                INSERT IGNORE INTO actualites_vues (url, titre, src, date_publication)
+                INSERT IGNORE INTO veille_actualites (url, titre, src, date_publication)
                 VALUES (%s, %s, %s, %s)
                 """,
                 (url, (it.get("titre") or "")[:500], it.get("src") or "?", it.get("date")),
@@ -1123,10 +1123,10 @@ def diff_and_mark_actualites(conn, items):
 
 def diff_and_mark_reglementation(conn, items):
     """Équivalent de diff_and_mark_actualites pour la veille réglementaire
-    (table reglementation_vues, clé = id/url du texte source). Même garde
+    (table veille_reglementaire, clé = id/url du texte source). Même garde
     contre l'avalanche de notifications au premier passage."""
     with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM reglementation_vues")
+        cur.execute("SELECT COUNT(*) FROM veille_reglementaire")
         first_run = cur.fetchone()[0] == 0
 
     nouveaux = []
@@ -1135,12 +1135,12 @@ def diff_and_mark_reglementation(conn, items):
             doc_key = it.get("id") or it.get("url")
             if not doc_key:
                 continue
-            cur.execute("SELECT id FROM reglementation_vues WHERE doc_key = %s", (doc_key,))
+            cur.execute("SELECT id FROM veille_reglementaire WHERE doc_key = %s", (doc_key,))
             if cur.fetchone() is None and not first_run:
                 nouveaux.append(it)
             cur.execute(
                 """
-                INSERT IGNORE INTO reglementation_vues (doc_key, titre, src, url)
+                INSERT IGNORE INTO veille_reglementaire (doc_key, titre, src, url)
                 VALUES (%s, %s, %s, %s)
                 """,
                 (doc_key, (it.get("titre") or "")[:500], it.get("src") or "?", it.get("url")),

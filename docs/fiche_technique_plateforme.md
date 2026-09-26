@@ -235,7 +235,7 @@ Pas de notion de société ni de PDF ici : chaque enregistrement est une valeur 
 | `_build_veille` | Agrège les 4 sources réglementaires en parallèle (`ThreadPoolExecutor`) |
 | `sync_new_items` | Point d'entrée : re-scrape à froid + diff contre la base (appelé uniquement par le pipeline, jamais par une route HTTP) |
 
-**Deux mécanismes distincts, à ne pas confondre** : un **cache mémoire** (`_SCRAPE_CACHE`, 1h) sert les routes HTTP live (`/api/actualites`) pour éviter de re-scraper à chaque visite ; la **détection de nouveauté** (`diff_and_mark_actualites`/`diff_and_mark_reglementation`, tables `actualites_vues`/`reglementation_vues`) sert uniquement les notifications, et re-scrape toujours à froid.
+**Deux mécanismes distincts, à ne pas confondre** : un **cache mémoire** (`_SCRAPE_CACHE`, 1h) sert les routes HTTP live (`/api/actualites`) pour éviter de re-scraper à chaque visite ; la **détection de nouveauté** (`diff_and_mark_actualites`/`diff_and_mark_reglementation`, tables `veille_actualites`/`veille_reglementaire`) sert uniquement les notifications, et re-scrape toujours à froid.
 
 ### À savoir par source
 
@@ -277,7 +277,7 @@ Pas de notion de société ni de PDF ici : chaque enregistrement est une valeur 
 
 ![Schéma des tables de la base de données](diagrams/database_schema.png)
 
-**8 tables, 3 familles** : le référentiel (`sources`, `societes`), les données collectées (`documents`, `kpi_values`), et le suivi/qualité (`anomalies_detectees`, `notifications`, `actualites_vues`, `reglementation_vues`).
+**8 tables, 3 familles** : le référentiel (`sources`, `societes`), les données collectées (`documents`, `kpis`), et le suivi/qualité (`anomalies_detectees`, `notifications`, `veille_actualites`, `veille_reglementaire`).
 
 ### Migrations idempotentes
 

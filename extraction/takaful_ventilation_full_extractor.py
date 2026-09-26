@@ -6,7 +6,7 @@ Général (colonnes = branches d'assurance + Total à la fin). Source du KPI
 narrow existant "Charges de prestations"/"Charges d'acquisition et de
 gestion nettes"/contributions par branche (voir extraction/
 takaful_kpi_extractor.py::_extract_ventilation_charges_kpis et
-extract_branches_ventilation_kpis). Stockée dans `tableau_cellules` sous
+extract_branches_ventilation_kpis). Stockée dans `tableaux_excel` sous
 'takaful_ventilation_familial'/'takaful_ventilation_general'.
 
 Aucune ligne ne porte de code réglementaire ici (contrairement aux

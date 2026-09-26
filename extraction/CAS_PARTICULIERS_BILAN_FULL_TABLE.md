@@ -55,7 +55,7 @@ sessions (voir CAS_PARTICULIERS_FULL_TABLE.md) sera nécessaire ici aussi
 avant une couverture large et fiable. Pas de pipeline `process_bilan_*`
 ni de branchement `tableau_pipeline_service`/route API encore écrit — le
 module d'extraction est la première brique, pas encore connecté au
-stockage `tableau_cellules` ni à l'UI.
+stockage `tableaux_excel` ni à l'UI.
 
 **Prochaines étapes suggérées** : (1) lister les codes de section réels
 observés par société (comme AC1..AC7 ne sont pas garantis universels —
@@ -245,8 +245,8 @@ et les allow-lists de `locate_source_page`/`page_source_info`). Deux
 onglets distincts côté Correction manuelle ("Bilan Actif" / "Bilan
 Passif") plutôt qu'un seul "Bilan (Actif/Passif)".
 
-Anciennes lignes `tableau='bilan'` purgées de `tableau_cellules` /
-`tableau_validations` / `tableau_pages`, ré-extraction complète relancée
+Anciennes lignes `tableau='bilan'` purgées de `tableaux_excel` /
+`regles_validations` / `num_page_tableau`, ré-extraction complète relancée
 sur les 223 documents CMF : 158 "ok" (Actif ET Passif trouvés), 13
 "partiel" (un seul côté), 46 page introuvable, 6 PDF absent — même
 couverture globale qu'avant (171/223), juste correctement scindée.
@@ -363,7 +363,7 @@ attribué, `current_section` n'ayant jamais été ouverte), ce qui casse
 l'identité Σ sections = Total pour CES pages précises (constaté STAR
 2025 Actif : écart important, seule la section AC3 correctement identifiée
 sur les 6 attendues). Comme pour la voie OCR d'Annexe 13, la grille est
-LIVRÉE avec ses écarts VISIBLES (`tableau_validations`, statut "ecart")
+LIVRÉE avec ses écarts VISIBLES (`regles_validations`, statut "ecart")
 plutôt que rejetée en silence — mêmes limites de qualité OCR déjà
 acceptées ailleurs, pas une régression de cette session.
 

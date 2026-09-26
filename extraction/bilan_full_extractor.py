@@ -1,6 +1,6 @@
 """Extraction PLEINE GRILLE du Bilan Actif/Passif (par opposition à
 bilan_kpi_extractor.py, qui n'extrait que quelques KPI ciblés) — pour le
-stockage tableau_cellules / la page de correction manuelle, comme
+stockage tableaux_excel / la page de correction manuelle, comme
 Annexe 12/13 (extraction/annexe13_pipeline.py, full_table_extractor.py).
 
 Réutilise les primitives de reconstruction de ligne déjà éprouvées de

@@ -6,12 +6,12 @@
 --                 son ancien nom historique de l'époque où seul le portail CMF
 --                 était scrapé) pour ne pas la confondre avec la source "CMF"
 --                 de la table `sources` — elle sert à toutes les sources, pas
---                 seulement à CMF. La colonne `cmf_id` (FK vers cette table)
+--                 seulement à CMF. La colonne `societe_id` (FK vers cette table)
 --                 garde son nom : c'est un identifiant de colonne courant,
 --                 sans ambiguïté avec la source CMF.
 -- `documents`   : une ligne par document (état financier annuel, rapport
 --                 sectoriel...) trouvé pour une source.
--- `kpi_values`  : une ligne par KPI extrait d'un document (Bilan, Annexe 12, Annexe 13...).
+-- `kpis`  : une ligne par KPI extrait d'un document (Bilan, Annexe 12, Annexe 13...).
 
 CREATE TABLE IF NOT EXISTS sources (
     id   INT AUTO_INCREMENT PRIMARY KEY,
@@ -25,26 +25,26 @@ CREATE TABLE IF NOT EXISTS societes (
     nom_entreprise VARCHAR(255) NOT NULL            -- nom exact tel qu'affiché sur le portail CMF
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- cmf_id est NULL pour les documents d'une source sectorielle (ex: FTUSA), qui
+-- societe_id est NULL pour les documents_pdf d'une source sectorielle (ex: FTUSA), qui
 -- n'est pas rattachée à une société individuelle. source_id identifie
 -- toujours l'origine du document, quelle que soit la source.
 CREATE TABLE IF NOT EXISTS documents (
     id           INT AUTO_INCREMENT PRIMARY KEY,
     source_id    INT NOT NULL,
-    cmf_id       INT NULL,
+    societe_id       INT NULL,
     nom_pdf      VARCHAR(255) NOT NULL,             -- ex: STAR_2020.pdf
     annee        SMALLINT NOT NULL,
     lien         VARCHAR(500) NOT NULL,             -- URL du PDF sur le site source
     date_ajout   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_document_source_cmf_annee (source_id, cmf_id, annee),
+    UNIQUE KEY uq_document_source_cmf_annee (source_id, societe_id, annee),
     CONSTRAINT fk_documents_source FOREIGN KEY (source_id) REFERENCES sources(id),
-    CONSTRAINT fk_documents_cmf FOREIGN KEY (cmf_id) REFERENCES societes(id)
+    CONSTRAINT fk_documents_cmf FOREIGN KEY (societe_id) REFERENCES societes(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- valeur_nombre / valeur_texte : un seul des deux est renseigné par KPI.
 -- Les KPI numériques (Total actif, Effectif...) utilisent valeur_nombre.
 -- Les KPI textuels (Date de création, Siège social...) utilisent valeur_texte.
-CREATE TABLE IF NOT EXISTS kpi_values (
+CREATE TABLE IF NOT EXISTS kpis (
     id            INT AUTO_INCREMENT PRIMARY KEY,
     document_id   INT NOT NULL,
     tableau       VARCHAR(255) NOT NULL,   -- ex: "Bilan au 31-12-2022", "Annexe 12 - Resultat technique Vie"
@@ -104,31 +104,31 @@ CREATE TABLE IF NOT EXISTS notifications (
 -- pipelines/run_pipeline.py::_run_veille() a chaque execution planifiee -
 -- jamais ecrites depuis une route HTTP (les endpoints /api/actualites et
 -- /api/veille-reglementaire restent des scrapes live, inchanges).
-CREATE TABLE IF NOT EXISTS actualites_vues (
+CREATE TABLE IF NOT EXISTS veille_actualites (
     id                INT AUTO_INCREMENT PRIMARY KEY,
     url               VARCHAR(500) NOT NULL,
     titre             VARCHAR(500) NOT NULL,
     src               VARCHAR(50)  NOT NULL,
     date_publication  VARCHAR(20)  NULL,
     date_ajout        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_actualites_vues_url (url),
-    INDEX idx_actualites_vues_date (date_ajout)
+    UNIQUE KEY uq_veille_actualites_url (url),
+    INDEX idx_veille_actualites_date (date_ajout)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Pipeline complète par annexe (Phase 1, 2026-09-08 — voir
--- extraction/annexe13_pipeline.py) : contrairement à kpi_values (7 KPI par
+-- extraction/annexe13_pipeline.py) : contrairement à kpis (7 KPI par
 -- tableau, alimente les dashboards existants), ces 2 tables stockent le
 -- tableau COMPLET (toutes lignes normalisées x toutes colonnes/branches
 -- réelles) une fois validé par les règles métier — pour la page "Gestion de
 -- données" (export flexible rapide, sans re-parser le PDF à chaque
--- requête). Séparées de kpi_values : ne remplacent PAS le pipeline narrow
+-- requête). Séparées de kpis : ne remplacent PAS le pipeline narrow
 -- existant (dashboards non touchés en Phase 1).
 -- colonne_ordre : position gauche->droite de la colonne TELLE QU'ELLE
 -- APPARAIT DANS LE PDF (0, 1, 2...) — un SELECT sans ORDER BY explicite ne
 -- garantit aucun ordre (constaté : MySQL scannait via l'index unique,
 -- donc triait les colonnes ALPHABETIQUEMENT — "Transport" après "Total").
 -- Colonne indispensable pour restituer l'ordre physique reel du tableau.
-CREATE TABLE IF NOT EXISTS tableau_cellules (
+CREATE TABLE IF NOT EXISTS tableaux_excel (
     id            INT AUTO_INCREMENT PRIMARY KEY,
     document_id   INT NOT NULL,
     tableau       VARCHAR(50)  NOT NULL,   -- ex: 'annexe13', 'bilan_actif'/'bilan_passif', 'ftusa_branche'/'cga_agences' (documents sans societe -- voir tableau_pipeline_service_ftusa.py/_cga.py), 'takaful_surplus_familial'/'takaful_surplus_general' (Annexes 3/4 Takaful -- voir tableau_pipeline_service_takaful_surplus.py), 'takaful_resultat_entreprise' (Annexe 5.1 Takaful -- voir tableau_pipeline_service_takaful_resultat.py), 'takaful_ventilation_familial'/'takaful_ventilation_general' (Annexes 14/15 Takaful -- voir tableau_pipeline_service_takaful_ventilation.py)
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS tableau_cellules (
     valeur        DOUBLE NULL,
     date_ajout    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_tableau_cellule (document_id, tableau, ligne, colonne),
-    CONSTRAINT fk_tableau_cellules_document FOREIGN KEY (document_id) REFERENCES documents(id)
+    CONSTRAINT fk_tableaux_excel_document FOREIGN KEY (document_id) REFERENCES documents(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Resultat de chaque regle de validation (identite comptable) appliquee lors
@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS tableau_cellules (
 -- combine aux autres colonnes de la cle depassait la limite de taille
 -- d'index InnoDB (erreur 1005/150 a la creation) ; le texte complet reste
 -- disponible dans `regle` pour l'affichage, non indexe.
-CREATE TABLE IF NOT EXISTS tableau_validations (
+CREATE TABLE IF NOT EXISTS regles_validations (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     document_id INT NOT NULL,
     tableau     VARCHAR(50)  NOT NULL,
@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS tableau_validations (
     statut      VARCHAR(20)  NOT NULL,   -- 'ok' | 'ecart' | 'donnees_manquantes'
     date_ajout  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_tableau_validation (document_id, tableau, regle_code, colonne),
-    CONSTRAINT fk_tableau_validations_document FOREIGN KEY (document_id) REFERENCES documents(id)
+    CONSTRAINT fk_regles_validations_document FOREIGN KEY (document_id) REFERENCES documents(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Cache du numero de page PDF ou se trouve un tableau (annexe12/annexe13),
@@ -173,13 +173,13 @@ CREATE TABLE IF NOT EXISTS tableau_validations (
 -- demande (voir api/services/data_management.py::locate_source_page) via
 -- exactement la meme logique que l'extraction, puis conserve ici une bonne
 -- fois pour toutes : un document deja publie ne change pas de pagination.
-CREATE TABLE IF NOT EXISTS tableau_pages (
+CREATE TABLE IF NOT EXISTS num_page_tableau (
     document_id INT NOT NULL,
     tableau     VARCHAR(50) NOT NULL,
     page        INT NULL,   -- NULL = repere comme "non trouvee" (evite de re-scanner en vain)
     date_ajout  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (document_id, tableau),
-    CONSTRAINT fk_tableau_pages_document FOREIGN KEY (document_id) REFERENCES documents(id)
+    CONSTRAINT fk_num_page_tableau_document FOREIGN KEY (document_id) REFERENCES documents(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Memoire des documents dont l'extraction KPI n'a rien donne (echec de
@@ -191,22 +191,22 @@ CREATE TABLE IF NOT EXISTS tableau_pages (
 -- puis 30 j) : le rattrapage au demarrage saute les documents dont
 -- prochain_essai est dans le futur ; une collecte lancee a la main les
 -- retente toujours (demande explicite de l'utilisateur).
-CREATE TABLE IF NOT EXISTS documents_echecs (
+CREATE TABLE IF NOT EXISTS echecs_extraction (
     document_id    INT NOT NULL PRIMARY KEY,
     nb_tentatives  INT NOT NULL DEFAULT 1,
     dernier_essai  DATETIME NOT NULL,
     prochain_essai DATETIME NOT NULL,
-    CONSTRAINT fk_documents_echecs_document FOREIGN KEY (document_id) REFERENCES documents(id)
+    CONSTRAINT fk_echecs_extraction_document FOREIGN KEY (document_id) REFERENCES documents(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Historique des corrections manuelles apportees depuis la page Correction
 -- manuelle (bouton "Enregistrer tout") -- journal d'audit APPEND-ONLY, ne
 -- remplace jamais la ligne precedente : sert a savoir qui a corrige quoi et
--- quand, independamment de la mutation reelle appliquee a tableau_cellules.
+-- quand, independamment de la mutation reelle appliquee a tableaux_excel.
 -- 'kind' = 'valeur' (une cellule), 'ligne' (renommage d'un libelle de ligne,
 -- s'applique a toutes les cellules de ce document/tableau portant cette
 -- ligne) ou 'colonne' (idem pour une branche/colonne).
-CREATE TABLE IF NOT EXISTS tableau_corrections (
+CREATE TABLE IF NOT EXISTS corrections_manuelles (
     id              INT AUTO_INCREMENT PRIMARY KEY,
     document_id     INT NOT NULL,
     tableau         VARCHAR(50) NOT NULL,
@@ -216,16 +216,16 @@ CREATE TABLE IF NOT EXISTS tableau_corrections (
     ancienne_valeur VARCHAR(255) NULL,
     nouvelle_valeur VARCHAR(255) NOT NULL,
     date_ajout      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_tableau_corrections_document FOREIGN KEY (document_id) REFERENCES documents(id)
+    CONSTRAINT fk_corrections_manuelles_document FOREIGN KEY (document_id) REFERENCES documents(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS reglementation_vues (
+CREATE TABLE IF NOT EXISTS veille_reglementaire (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     doc_key     VARCHAR(64)  NOT NULL,  -- id (hash) ou url du texte source
     titre       VARCHAR(500) NOT NULL,
     src         VARCHAR(50)  NOT NULL,
     url         VARCHAR(500) NULL,
     date_ajout  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_reglementation_vues_key (doc_key),
-    INDEX idx_reglementation_vues_date (date_ajout)
+    UNIQUE KEY uq_veille_reglementaire_key (doc_key),
+    INDEX idx_veille_reglementaire_date (date_ajout)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

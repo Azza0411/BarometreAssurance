@@ -2,7 +2,7 @@
 
 ---
 
-Voici un dossier complet sur un projet de plateforme logicielle — mon PFE (Projet de Fin d'Études, ingénieur informatique, ESPRIT, en partenariat avec EY Tunisie) — pour que tu en aies une connaissance approfondie : contexte métier, marché cible, architecture technique, fonctionnalités, logique de données, IA/ML, méthodologie de travail, et travaux déjà réalisés.
+Voici un dossier complet sur un projet de plateforme logicielle — mon PFE (Projet de Fin d'Études, ingénieur en informatique financière, ESPRIT, en partenariat avec EY Tunisie, soutenance 2026, encadrante académique Ilhem Jouini, encadrant professionnel Mohamed Ali Mestikou) — pour que tu en aies une connaissance approfondie, comme si tu avais travaillé avec moi du premier jour jusqu'à la fin : contexte métier, marché cible, architecture technique, fonctionnalités, logique de données, IA/ML, méthodologie de travail, travaux déjà réalisés, et l'état exact de préparation de ma soutenance (deck PowerPoint, packaging exe, tests). Je m'en servirai pour préparer le CONTENU de ma présentation et le SPEECH oral qui l'accompagne — privilégie donc des explications que je peux dire à voix haute, avec des chiffres précis et des exemples concrets, plutôt que de la prose académique.
 
 ## 1. Contexte métier et problématique
 
@@ -53,7 +53,7 @@ BarometreAssurance/
 **Stack** : Backend Python 3.11 / Flask / MySQL 8 (base `MarketInsurance`) ; Frontend React 18 / Vite / ApexCharts / React Router ; Design System EY (police Barlow, jaune #FFE600, gris foncé #2E2E38) ; scraping via Selenium/Requests ; OCR via Tesseract (documents arabes/scannés) ; automatisation via tâche planifiée Windows (pipeline hebdomadaire, dimanche 2h).
 
 **Pipeline de données (bout en bout)** :
-1. **Collecte** — scraping des 5 sources (CMF, FTUSA, CGA, BVMT, INS) + veille (actualités, réglementation).
+1. **Collecte** — scraping des 7 sources (CMF, FTUSA, CGA, BVMT, INS, Atlas Magazine, ilBoursa.com) + veille (actualités, réglementation).
 2. **Extraction** — parsing PDF texte réel + OCR pour les documents scannés ou en arabe, extraction ciblée cellule par cellule avec gestion des cas particuliers par compagnie (libellés qui varient, tableaux qui s'étalent sur 2 pages, singulier/pluriel, etc.).
 3. **Cleaning data / Modélisation des KPI** — calcul des ratios dérivés (ex. ratio de sinistralité = charges de prestations / primes émises), gestion différenciée Conventionnel vs Takaful.
 4. **Qualité & anomalies** — audit systématique post-extraction (voir section 8).
@@ -101,7 +101,7 @@ Point de départ : la plateforme traitait initialement les 2 assureurs Takaful c
 
 ## 7. Intelligence artificielle / Machine Learning (dans `chatbot_portable/`)
 
-**Assistant conversationnel (RAG)** : chatbot connecté à l'API Claude, avec une architecture RAG (Retrieval-Augmented Generation) — les réponses sont ancrées sur les données réelles de la plateforme (`rag_ingest.py` indexe le contenu, `rag_module.py` orchestre la récupération + génération) plutôt que sur la seule connaissance générale du modèle, pour éviter les hallucinations sur des chiffres métier précis.
+**Assistant conversationnel (RAG)** : chatbot connecté à l'API **Groq** (inférence LLM rapide — PAS Claude, correction faite après vérification directe de l'écran de l'application), avec une architecture RAG (Retrieval-Augmented Generation) — les réponses sont ancrées sur les données réelles de la plateforme (`rag_ingest.py` indexe le contenu, `rag_module.py` orchestre la récupération + génération) plutôt que sur la seule connaissance générale du modèle, pour éviter les hallucinations sur des chiffres métier précis.
 
 **Module de prévision** : pipeline complet de modélisation avec sélection automatique entre modèles **Prophet** (séries temporelles, saisonnalité) et **XGBoost** (gradient boosting, features tabulaires), pipeline d'entraînement/évaluation dédié (`prediction/training/`), et **explicabilité** via **SHAP** pour justifier chaque prévision plutôt que de livrer un chiffre "boîte noire" — avec génération automatique d'un **narratif en langage naturel** expliquant les facteurs qui influencent la prévision (cohérent avec l'exigence de traçabilité qui structure tout le projet, y compris côté extraction de données).
 
@@ -140,4 +140,34 @@ Après tout ce qui précède, plusieurs chantiers supplémentaires ont été men
 **Correction d'un bug de fond sur l'Enquête de Marché.** Le sélecteur de compagnie sur la page "Fiche client entreprise" ne changeait en réalité **aucun chiffre affiché** — la fonction de calcul ignorait silencieusement le paramètre de compagnie et renvoyait toujours les statistiques du marché entier. Corrigé en exploitant des colonnes du fichier source jusque-là inutilisées (l'assureur réel de chaque répondant). Découverte annexe : l'échantillon par compagnie est très réduit (quelques répondants seulement) — affiché désormais avec un indicateur "échantillon restreint" plutôt que caché.
 
 **Cohérence de l'interface.** Unification définitive de la barre de navigation sur toutes les pages, filtre par compagnie de la page Actualités étendu aux 3 compagnies Takaful (absentes jusque-là), corrections d'affichage (carte de densité géographique, densité de la page Enquête de Marché).
+
+## 12. Fiabilisation finale de l'export Excel et du surlignage (dernière vague avant soutenance)
+
+Cette vague de travail répond à une priorité explicitement fixée : "la partie la plus importante pour le moment, c'est l'extraction et l'export Excel — on doit avoir des fichiers Excel bien structurés, avec un design bien commun et uniforme entre tous les tableaux, et une extraction correcte." L'export Excel "grille complète" (un onglet par société, un bloc par tableau sélectionné, design uniforme calqué sur celui de l'Annexe 13, couleurs d'en-tête #4472C4) était déjà construit ; cette vague a consisté à le tester systématiquement société par société pour trouver les derniers bugs de fond, plutôt que de le considérer terminé sur la base d'un seul cas validé.
+
+**3 bugs de fond trouvés et corrigés, tous de la même famille (affectation de colonne par position plutôt que par contenu réel) :**
+
+1. **Bilan Actif/Passif** : sur une ligne de sous-total sans amortissement (ex. ATTIJARI, poste "Part des réassureurs"), une valeur "Net" très large suivant une colonne "Amortissements" à 0 se voyait mal assignée à la colonne voisine par l'algorithme de rapprochement par position — la vraie valeur (1 105 004) était silencieusement remplacée par 0. Corrigé par un repli positionnel quand le nombre de valeurs trouvées correspond exactement au nombre de colonnes attendu (aucune cellule vide possible dans ce cas précis). Repopulé sur les 125 documents concernés.
+2. **Takaful Surplus Familial/Général (Annexe 3/4)** : une colonne "Notes" imprimée dans le PDF (simple renvoi vers l'annexe, ex. "15", "16"...) était lue comme une 5ᵉ valeur réelle, décalant "Opérations brutes"/"Cessions" de 2 colonnes et perdant une vraie donnée (constaté sur ZITOUNA_TAKAFUL et AT_TAKAFULIA). Un bug préexistant connexe a aussi été trouvé au passage : le numéro de section d'une ligne "Sous total N" n'était en réalité jamais retiré (la détection se basait par erreur sur un texte déjà dépouillé de ses chiffres) — corrigé pour les deux cas.
+3. **Surlignage "Qualité Data"** : le KPI "Total actif" ne trouvait pas sa ligne source dans le PDF chez ATTIJARI, qui n'imprime que le mot "Total" seul (sans suffixe "actif(s)") sur sa ligne finale de Bilan — aucun des 3 libellés candidats déjà prévus ("Total de l'actif" / "Total des actifs" / "Total actifs") ne matchait. Ajouté "Total" comme candidat de dernier recours (jamais prioritaire sur les libellés plus spécifiques).
+
+**Méthode** : pour chacun, inspection directe du texte brut du vrai PDF (positions de mots, valeurs exactes) pour confirmer l'hypothèse AVANT de corriger le code — puis vérification du correctif à la fois par ré-extraction directe (script isolé) et par test visuel dans l'application (surlignage réellement affiché au bon endroit sur la bonne cellule).
+
+**Vérification des 4 points prioritaires confirmés fonctionnels** (export Excel, Qualité Data/surlignage, Correction manuelle, cas arabe Al Amanah Takaful) : la Correction Manuelle reflète bien les données corrigées (même base que l'export) ; le cas arabe Al Amanah Takaful fonctionne pour Bilan Actif/Passif (PDF arabe et tableau extrait affichés côte à côte, correctement) — les 5 grilles Takaful et l'État de résultat n'ont toujours pas d'extracteur arabe (limite déjà connue, hors périmètre de cette vague).
+
+## 13. Packaging et déploiement (état final avant soutenance)
+
+La plateforme est distribuée sous forme d'**exécutable Windows autonome** (PyInstaller, mode onedir) : l'ensemble du projet (backend Flask, frontend React compilé, toutes les dépendances Python — pandas, numpy, scipy, OCR, ML) est embarqué dans un dossier `FSMarketIntelligence/` contenant `FSMarketIntelligence.exe` + `_internal/`. Seul MySQL (via XAMPP) doit être présent sur la machine cible — aucune installation de Python, Node.js ou des librairies du projet n'est nécessaire. Un guide d'installation court (3 étapes : installer XAMPP une fois, démarrer MySQL, double-cliquer l'exe) accompagne la livraison.
+
+Pour la soutenance/le test, seules les **données des 5 dernières années** (au lieu des 10 prévues à terme) ont été chargées, décision prise pour alléger le temps de démarrage et permettre de tester correctement le fonctionnement de bout en bout avant d'étendre la collecte — présenté honnêtement comme une limite assumée, pas cachée.
+
+## 14. Ce que j'attends de toi maintenant
+
+En te basant sur TOUT ce qui précède (sections 1 à 13), aide-moi à préparer :
+
+1. **Le contenu de mes slides** (plan déjà fixé : Project Context / Existing Situation & Solution / Requirements & Methodology / Technologies & Architecture / Data Pipeline & AI / Conclusion & Perspectives) — reformule, complète ou challenge le contenu que j'ai déjà, mais reste factuel : n'invente jamais un chiffre, une fonctionnalité ou un outil qui n'est pas mentionné ci-dessus.
+2. **Le speech oral** qui accompagne chaque partie — des phrases que je peux dire à voix haute, naturelles, pas lues mot à mot d'un slide. Le ton : celui d'une ingénieure qui a construit le projet elle-même, capable d'expliquer un choix technique ET sa justification métier, pas juste de lister ce qui a été fait.
+3. **Anticiper les questions du jury** : pour chaque partie technique sensible (choix Groq vs autres LLM, pourquoi PyInstaller, pourquoi seulement 5 ans de données, limites Takaful arabe, etc.), prépare une réponse courte et honnête — je préfère assumer une limite clairement que l'esquiver.
+
+Si une information te manque pour répondre précisément, demande-la-moi plutôt que de deviner.
 

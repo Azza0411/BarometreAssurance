@@ -4,7 +4,7 @@ n'extrait que 3 lignes ciblées + leur ventilation Vie/Non-Vie) — toutes
 les lignes (~22 postes comptables, de "Primes acquises" à "Résultat
 technique"), 12 colonnes (8 branches Non-Vie + Ass. Vie + Total Aff.
 Directes + Acceptations + Total Aff. Dir+Acc), pour le stockage
-`tableau_cellules` — même finalité que `bilan_full_extractor.py`/
+`tableaux_excel` — même finalité que `bilan_full_extractor.py`/
 `annexe13_pipeline.py` pour les documents CMF, mais ici l'entrée reste au
 niveau "document" (pas de correction manuelle branchée dans cette
 première étape, voir CAS_PARTICULIERS_FTUSA.md).

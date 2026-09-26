@@ -33,11 +33,11 @@ def make_sqlite_db() -> sqlite3.Connection:
     conn.executescript("""
         CREATE TABLE sources (id INTEGER PRIMARY KEY, nom TEXT);
         CREATE TABLE societes (id INTEGER PRIMARY KEY, code TEXT);
-        CREATE TABLE documents (
+        CREATE TABLE documents_pdf (
             id INTEGER PRIMARY KEY, annee INTEGER,
-            source_id INTEGER, cmf_id INTEGER
+            source_id INTEGER, societe_id INTEGER
         );
-        CREATE TABLE kpi_values (
+        CREATE TABLE kpis (
             id INTEGER PRIMARY KEY, document_id INTEGER,
             tableau TEXT, kpi TEXT, valeur_nombre REAL
         );
@@ -50,10 +50,10 @@ def make_sqlite_db() -> sqlite3.Connection:
     for i, year in enumerate(range(2013, 2025)):
         val = (80 + i * 8) * 1_000_000  # en TND → sera converti en MDT
         conn.execute(
-            "INSERT INTO documents VALUES (?, ?, 1, 1)", (i + 1, year)
+            "INSERT INTO documents_pdf VALUES (?, ?, 1, 1)", (i + 1, year)
         )
         conn.execute(
-            "INSERT INTO kpi_values VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO kpis VALUES (?, ?, ?, ?, ?)",
             (i + 1, i + 1, "Bilan", "Primes émises par assurance", val),
         )
 

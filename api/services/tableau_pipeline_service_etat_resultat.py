@@ -1,6 +1,6 @@
 """Orchestration de la pipeline complète État de résultat — même schéma
 que `tableau_pipeline_service_bilan.py` (extraction + stockage en base
-tableau_cellules/tableau_validations via `save_tableau_result`). Voir
+tableaux_excel/regles_validations via `save_tableau_result`). Voir
 `extraction/resultat_full_extractor.py::process_resultat` pour
 l'extraction elle-même.
 
@@ -24,9 +24,9 @@ TABLEAU_KEY = "etat_resultat"
 def _cmf_documents(conn, codes=None, annees=None):
     query = """
         SELECT d.id, c.code, d.nom_pdf, d.annee
-        FROM documents d
+        FROM documents_pdf d
         JOIN sources s ON s.id = d.source_id
-        JOIN societes c ON c.id = d.cmf_id
+        JOIN societes c ON c.id = d.societe_id
         WHERE s.nom = 'CMF' AND c.code != 'AL_AMANAH_TAKAFUL'
     """
     params = []

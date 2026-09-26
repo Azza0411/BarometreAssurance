@@ -59,7 +59,7 @@ from extraction.takaful_kpi_extractor import (
     _AR_CHARGES_PRESTATIONS, _AR_CHARGES_ACQUISITION_GESTION,
     _EXCLUDE_ACTIF, _EXCLUDE_CAPITAUX, AL_AMANAH_MAX_PAGES,
 )
-from database.repository import get_document_id, get_kpi_values_for_document
+from database.repository import get_document_id, get_kpis_for_document
 
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -323,7 +323,7 @@ def get_arabic_cell_coords(conn, annee: int, kpi_storage_key: str):
     reference_value = None
     doc_id = get_document_id(conn, COMPANY_CODE, annee)
     if doc_id:
-        kpis = get_kpi_values_for_document(conn, doc_id)
+        kpis = get_kpis_for_document(conn, doc_id)
         reference_value = kpis.get(kpi_storage_key)
 
     result, reason = None, {"reason": "ligne_introuvable", "page": None}

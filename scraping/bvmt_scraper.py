@@ -177,9 +177,9 @@ def sync_status_cotation():
     year = datetime.datetime.now().year  # année du document de traçabilité
     saved = 0
     for code, name, path in companies:  # par société reconnue
-        cmf_id = get_or_create_company(conn, code, name)  # id interne société
+        societe_id = get_or_create_company(conn, code, name)  # id interne société
         profile_url = path if path.startswith("http") else BASE_URL + path  # URL absolue fiche
-        document_id = save_document(conn, source_id, cmf_id, f"{code}_profil_bvmt", year, profile_url)  # traçabilité
+        document_id = save_document(conn, source_id, societe_id, f"{code}_profil_bvmt", year, profile_url)  # traçabilité
         save_kpi_value(
             conn, document_id, "BVMT - Liste des societes cotees", "Status de cotation", valeur_texte="Cotée"  # valeur fixe
         )
@@ -213,7 +213,7 @@ def sync_esg_documents():
         if societe_id is None:
             print(f"  [WARN] Pas d'identifiant de filtre ESG trouve pour {name}")
             continue  # pas de filtre ESG connu
-        cmf_id = get_or_create_company(conn, code, name)  # id interne société
+        societe_id = get_or_create_company(conn, code, name)  # id interne société
         links = _fetch_esg_report_links(societe_id)  # rapports ESG trouvés
         for link in links:  # par rapport PDF
             year = _report_year(link)  # année du nom de fichier
@@ -221,7 +221,7 @@ def sync_esg_documents():
                 print(f"  [WARN] Annee introuvable dans le nom du rapport, ignore : {link}")
                 continue  # année inconnue, ignoré
             nom_pdf = f"{code}_ESG_{year}.pdf"  # nom construit, pas téléchargé
-            save_document(conn, source_id, cmf_id, nom_pdf, year, link)  # enregistre métadonnées
+            save_document(conn, source_id, societe_id, nom_pdf, year, link)  # enregistre métadonnées
             saved += 1
             print(f"  [OK] {code} {year} : {link}")
 
@@ -309,8 +309,8 @@ def sync_market_data():
             print(f"  [WARN] Cotation live BVMT injoignable pour {code} ({isin}) : {exc}")
             continue  # cotation live inaccessible
 
-        cmf_id = get_or_create_company(conn, code, name)  # id interne société
-        document_id = save_document(conn, source_id, cmf_id, f"{code}_profil_bvmt", year_now, profile_url)  # même document que le volet 1
+        societe_id = get_or_create_company(conn, code, name)  # id interne société
+        document_id = save_document(conn, source_id, societe_id, f"{code}_profil_bvmt", year_now, profile_url)  # même document que le volet 1
 
         save_kpi_value(conn, document_id, "BVMT - Marche", "Denomination (BVMT)", valeur_texte=name)  # nom affiché
         company_kpis_saved += 1
