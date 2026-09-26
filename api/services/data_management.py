@@ -958,10 +958,13 @@ def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, r
     # ce gabarit, pas propre à TUNIS_RE) ; {} pour tout tableau sans ce
     # gabarit — comportement à une seule ligne d'en-tête inchangé pour eux.
     groups = derive_column_groups(cols)
+    col_header_fill = PatternFill(start_color="FF4472C4", end_color="FF4472C4", fill_type="solid")
+    col_header_font = Font(color=_REF_HEADER_TEXT, bold=True, name="Arial", size=10)
+    col_header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
     header_style = dict(
-        fill=PatternFill(start_color=_REF_HEADER, end_color=_REF_HEADER, fill_type="solid"),
-        font=Font(color=_REF_HEADER_TEXT, bold=True, name="Arial", size=10),
-        alignment=Alignment(horizontal="center", vertical="center"),
+        fill=col_header_fill,
+        font=col_header_font,
+        alignment=col_header_align,
     )
     if groups:
         grouped_col_idxs = {i for g in groups for i in range(g["debut"], g["fin"] + 1)}
@@ -1002,12 +1005,15 @@ def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, r
             cell = ws.cell(row=row + 1, column=excel_col, value=headers[i + 1])
             cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
             cell.border = _thin_border()
+        ws.row_dimensions[row].height = 20
+        ws.row_dimensions[row + 1].height = 30
         row += 2
     else:
         for col_idx, header in enumerate(headers, start=1):
             cell = ws.cell(row=row, column=col_idx, value=header)
             cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
             cell.border = _thin_border()
+        ws.row_dimensions[row].height = 30
         row += 1
     fallback = row_order_fallback if row_order_fallback is not None else len(row_order)
     # `preserve_order=True` (Bilan/Takaful) : ces tableaux n'ont pas de
@@ -1119,12 +1125,8 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
     header_style = dict(
         fill=PatternFill(start_color=_REF_HEADER, end_color=_REF_HEADER, fill_type="solid"),
         font=Font(color=_REF_HEADER_TEXT, bold=True, name="Arial", size=10),
-        alignment=Alignment(horizontal="center", vertical="center"),
+        alignment=Alignment(horizontal="center", vertical="center", wrap_text=True),
     )
-    # Bleu plus mat/plus clair que le premier essai (retour utilisateur
-    # direct, 2026-09-17 : "un bleu plus mat et plus clair, mais pas trop
-    # clair non plus") — bleu Office standard (celui des en-têtes de
-    # tableau Excel natifs), moins saturé/vif que le bleu franc initial.
     col_header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     col_header_font = Font(color=_REF_HEADER_TEXT, bold=True, name="Arial", size=10)
 
@@ -1145,6 +1147,7 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
             cell.alignment = header_style["alignment"]
             cell.border = _thin_border()
         last_col = max(1 + len(cols), 2)
+        ws.row_dimensions[row].height = 30
         row += 1
     else:
         # Plusieurs années : "LIBELLÉ" fusionné verticalement sur les 2
@@ -1179,6 +1182,8 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
                 cell.border = _thin_border()
             col = end_col + 1
         last_col = max(col - 1, 2)
+        ws.row_dimensions[row].height = 20
+        ws.row_dimensions[row + 1].height = 30
         row += 2
 
     for i, label in enumerate(all_labels):

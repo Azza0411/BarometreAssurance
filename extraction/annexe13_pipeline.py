@@ -309,7 +309,7 @@ _COLUMN_ALIASES = {
     "groupe": "Groupe",
     "acceptation": "Acceptation", "acceptations": "Acceptation",
     "total": "Total", "montant": "Total", "total general": "Total",
-    "t o t a l": "Total",
+    "t o t a l": "Total", "annexe 12 total": "Total", "annexe12 total": "Total",
     # Distinct de "Total" (le total général Vie+Non-Vie) : certaines sociétés
     # (ex. TUNIS_RE, réassureur Vie+Non-Vie) ont les DEUX colonnes dans le
     # même tableau - les fusionner sous le même nom canonique "Total"
