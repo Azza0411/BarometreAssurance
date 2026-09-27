@@ -45,7 +45,7 @@ from openpyxl.utils import get_column_letter
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database.repository import (
+from backend.database.repository import (
     clear_document_failures,
     ensure_database,
     get_connection,
@@ -58,33 +58,33 @@ from database.repository import (
     save_anomaly,
     save_kpi_value,
 )
-from pipelines.control import is_cancel_requested
-from extraction.annexe12_kpi_extractor import KPI_PATTERNS as ANNEXE12_KPI_PATTERNS
-from extraction.annexe12_kpi_extractor import extract_annexe12_kpis
-from extraction.annexe13_kpi_extractor import KPI_PATTERNS as ANNEXE13_KPI_PATTERNS
-from extraction.annexe13_kpi_extractor import extract_annexe13_kpis
-from extraction.bilan_kpi_extractor import KPI_DEFINITIONS as BILAN_KPI_DEFINITIONS
-from extraction.bilan_kpi_extractor import (
+from backend.pipelines.control import is_cancel_requested
+from backend.extraction.annexe12_kpi_extractor import KPI_PATTERNS as ANNEXE12_KPI_PATTERNS
+from backend.extraction.annexe12_kpi_extractor import extract_annexe12_kpis
+from backend.extraction.annexe13_kpi_extractor import KPI_PATTERNS as ANNEXE13_KPI_PATTERNS
+from backend.extraction.annexe13_kpi_extractor import extract_annexe13_kpis
+from backend.extraction.bilan_kpi_extractor import KPI_DEFINITIONS as BILAN_KPI_DEFINITIONS
+from backend.extraction.bilan_kpi_extractor import (
     USER_AGENT,
     _find_row_value,
     _is_passif_page,
     _normalizer,
     extract_all_bilan_kpis,
 )
-from extraction.bvmt_bulletin_kpi_extractor import extract_bulletin_cloture
-from extraction.bvmt_kpi_extractor import KPI_NAMES as BVMT_KPI_NAMES
-from extraction.bvmt_kpi_extractor import extract_bvmt_kpis
-from extraction.cga_kpi_extractor import extract_cga_kpis
-from extraction.ftusa_kpi_extractor import KPI_NAMES as FTUSA_KPI_NAMES
-from extraction.ftusa_kpi_extractor import extract_ftusa_kpis
-from extraction.presentation_kpi_extractor import KPI_NAMES as PRESENTATION_KPI_NAMES
-from extraction.presentation_kpi_extractor import extract_presentation_kpis
-import extraction.calculated_kpi_extractor as calculated_kpi_extractor
-from extraction.data_cleaning import check_yoy_consistency
-from extraction.resultat_kpi_extractor import KPI_NAMES as RESULTAT_KPI_NAMES
-from extraction.resultat_kpi_extractor import extract_resultat_kpis
-from utils.pdf_utils import is_valid_pdf
-from utils.pipeline_logging import get_logger, log_json
+from backend.extraction.bvmt_bulletin_kpi_extractor import extract_bulletin_cloture
+from backend.extraction.bvmt_kpi_extractor import KPI_NAMES as BVMT_KPI_NAMES
+from backend.extraction.bvmt_kpi_extractor import extract_bvmt_kpis
+from backend.extraction.cga_kpi_extractor import extract_cga_kpis
+from backend.extraction.ftusa_kpi_extractor import KPI_NAMES as FTUSA_KPI_NAMES
+from backend.extraction.ftusa_kpi_extractor import extract_ftusa_kpis
+from backend.extraction.presentation_kpi_extractor import KPI_NAMES as PRESENTATION_KPI_NAMES
+from backend.extraction.presentation_kpi_extractor import extract_presentation_kpis
+import backend.extraction.calculated_kpi_extractor as calculated_kpi_extractor
+from backend.extraction.data_cleaning import check_yoy_consistency
+from backend.extraction.resultat_kpi_extractor import KPI_NAMES as RESULTAT_KPI_NAMES
+from backend.extraction.resultat_kpi_extractor import extract_resultat_kpis
+from backend.utils.pdf_utils import is_valid_pdf
+from backend.utils.pipeline_logging import get_logger, log_json
 
 _logger = get_logger("pipeline")
 
@@ -268,11 +268,11 @@ def _backfill_missing_local_pdfs(conn, already_done):
 
     missing = _missing_local_pdf_documents(conn, already_done)
     if not missing:
-        from pipelines.progress import drop_from_plan
+        from backend.pipelines.progress import drop_from_plan
         drop_from_plan("rattrapage_pdf")  # rien à rattraper : ne pèse plus dans le pourcentage global
         return 0
     print(f"\n===== RATTRAPAGE PDF LOCAUX MANQUANTS : {len(missing)} document(s) deja extrait(s) =====\n")
-    from pipelines.progress import enter_phase_if_planned, reset_progress, bump_progress
+    from backend.pipelines.progress import enter_phase_if_planned, reset_progress, bump_progress
     enter_phase_if_planned("rattrapage_pdf")
     reset_progress(total=len(missing), detail="PDF locaux manquants")
     saved = 0
@@ -344,10 +344,10 @@ def _check_balance(pdf, kpis):
 
 def _extract_all_kpis(pdf, company_code=None):
     if company_code == "AL_AMANAH_TAKAFUL":
-        from extraction.takaful_kpi_extractor import extract_al_amanah_takaful_kpis
+        from backend.extraction.takaful_kpi_extractor import extract_al_amanah_takaful_kpis
         return extract_al_amanah_takaful_kpis(pdf)
     if company_code in TAKAFUL_EXTRACTABLE_COMPANIES:
-        from extraction.takaful_kpi_extractor import extract_all_takaful_kpis
+        from backend.extraction.takaful_kpi_extractor import extract_all_takaful_kpis
         kpis = extract_all_takaful_kpis(pdf)
         kpis.pop("_takaful_format", None)
         return kpis
@@ -788,7 +788,7 @@ def run(force=False, years=None, respect_backoff=False):
     failures = {name: [] for name in KPI_NAMES}
     kpis_saved = documents_with_kpi = download_errors = balance_mismatches = yoy_anomalies = 0
 
-    from pipelines.progress import enter_phase_if_planned, reset_progress, set_progress
+    from backend.pipelines.progress import enter_phase_if_planned, reset_progress, set_progress
     enter_phase_if_planned("extraction_kpi")
     reset_progress(total=len(documents))
 

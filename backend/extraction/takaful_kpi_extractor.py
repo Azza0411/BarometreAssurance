@@ -46,10 +46,10 @@ import unicodedata
 
 from rapidfuzz import fuzz
 
-from extraction.bilan_kpi_extractor import (
+from backend.extraction.bilan_kpi_extractor import (
     _cluster_lines, _extract_numeric_clusters, _label_text, _is_plausible,
 )
-from utils.text_normalizer import TextNormalizer
+from backend.utils.text_normalizer import TextNormalizer
 
 _normalizer = TextNormalizer()
 
@@ -496,8 +496,8 @@ def _find_surplus_validated(pdf, page_index, target, min_score=55):
     valeurs, sens différent) sans repère supplémentaire. Renvoie None plutôt
     qu'une valeur non vérifiée si l'identité échoue ou si le texte réel de
     cette page est indisponible (page scannée)."""
-    from extraction.arabic_ocr_extractor import render_page, _ocr_lines
-    from extraction.bilan_kpi_extractor import _extract_numeric_clusters, _is_plausible
+    from backend.extraction.arabic_ocr_extractor import render_page, _ocr_lines
+    from backend.extraction.bilan_kpi_extractor import _extract_numeric_clusters, _is_plausible
 
     if page_index >= len(pdf.pages):
         return None
@@ -537,7 +537,7 @@ _MAX_PLAUSIBLE_CHARGES = 350_000_000
 
 
 def extract_al_amanah_takaful_kpis(pdf):
-    from extraction.arabic_ocr_extractor import (
+    from backend.extraction.arabic_ocr_extractor import (
         find_kpi_value_smart, find_kpi_value_smart_sum, find_kpi_value_smart_list,
         find_kpi_row_all_values, find_row_by_value_scan,
         _select_actif_like, _select_equity_like, _select_last,
