@@ -454,3 +454,27 @@ inadapté).
 - **AL_AMANAH_TAKAFUL** : états financiers en arabe — hors périmètre de
   ce module (latin uniquement) ; voir arabic_ocr_extractor.py pour la
   voie déjà entreprise ailleurs sur ce type de document.
+
+---
+
+## 2026-09-27 — Numéro de note bare integer dans colonne Brut (fix commit 5a8dba5)
+
+**Symptôme** : les lignes de section Actif (AC1, AC2, AC3, AC31, AC4...)
+avaient la valeur `1.0`, `2.0`, `3.0`... dans la colonne Brut. Exemple
+ASTREE 2025 AC1 Brut : stocké `1.0` au lieu de `8 923 548`.
+
+**Cause** : les références de note (ex. "a 1", "b 2") apparaissent sur la
+même ligne PDF comme un mot lettre + un chiffre. Après filtrage de la lettre
+par `label_words`, le chiffre seul ("1", "2"...) restait dans `clusters` et
+était affecté à la première colonne (Brut) à la place de la vraie valeur.
+`_NOTE_REF_TOKEN_RE` ne reconnaissait que les formes "3.1.1" (pointées), pas
+les entiers nus.
+
+**Fix** (commit 5a8dba5) : dans `extract_bilan_full_grid`, juste avant
+`_assign_columns`, détection du schéma : si `header_x` est connu ET qu'il y
+a exactement `n_cols + 1` clusters ET que le premier cluster est un entier
+entre 1 et 9, on le retire. Condition suffisamment étroite pour ne jamais
+supprimer une vraie valeur.
+
+**Validation** : ASTREE 2025 AC1 Brut = 8 923 548 après re-extraction. ✓
+Re-extraction complète bilan_actif : OK sur tous les documents disponibles.
