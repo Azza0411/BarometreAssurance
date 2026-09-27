@@ -28,14 +28,19 @@ from utils.text_normalizer import TextNormalizer
 
 _normalizer = TextNormalizer()
 
-_ROW_CODE_RE = re.compile(r"^(RTNV|RTV|PRNV\d*|CHNV\d*|PRV\d*|CHV\d*)\b", re.IGNORECASE)
+_ROW_CODE_RE = re.compile(r"^(RTNV|RTV|PRNV\d*|CHNV\d*|PRV\d*|CHV\d*|CHNT\d*|PRNT\d*)\b", re.IGNORECASE)
 # Code de SECTION top-level (1 seul chiffre après le préfixe, ex. PRNV1,
 # CHV4) — une ligne de sous-total de section arrive souvent SANS code
 # répété, juste les 4 valeurs seules (constaté STAR : la ligne
 # "374 430 627 46 129 514 328 301 113 311 192 818" qui totalise
 # PRNV11+PRNV12, sans aucun texte). Même piège déjà résolu côté Bilan
 # (`_pending_section`) — repris ici à l'identique.
-_TOP_SECTION_RE = re.compile(r"^(RTNV|RTV|PRNV|CHNV|PRV|CHV)\d$", re.IGNORECASE)
+# CHNT/PRNT : charges et produits non techniques, absents du référentiel
+# initial mais présents dans ASTREE/STAR/COMAR et toutes sociétés
+# mixtes Vie+Non-Vie — sans cette entrée, les lignes CHNT*/PRNT*
+# n'étaient pas reconnues comme codes et se concaténaient en un seul
+# libellé garbled avec les valeurs de la ligne précédente.
+_TOP_SECTION_RE = re.compile(r"^(RTNV|RTV|PRNV|CHNV|PRV|CHV|CHNT|PRNT)\d$", re.IGNORECASE)
 
 _TITLE_HINT_RE = re.compile(r"etat\s+de\s+resultat", re.IGNORECASE)
 

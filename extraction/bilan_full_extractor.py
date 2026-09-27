@@ -456,6 +456,16 @@ def extract_bilan_full_grid(page, side, min_rows=5):
             rest = text_norm[m.end():].strip()
             if rest and current_code not in label_by_code:
                 label_by_code[current_code] = rest
+            # Référence de note type "A 1" : après filtrage du token lettre
+            # par label_words, le CHIFFRE seul (1, 2...) reste dans clusters
+            # et se retrouvait affecté à la colonne Brut à la place de la
+            # vraie valeur. Détecté quand on a exactement un cluster de plus
+            # que de colonnes ET que le premier est un petit entier (1–9).
+            if (header_x and len(clusters) == n_cols + 1
+                    and clusters
+                    and 1 <= clusters[0][0] <= 9
+                    and clusters[0][0] == int(clusters[0][0])):
+                clusters = clusters[1:]
             current_values = _assign_columns(clusters, header_x, n_cols)
         elif ((not text_norm or _SECTION_MARKER_RE.match(text_norm))
               and _pending_section() is not None
