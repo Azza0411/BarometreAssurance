@@ -942,9 +942,10 @@ def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, r
     last_col = max(1 + len(cols), 2)
     ws.merge_cells(start_row=row, start_column=sc, end_row=row, end_column=sc + last_col - 1)
     subtitle_cell = ws.cell(row=row, column=sc, value=f"{annee} — tableau complet ({len(grid['lignes'])} lignes × {len(cols)} colonnes)")
-    subtitle_cell.font = Font(italic=True, size=10, color=DARK, name="Calibri")
+    subtitle_cell.font = Font(bold=True, size=14, color=DARK, name="Calibri")
     subtitle_cell.alignment = Alignment(horizontal="center", vertical="center")
-    row += 2  # ligne vide avant le début du tableau (retour utilisateur : espacement)
+    ws.row_dimensions[row].height = 22
+    row += 2  # ligne vide avant le début du tableau
     # Libellés de ligne ET d'en-tête en MAJUSCULES — la casse du référentiel
     # canonique (CANONICAL_ROWS) sert au rattachement/à la validation, pas à
     # l'affichage ; convention réelle des tableaux source (et du dossier de
@@ -1602,13 +1603,16 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
                 reverse=True
             )
             for annee in all_annees:
-                # En-tête d'année fusionné sur toute la largeur
+                # En-tête d'année fusionné sur toute la largeur —
+                # fond bleu (même charte que les en-têtes de colonnes),
+                # texte blanc en grand pour que l'année soit bien lisible
                 ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=max(total_width, 2))
                 hdr = ws.cell(row=row, column=1, value=str(annee))
-                hdr.font = Font(bold=True, size=10, color=YELLOW, name="Calibri")
-                hdr.fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
+                hdr.font = Font(bold=True, size=16, color="FFFFFF", name="Calibri")
+                hdr.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
                 hdr.alignment = Alignment(horizontal="center", vertical="center")
                 hdr.border = _thin_border()
+                ws.row_dimensions[row].height = 28
                 row += 1
                 content_start = row
                 max_row_after = row
