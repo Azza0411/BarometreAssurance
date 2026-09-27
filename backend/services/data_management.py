@@ -22,25 +22,25 @@ from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
 from openpyxl.drawing.xdr import XDRPositiveSize2D
 import io
 
-from database.repository import (
+from backend.database.repository import (
     get_connection, list_all_documents, get_tableaux_excel, get_document_id,
     get_cached_tableau_page, save_cached_tableau_page, TABLEAU_PAGE_MISS,
 )
-from extraction.annexe13_kpi_extractor import (
+from backend.extraction.annexe13_kpi_extractor import (
     _is_target_page as _is_annexe13_page,
     RACCORDEMENT_RE as _ANNEXE13_RACCORDEMENT_RE,
     KPI_PATTERNS as _ANNEXE13_KPI_PATTERNS,
 )
-from extraction.full_table_extractor import (
+from backend.extraction.full_table_extractor import (
     locate_and_extract_full_table, relaxed_is_annexe13_page, relaxed_is_annexe12_page,
 )
-from extraction.annexe13_pipeline import normalize_table, CANONICAL_ROWS, CANONICAL_COLUMNS, derive_column_groups
-from extraction.annexe12_kpi_extractor import (
+from backend.extraction.annexe13_pipeline import normalize_table, CANONICAL_ROWS, CANONICAL_COLUMNS, derive_column_groups
+from backend.extraction.annexe12_kpi_extractor import (
     _is_target_page as _is_annexe12_page,
     _RACCORDEMENT_RE as _ANNEXE12_RACCORDEMENT_RE,
     KPI_PATTERNS as _ANNEXE12_KPI_PATTERNS,
 )
-from extraction.annexe12_pipeline import normalize_table_vie, CANONICAL_ROWS_VIE
+from backend.extraction.annexe12_pipeline import normalize_table_vie, CANONICAL_ROWS_VIE
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
@@ -406,7 +406,7 @@ def get_filter_options(conn):
     # PDF, pas d'une heuristique de titre) reste la source de vérité — il
     # exclut TOUJOURS ces sociétés ici, quoi que dise kpis/
     # tableaux_excel.
-    from extraction.annexe13_pipeline import ANNEXE13_NON_VIE_EXCLUSIONS
+    from backend.extraction.annexe13_pipeline import ANNEXE13_NON_VIE_EXCLUSIONS
     societes_par_tableau["annexe13"] -= ANNEXE13_NON_VIE_EXCLUSIONS
 
     tableaux = [{"key": key, "label": label} for key, label, _raws in TABLEAU_GROUPS]
@@ -445,8 +445,8 @@ def get_reliability_stats(conn):
        Vie exclusivement/Takaful, voir `annexe13_pipeline.
        ANNEXE13_NON_VIE_EXCLUSIONS` — leur absence de résultat n'est pas un
        échec d'extraction, c'est attendu par nature du modèle métier)."""
-    from config.company_registry import COMPANY_REGISTRY
-    from extraction.annexe13_pipeline import ANNEXE13_NON_VIE_EXCLUSIONS
+    from backend.config.company_registry import COMPANY_REGISTRY
+    from backend.extraction.annexe13_pipeline import ANNEXE13_NON_VIE_EXCLUSIONS
 
     docs = [d for d in list_all_documents(conn) if d[1] == "CMF" and d[2]]  # (id, source, code, nom, pdf, annee, lien)
     by_code = {}
@@ -801,11 +801,13 @@ def _safe_sheet_name(code, used):
     return name
 
 
-def _write_sheet_title(ws, last_col, title, subtitle):
+def _write_sheet_title(ws, last_col, title, subtitle, align_left=False):
     """Bandeau de titre — fond blanc, texte noir (retour utilisateur : "au
     lieu du gris foncé mettez le blanc et le texte en noir"), un seul bloc
     sur 2 lignes : nom de la société en noir gras, sous-titre en gris foncé
-    discret en dessous (hiérarchie par le poids/la taille du texte)."""
+    discret en dessous (hiérarchie par le poids/la taille du texte).
+    align_left=True : titre aligné à gauche (AL_AMANAH — pour voir le nom
+    dès l'ouverture sans scroll)."""
     last_col = max(last_col, 2)
     for r in (1, 2):
         for col_idx in range(1, last_col + 1):
@@ -813,13 +815,14 @@ def _write_sheet_title(ws, last_col, title, subtitle):
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_col)
     ws.cell(row=1, column=1, value=title)
     ws.cell(row=1, column=1).font = Font(color="000000", bold=True, size=14, name="Calibri")
-    ws.cell(row=1, column=1).alignment = Alignment(horizontal="center", vertical="bottom")
+    h_align = "left" if align_left else "center"
+    ws.cell(row=1, column=1).alignment = Alignment(horizontal=h_align, vertical="bottom")
     ws.row_dimensions[1].height = 34
     if subtitle:
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_col)
         ws.cell(row=2, column=1, value=subtitle)
         ws.cell(row=2, column=1).font = Font(color="595959", size=9.5, name="Calibri")
-        ws.cell(row=2, column=1).alignment = Alignment(horizontal="center", vertical="top")
+        ws.cell(row=2, column=1).alignment = Alignment(horizontal=h_align, vertical="top")
     ws.row_dimensions[2].height = 18
     ws.sheet_view.showGridLines = False
     ws.sheet_properties.tabColor = "808080"
@@ -936,7 +939,7 @@ _REF_HEADER_TEXT = "FFFFFF"
 _REF_ZEBRA = "F3F4F6"
 
 
-def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, row_order_fallback=None, preserve_order=False, start_col=1):
+def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, row_order_fallback=None, preserve_order=False, start_col=1, is_arabic=False):
     sc = start_col
     cols = grid["colonnes"]
     last_col = max(1 + len(cols), 2)
@@ -946,11 +949,10 @@ def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, r
     subtitle_cell.alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[row].height = 22
     row += 2  # ligne vide avant le début du tableau
-    # Libellés de ligne ET d'en-tête en MAJUSCULES — la casse du référentiel
-    # canonique (CANONICAL_ROWS) sert au rattachement/à la validation, pas à
-    # l'affichage ; convention réelle des tableaux source (et du dossier de
-    # référence) pour les deux.
-    headers = ["LIBELLÉ"] + [c.upper() for c in cols]
+    # Libellés de ligne ET d'en-tête en MAJUSCULES pour les tableaux français.
+    # Pour les tableaux arabes (is_arabic), on conserve la casse originale.
+    label_header = "البيان" if is_arabic else "LIBELLÉ"
+    headers = [label_header] + (cols if is_arabic else [c.upper() for c in cols])
 
     # En-tête de GROUPE fusionné (ex. TUNIS_RE : "NON MARINES" au-dessus
     # d'Incendie/ARD/Risques techniques) — retour utilisateur du 2026-09-10 :
@@ -1135,16 +1137,16 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
 
     if len(annees) == 1:
         # Une seule année : le titre porte déjà l'année (voir plus haut) —
-        # une seule ligne d'en-tête (LIBELLÉ + noms de colonnes), pas de
+        # une seule ligne d'en-tête (LIBELLÉ/البيان + noms de colonnes), pas de
         # bandeau "année" fusionné en plus, redondant et jamais voulu ici.
-        cell = ws.cell(row=row, column=1, value="LIBELLÉ")
+        cell = ws.cell(row=row, column=sc, value=label_header)
         cell.fill, cell.font, cell.alignment = col_header_fill, col_header_font, header_style["alignment"]
         cell.border = _thin_border()
         a = annees[0]
         cols = grids[a]["colonnes"]
-        year_col_span = {a: (2, cols)}
+        year_col_span = {a: (sc + 1, cols)}
         for i, colname in enumerate(cols):
-            cell = ws.cell(row=row, column=2 + i, value=colname.upper())
+            cell = ws.cell(row=row, column=sc + 1 + i, value=(colname if is_arabic else colname.upper()))
             cell.fill = col_header_fill
             cell.font = col_header_font
             cell.alignment = header_style["alignment"]
@@ -1153,17 +1155,17 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
         ws.row_dimensions[row].height = 30
         row += 1
     else:
-        # Plusieurs années : "LIBELLÉ" fusionné verticalement sur les 2
+        # Plusieurs années : "LIBELLÉ"/"البيان" fusionné verticalement sur les 2
         # lignes d'en-tête + un groupe fusionné HORIZONTALEMENT par année,
         # sur la portée réelle de SES colonnes (ligne 1), puis le nom
         # propre de chaque colonne de chaque année (ligne 2).
-        ws.merge_cells(start_row=row, start_column=1, end_row=row + 1, end_column=1)
-        cell = ws.cell(row=row, column=1, value="LIBELLÉ")
+        ws.merge_cells(start_row=row, start_column=sc, end_row=row + 1, end_column=sc)
+        cell = ws.cell(row=row, column=sc, value=label_header)
         cell.fill, cell.font, cell.alignment = col_header_fill, col_header_font, header_style["alignment"]
         cell.border = _thin_border()
-        ws.cell(row=row + 1, column=1).border = _thin_border()
+        ws.cell(row=row + 1, column=sc).border = _thin_border()
 
-        col = 2
+        col = sc + 1
         year_col_span = {}  # annee -> (col_debut, [colonnes])
         for a in annees:
             g = grids.get(a)
@@ -1178,23 +1180,25 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
                 cell.fill, cell.font, cell.alignment = col_header_fill, col_header_font, header_style["alignment"]
                 cell.border = _thin_border()
             for i, colname in enumerate(cols):
-                cell = ws.cell(row=row + 1, column=col + i, value=colname.upper())
+                cell = ws.cell(row=row + 1, column=col + i, value=(colname if is_arabic else colname.upper()))
                 cell.fill = col_header_fill
                 cell.font = col_header_font
                 cell.alignment = header_style["alignment"]
                 cell.border = _thin_border()
             col = end_col + 1
-        last_col = max(col - 1, 2)
+        last_col = max(col - sc, 2)
         ws.row_dimensions[row].height = 20
         ws.row_dimensions[row + 1].height = 30
         row += 2
 
     for i, label in enumerate(all_labels):
         fill = PatternFill(start_color=_REF_ZEBRA, end_color=_REF_ZEBRA, fill_type="solid") if i % 2 == 1 else None
-        cell = ws.cell(row=row, column=1, value=(label or "").upper())
+        label_val = (label or "") if is_arabic else (label or "").upper()
+        label_align = "right" if is_arabic else "left"
+        cell = ws.cell(row=row, column=sc, value=label_val)
         cell.border = _thin_border()
         cell.font = Font(name="Arial", size=10, color=DARK)
-        cell.alignment = Alignment(horizontal="left", vertical="center")
+        cell.alignment = Alignment(horizontal=label_align, vertical="center")
         if fill:
             cell.fill = fill
         for a, (col_debut, cols) in year_col_span.items():
@@ -1569,7 +1573,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
             lignes = list(g["lignes"].keys())
             return len(lignes) == 1 and lignes[0] == "Données non disponibles"
 
-        def _write_grids_sidebyside(ws, row, n_cols, keys_grids_list):
+        def _write_grids_sidebyside(ws, row, n_cols, keys_grids_list, is_arabic=False):
             """Rend plusieurs grilles CÔTE À CÔTE, regroupées par année (décroissant).
             keys_grids_list: [(key, grids_dict), ...] — len >= 2.
             Pour chaque année : en-tête d'année fusionné sur toute la largeur,
@@ -1621,6 +1625,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
                             row_order=spec["row_order"], row_order_fallback=spec["row_order_fallback"],
                             preserve_order=spec["preserve_order"],
                             start_col=sc,
+                            is_arabic=is_arabic,
                         )
                         n_cols = max(n_cols, sc + used_cols - 1)
                     max_row_after = max(max_row_after, r)
@@ -1628,18 +1633,21 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
                 row = max_row_after  # déjà inclut la ligne vide de _write_full_grid_block (+2)
             return row, n_cols
 
-        def _write_grid_section(ws, row, n_cols, key, grids):
+        def _write_grid_section(ws, row, n_cols, key, grids, is_arabic=False):
             """Un bloc par année, empilés VERTICALEMENT — titre de section
             écrit une seule fois, puis _write_full_grid_block appelé pour
             chaque année (ordre décroissant). Les années sans données valides
-            affichent un message "Échec d'extraction" au lieu d'un tableau."""
+            affichent un message "Échec d'extraction" (sauf pour is_arabic
+            où les tableaux sans données sont silencieusement ignorés)."""
             spec = _FULL_GRID_SPECS[key]
-            # Toutes les années du document (même celles sans extraction réussie)
             all_annees = sorted(grids.keys(), reverse=True)
             if not all_annees:
                 return row, n_cols
             annees_valides = [a for a in all_annees if not _is_marker_grid(grids[a])]
-            # Largeur de titre basée sur les grilles valides (fallback 2)
+            # Pour les tableaux arabes : si aucune année n'a de données réelles,
+            # ne pas écrire le titre de section du tout (retour utilisateur).
+            if is_arabic and not annees_valides:
+                return row, n_cols
             max_year_cols = (1 + max(len(grids[a]["colonnes"]) for a in annees_valides)) if annees_valides else 2
             ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=max(max_year_cols, 2))
             title_cell = ws.cell(row=row, column=1, value=spec["display"])
@@ -1649,7 +1657,8 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
             for annee in all_annees:
                 g = grids[annee]
                 if _is_marker_grid(g):
-                    # Ligne d'en-tête de l'année + message d'échec
+                    if is_arabic:
+                        continue  # tableaux arabes : ignorer silencieusement les échecs
                     hdr = ws.cell(row=row, column=1, value=str(annee))
                     hdr.font = Font(bold=True, size=10, color=YELLOW, name="Calibri")
                     hdr.fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
@@ -1665,19 +1674,13 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
                         ws, row, annee, g,
                         row_order=spec["row_order"], row_order_fallback=spec["row_order_fallback"],
                         preserve_order=spec["preserve_order"],
+                        is_arabic=is_arabic,
                     )
                     n_cols = max(n_cols, used_cols)
             return row, n_cols
 
-        def _write_logo_and_finish(ws, code, n_cols):
+        def _write_logo_and_finish(ws, code, n_cols, logo_left=False):
             _autosize_columns(ws)
-            # Logo de la société (déjà disponible dans le projet, réutilisé
-            # tel quel — voir _LOGO_FILES) — ajouté APRÈS l'auto-ajustement
-            # des largeurs (ci-dessus), pour connaître la largeur réelle du
-            # tableau (nécessaire pour le centrage). Placé sur la ligne 3,
-            # le blanc entre le bandeau société (lignes 1-2) et le titre du
-            # premier bloc (ligne 4) — retour utilisateur : "entre les deux
-            # titres" — et centré horizontalement sur la largeur du tableau.
             logo_path = _logo_path(code)
             if logo_path:
                 try:
@@ -1685,7 +1688,11 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
                     ws.row_dimensions[3].height = max(logo_h + 6, 20)
                     logo_img = XLImage(logo_path)
                     logo_img.width, logo_img.height = logo_w, logo_h
-                    logo_img.anchor = _centered_anchor(ws, 3, n_cols, logo_w, logo_h)
+                    if logo_left:
+                        # Logo ancré en haut à gauche (colonne A, ligne 3)
+                        logo_img.anchor = "A3"
+                    else:
+                        logo_img.anchor = _centered_anchor(ws, 3, n_cols, logo_w, logo_h)
                     ws.add_image(logo_img)
                 except Exception:
                     pass  # image illisible/corrompue : ne doit jamais faire échouer l'export
@@ -1714,20 +1721,23 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
             sheet_name = _safe_sheet_name(code, used_names)
             ws = wb.create_sheet(sheet_name)
             blocs_a_rendre = sorted(soc["blocs"].keys())
+            is_arabic = (code == "AL_AMANAH_TAKAFUL")
             grids_a_rendre = [k for k in active_full_grid_keys if soc["grids"].get(k)]
             n_cols = _sheet_n_cols(soc, blocs_a_rendre, grids_a_rendre)
-            _write_sheet_title(ws, n_cols, f"{soc['nom'] or code} ({code})", "FS Market Intelligence — Export de données")
+            _write_sheet_title(ws, n_cols, f"{soc['nom'] or code} ({code})",
+                               "FS Market Intelligence — Export de données",
+                               align_left=is_arabic)
             row = 4
             for display_tableau in blocs_a_rendre:
                 row, used_cols = _write_narrow_block(ws, row, display_tableau, soc["blocs"][display_tableau])
                 n_cols = max(n_cols, used_cols)
             if len(grids_a_rendre) >= 2:
                 keys_grids_list = [(key, soc["grids"][key]) for key in grids_a_rendre]
-                row, n_cols = _write_grids_sidebyside(ws, row, n_cols, keys_grids_list)
+                row, n_cols = _write_grids_sidebyside(ws, row, n_cols, keys_grids_list, is_arabic=is_arabic)
             else:
                 for key in grids_a_rendre:
-                    row, n_cols = _write_grid_section(ws, row, n_cols, key, soc["grids"][key])
-            _write_logo_and_finish(ws, code, n_cols)
+                    row, n_cols = _write_grid_section(ws, row, n_cols, key, soc["grids"][key], is_arabic=is_arabic)
+            _write_logo_and_finish(ws, code, n_cols, logo_left=is_arabic)
 
     _progress("generation", done=_soc_total if par_societe else 0,
               total=max(_soc_total, 1) if par_societe else 1, message="Finalisation…")

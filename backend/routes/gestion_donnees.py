@@ -17,7 +17,7 @@ from datetime import datetime
 
 from flask import Blueprint, jsonify, request, send_file, Response, stream_with_context
 
-from database.repository import get_connection, get_document_id, apply_manual_corrections, CorrectionError
+from backend.database.repository import get_connection, get_document_id, apply_manual_corrections, CorrectionError
 from backend.services.data_management import (
     list_documents_for_ui, get_local_pdf_path_for_document,
     get_filter_options, build_flexible_export_xlsx, get_reliability_stats,
@@ -66,8 +66,8 @@ def _last_pipeline_end_from_log():
 
 
 def _run_pipeline_background():
-    from pipelines.run_pipeline import main as pipeline_main
-    from pipelines.progress import clear_phase
+    from backend.pipelines.run_pipeline import main as pipeline_main
+    from backend.pipelines.progress import clear_phase
     try:
         pipeline_main()
     except Exception as exc:
@@ -94,8 +94,8 @@ def run_tracked_catchup():
     Désormais le bandeau global (CollecteBanner.jsx) et la page "Gestion de
     données" affichent son avancement (x/y + pourcentage). Renvoie False
     sans rien faire si une collecte est déjà en cours."""
-    from pipelines.control import clear_cancel
-    from pipelines.progress import set_plan, set_phase, clear_phase, CATCHUP_PLAN
+    from backend.pipelines.control import clear_cancel
+    from backend.pipelines.progress import set_plan, set_phase, clear_phase, CATCHUP_PLAN
     with _collecte_lock:
         if _collecte_state["en_cours"]:
             return False
@@ -108,11 +108,11 @@ def run_tracked_catchup():
         # L'étape "PDF locaux" n'est annoncée que s'il y en a à télécharger
         # (sinon le rattrapage n'est qu'un contrôle de quelques secondes : le
         # bandeau reste en une ligne, voir CollecteBanner.jsx::rattrapageLeger).
-        from extraction.kpi_extraction_pipeline import has_missing_local_pdfs
+        from backend.extraction.kpi_extraction_pipeline import has_missing_local_pdfs
         plan = CATCHUP_PLAN if has_missing_local_pdfs() else [p for p in CATCHUP_PLAN if p != "rattrapage_pdf"]
         set_plan(plan, kind="catchup")
         set_phase(plan[0])  # kpi_extraction_pipeline.run() enchaîne ensuite seul les sous-étapes
-        from extraction.kpi_extraction_pipeline import run as run_kpi_extraction
+        from backend.extraction.kpi_extraction_pipeline import run as run_kpi_extraction
         # respect_backoff : les documents déjà tentés en vain récemment ne sont
         # pas retéléchargés à chaque ouverture (voir schema.sql::echecs_extraction).
         run_kpi_extraction(respect_backoff=True)
@@ -162,7 +162,7 @@ def annuler_collecte():
     quelques secondes à quelques dizaines de secondes au plus, jamais
     instantané (aucun moyen propre d'interrompre un thread Python au
     milieu d'un appel réseau/IO sans risquer un état à moitié écrit)."""
-    from pipelines.control import request_cancel
+    from backend.pipelines.control import request_cancel
     with _collecte_lock:
         if not _collecte_state["en_cours"]:
             return jsonify({"annulee": False, "raison": "aucune_collecte_en_cours"}), 409
@@ -173,7 +173,7 @@ def annuler_collecte():
 
 @bp.route("/api/gestion-donnees/statut-collecte")
 def statut_collecte():
-    from pipelines.progress import get_phase, get_progress, is_quick_ready
+    from backend.pipelines.progress import get_phase, get_progress, is_quick_ready
     with _collecte_lock:
         en_cours = _collecte_state["en_cours"]
         demarree_le = _collecte_state["demarree_le"]
@@ -483,6 +483,60 @@ def valider_takaful_ventilation():
 def statut_validation_takaful_ventilation():
     with _validation_takaful_ventilation_lock:
         return jsonify(dict(_validation_takaful_ventilation_state))
+
+
+# État de la pipeline de validation AL_AMANAH_TAKAFUL (PDFs arabes,
+# Annexes 3/4/5.1/14/15) — même schéma que les pipelines Takaful FR.
+_validation_takaful_al_amanah_lock = threading.Lock()
+_validation_takaful_al_amanah_state = {"en_cours": False, "demarree_le": None, "progression": None, "derniere": None}
+
+
+def _run_validation_takaful_al_amanah_background(annees):
+    from backend.services import tableau_pipeline_service_takaful_al_amanah
+
+    def _progress(done, total):
+        with _validation_takaful_al_amanah_lock:
+            _validation_takaful_al_amanah_state["progression"] = {"fait": done, "total": total}
+    try:
+        summary = tableau_pipeline_service_takaful_al_amanah.process_all(annees, progress_callback=_progress)
+        with _validation_takaful_al_amanah_lock:
+            _validation_takaful_al_amanah_state["derniere"] = {
+                **summary, "terminee_le": datetime.now().isoformat(timespec="seconds"),
+            }
+    except Exception as exc:
+        print(f"[gestion_donnees] échec validation AL_AMANAH Takaful : {exc}")
+    finally:
+        with _validation_takaful_al_amanah_lock:
+            _validation_takaful_al_amanah_state["en_cours"] = False
+            _validation_takaful_al_amanah_state["progression"] = None
+
+
+@bp.route("/api/gestion-donnees/valider-takaful-al-amanah", methods=["POST"])
+def valider_takaful_al_amanah():
+    """Lance (en tâche de fond) l'extraction + stockage des 5 tableaux
+    Takaful d'AL_AMANAH_TAKAFUL (PDFs en arabe, Annexes 3/4/5.1/14/15) —
+    voir extraction/al_amanah_takaful_extractor.py. Même schéma que les
+    autres routes /valider-takaful-*."""
+    annees_raw = request.args.getlist("annee")
+    try:
+        annees = [int(a) for a in annees_raw] or None
+    except ValueError:
+        return jsonify({"error": "Paramètre 'annee' invalide"}), 400
+
+    with _validation_takaful_al_amanah_lock:
+        if _validation_takaful_al_amanah_state["en_cours"]:
+            return jsonify({"lancee": False, "raison": "deja_en_cours"}), 409
+        _validation_takaful_al_amanah_state["en_cours"] = True
+        _validation_takaful_al_amanah_state["demarree_le"] = datetime.now().isoformat(timespec="seconds")
+        _validation_takaful_al_amanah_state["progression"] = None
+    threading.Thread(target=_run_validation_takaful_al_amanah_background, args=(annees,), daemon=True).start()
+    return jsonify({"lancee": True})
+
+
+@bp.route("/api/gestion-donnees/statut-validation-takaful-al-amanah")
+def statut_validation_takaful_al_amanah():
+    with _validation_takaful_al_amanah_lock:
+        return jsonify(dict(_validation_takaful_al_amanah_state))
 
 
 @bp.route("/api/gestion-donnees/documents")

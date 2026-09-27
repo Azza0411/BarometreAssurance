@@ -99,8 +99,16 @@ jamais appuyé sur ces deux colonnes non plus.
   "...Général" ciblés par `_TITLE_RE`. Même distinction "ancien"/
   "nouveau" que `takaful_kpi_extractor.py::detect_format`, non traitée
   ici (portée non demandée pour l'instant).
-- **AL_AMANAH_TAKAFUL (arabe) hors périmètre**, comme pour le Bilan
-  Takaful — extracteur texte français uniquement.
+- **AL_AMANAH_TAKAFUL (arabe) — extracteur dédié** : voir
+  `extraction/al_amanah_takaful_extractor.py` et
+  `services/tableau_pipeline_service_takaful_al_amanah.py`.
+  Couverture par année (PDFs CMF locaux) :
+  - 2020 : surplus_fam ✓, surplus_gen ✓, résultat ✓, ventil_fam ✗, ventil_gen ✓
+  - 2021 : tous les 5 tableaux ✓
+  - 2022 : tous ✗ — encodage de police corrompu (Presentation Forms au lieu d'Arabic Unicode standard) — non récupérable par extraction texte
+  - 2023 : surplus ✗ (pages scannées), résultat ✗ (scanné), ventil_fam ✓, ventil_gen ✓
+  - 2024 : ventil_fam ✓, reste ✗ (pages scannées ou absentes)
+  - 2025 : tous ✗ (pages scannées)
 
 ### Résultat (pipeline `tableau_pipeline_service_takaful_surplus.py`)
 
