@@ -1445,9 +1445,11 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                 soc["grids"][key][annee] = cached
                 continue
             if not spec["live_extractor"] or live_done >= MAX_LIVE_EXTRACTIONS:
+                soc["grids"][key][annee] = None  # document existe mais non extrait
                 continue
             pdf_path = local_pdf_path("CMF", code, nom_pdf)
             if not pdf_path or not os.path.isfile(pdf_path):
+                soc["grids"][key][annee] = None
                 continue
             soc["grids"][key][annee] = spec["live_extractor"](pdf_path)
             live_done += 1
@@ -1476,7 +1478,8 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                  for name in blocs_a_rendre] +
                 [1 + len(g["colonnes"])
                  for key in grids_a_rendre
-                 for g in soc["grids"].get(key, {}).values() if g and g.get("lignes")]
+                 for g in soc["grids"].get(key, {}).values()
+                 if g and g.get("lignes") and not (list(g["lignes"].keys()) == ["Données non disponibles"])]
             )
 
         def _write_narrow_block(ws, row, display_tableau, bloc):
@@ -1511,28 +1514,53 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             row += 2
             return row, len(cols)
 
+        def _is_marker_grid(g):
+            """Vrai si la grille ne contient que la ligne marqueur (PDF scanné
+            / extraction impossible) — ne doit pas être rendue comme un tableau."""
+            if not g or not g.get("lignes"):
+                return True
+            lignes = list(g["lignes"].keys())
+            return len(lignes) == 1 and lignes[0] == "Données non disponibles"
+
         def _write_grid_section(ws, row, n_cols, key, grids):
             """Un bloc par année, empilés VERTICALEMENT — titre de section
             écrit une seule fois, puis _write_full_grid_block appelé pour
-            chaque année dans l'ordre chronologique."""
+            chaque année (ordre décroissant). Les années sans données valides
+            affichent un message "Échec d'extraction" au lieu d'un tableau."""
             spec = _FULL_GRID_SPECS[key]
-            annees_a_rendre = sorted(a for a, g in grids.items() if g and g.get("lignes"))
-            if not annees_a_rendre:
+            # Toutes les années du document (même celles sans extraction réussie)
+            all_annees = sorted(grids.keys(), reverse=True)
+            if not all_annees:
                 return row, n_cols
-            # Titre de section (une fois, avant les blocs annuels).
-            max_year_cols = 1 + max(len(grids[a]["colonnes"]) for a in annees_a_rendre)
+            annees_valides = [a for a in all_annees if not _is_marker_grid(grids[a])]
+            # Largeur de titre basée sur les grilles valides (fallback 2)
+            max_year_cols = (1 + max(len(grids[a]["colonnes"]) for a in annees_valides)) if annees_valides else 2
             ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=max(max_year_cols, 2))
             title_cell = ws.cell(row=row, column=1, value=spec["display"])
             title_cell.font = Font(bold=True, size=12, color=DARK, name="Calibri")
             title_cell.alignment = Alignment(horizontal="center", vertical="center")
             row += 1
-            for annee in annees_a_rendre:
-                row, used_cols = _write_full_grid_block(
-                    ws, row, annee, grids[annee],
-                    row_order=spec["row_order"], row_order_fallback=spec["row_order_fallback"],
-                    preserve_order=spec["preserve_order"],
-                )
-                n_cols = max(n_cols, used_cols)
+            for annee in all_annees:
+                g = grids[annee]
+                if _is_marker_grid(g):
+                    # Ligne d'en-tête de l'année + message d'échec
+                    hdr = ws.cell(row=row, column=1, value=str(annee))
+                    hdr.font = Font(bold=True, size=10, color=YELLOW, name="Calibri")
+                    hdr.fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
+                    hdr.alignment = Alignment(horizontal="center", vertical="center")
+                    hdr.border = _thin_border()
+                    row += 1
+                    msg_cell = ws.cell(row=row, column=1, value="Échec d'extraction pour ce tableau")
+                    msg_cell.font = Font(italic=True, size=10, color="808080", name="Calibri")
+                    msg_cell.alignment = Alignment(horizontal="left", vertical="center")
+                    row += 2
+                else:
+                    row, used_cols = _write_full_grid_block(
+                        ws, row, annee, g,
+                        row_order=spec["row_order"], row_order_fallback=spec["row_order_fallback"],
+                        preserve_order=spec["preserve_order"],
+                    )
+                    n_cols = max(n_cols, used_cols)
             return row, n_cols
 
         def _write_logo_and_finish(ws, code, n_cols):
