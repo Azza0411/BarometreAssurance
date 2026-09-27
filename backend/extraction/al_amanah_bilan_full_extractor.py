@@ -56,11 +56,11 @@ TEXTE RÉEL (pas scannés — `is_scanned_page` en garde-fou). Les Annexes
 
 import re
 
-from extraction.bilan_kpi_extractor import (
+from backend.extraction.bilan_kpi_extractor import (
     _cluster_lines, _extract_numeric_clusters,
     _words_with_bracket_negatives_resolved, NUMERIC_TOKEN_RE,
 )
-from extraction.arabic_ocr_extractor import _rtl_label_from_words, is_scanned_page
+from backend.extraction.arabic_ocr_extractor import _rtl_label_from_words, is_scanned_page
 
 _AC_PREFIX = "أصل"
 _AN_PREFIX = "أصولصافية"

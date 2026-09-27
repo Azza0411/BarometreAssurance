@@ -38,8 +38,8 @@ elle-même est capturée et fiable."""
 
 import re
 
-from extraction.arabic_ocr_extractor import render_page, _ocr_lines, ocr_row_numbers, is_scanned_page
-from extraction.bilan_kpi_extractor import MAX_PLAUSIBLE_VALUE
+from backend.extraction.arabic_ocr_extractor import render_page, _ocr_lines, ocr_row_numbers, is_scanned_page
+from backend.extraction.bilan_kpi_extractor import MAX_PLAUSIBLE_VALUE
 
 _AC_PATTERN_RE = re.compile(r"صل")   # "أصل" (Actif) — le hamza initial "أ" est souvent perdu/déformé par l'OCR, "صل" reste le fragment le plus stable
 _PA_PATTERN_RE = re.compile(r"خصم|خصو")  # "خصم" (Passif, ligne de détail) / "خصوم" (dans "مجموع الخصوم")
