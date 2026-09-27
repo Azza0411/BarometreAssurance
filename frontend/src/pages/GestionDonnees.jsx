@@ -66,6 +66,55 @@ if (typeof document !== "undefined" && !document.getElementById("gd-spin-kf")) {
   document.head.appendChild(style);
 }
 
+function ExportProgressBar({ progress }) {
+  const { phase, done = 0, total = 1, company, tableau, annee, message } = progress;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const DARK_C = "#1B1F2E";
+  const YELLOW_C = "#F5C800";
+
+  // Libellé de la phase en cours
+  let label = message || "Génération en cours…";
+  if (phase === "extraction" && company) {
+    const tbl = tableau ? ` — ${tableau.replace("annexe", "Annexe ")}` : "";
+    label = `Extraction PDF : ${company} ${annee || ""}${tbl}`;
+  } else if (phase === "generation" && company) {
+    label = `Génération Excel : ${company} (${done}/${total})`;
+  } else if (phase === "chargement") {
+    label = "Chargement des données…";
+  } else if (phase === "done") {
+    label = "Téléchargement…";
+  }
+
+  // Pourcentage pondéré : chargement 0-5%, extraction 5-55%, génération 55-100%
+  let displayPct = pct;
+  if (phase === "chargement") displayPct = 2;
+  else if (phase === "extraction") displayPct = 5 + Math.round(pct * 0.50);
+  else if (phase === "generation") displayPct = 55 + Math.round(pct * 0.45);
+  else if (phase === "done") displayPct = 100;
+
+  return (
+    <div style={{ width: "100%", padding: "6px 0 2px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 11, color: DARK_C }}>
+        <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "80%" }}>{label}</span>
+        <span style={{ fontWeight: 700, color: DARK_C, flexShrink: 0 }}>{displayPct}%</span>
+      </div>
+      <div style={{ height: 7, borderRadius: 4, background: "#E5E7EB", overflow: "hidden" }}>
+        <div style={{
+          height: "100%", borderRadius: 4,
+          background: `linear-gradient(90deg, ${DARK_C} 0%, ${YELLOW_C} 100%)`,
+          width: `${displayPct}%`,
+          transition: "width 0.4s ease",
+        }} />
+      </div>
+      {phase === "generation" && total > 0 && (
+        <div style={{ fontSize: 10, color: "#6B7280", marginTop: 3 }}>
+          {done}/{total} entreprise{total > 1 ? "s" : ""} traitée{total > 1 ? "s" : ""}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Style de bouton commun aux actions principales (Collecte…) — retour
 // utilisateur : le bloc plein DARK/YELLOW était jugé trop sombre / pas
 // assez minimaliste. Contour clair (même jaune que la navbar) au lieu d'un
@@ -472,6 +521,7 @@ function DocumentsConsole({ docs, opts, source }) {
   const [page, setPage] = useState(1);
   const [exportLoading, setExportLoading] = useState(false);
   const [exportErreur, setExportErreur] = useState(null);
+  const [exportProgress, setExportProgress] = useState(null); // {phase, done, total, company, message}
 
   const sourceDocs = useMemo(() => (docs ?? []).filter(d => d.source === source), [docs, source]);
   const anneesDisponibles = useMemo(
@@ -612,28 +662,51 @@ function DocumentsConsole({ docs, opts, source }) {
     if (!isCmf) return;
     setExportErreur(null);
     setExportLoading(true);
+    setExportProgress({ phase: "chargement", message: "Connexion au serveur…", done: 0, total: 1 });
     const p = new URLSearchParams();
     tableaux.forEach(t => p.append("tableau", t));
-    // Rien n'est ajouté quand personne n'est exclu : le backend traite
-    // l'absence de paramètre "societe" comme "toutes", exactement le
-    // comportement par défaut voulu.
     if (entreprisesExclues.size > 0) societesSelectionnees.forEach(s => p.append("societe", s));
     annees.forEach(a => p.append("annee", a));
-    fetch(`${API}/api/gestion-donnees/export.xlsx?${p.toString()}`)
-      .then(async r => {
-        if (!r.ok) throw new Error("echec");
-        const blob = await r.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "Export_donnees.xlsx";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      })
-      .catch(() => setExportErreur("Échec de la génération de l'export."))
-      .finally(() => setExportLoading(false));
+
+    const es = new EventSource(`${API}/api/gestion-donnees/export-stream?${p.toString()}`);
+    es.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.phase === "done") {
+        es.close();
+        setExportProgress({ phase: "done", message: "Téléchargement…", done: 1, total: 1 });
+        const dlUrl = `${API}/api/gestion-donnees/export.xlsx?job_id=${msg.job_id}`;
+        fetch(dlUrl)
+          .then(async r => {
+            if (!r.ok) throw new Error("echec");
+            const blob = await r.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "Export_donnees.xlsx";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+          })
+          .catch(() => setExportErreur("Échec du téléchargement de l'export."))
+          .finally(() => { setExportLoading(false); setExportProgress(null); });
+      } else if (msg.phase === "error") {
+        es.close();
+        setExportErreur(msg.message || "Échec de la génération de l'export.");
+        setExportLoading(false);
+        setExportProgress(null);
+      } else if (msg.phase === "heartbeat") {
+        // rien
+      } else {
+        setExportProgress(msg);
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      setExportErreur("Connexion interrompue pendant la génération.");
+      setExportLoading(false);
+      setExportProgress(null);
+    };
   };
 
   return (
@@ -701,6 +774,9 @@ function DocumentsConsole({ docs, opts, source }) {
             <b style={{ color: DARK, fontWeight: 800 }}>{filtered.length}</b> document(s) correspondent
           </span>
         </div>
+        {exportProgress && exportLoading && (
+          <ExportProgressBar progress={exportProgress} />
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
           {exportErreur && <span style={{ fontSize: 11.5, color: "#C8102E", fontWeight: 600 }}>{exportErreur}</span>}
           <span style={{ fontSize: 11, color: MUTED }}>

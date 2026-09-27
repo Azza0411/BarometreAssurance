@@ -10,16 +10,19 @@ thread de fond dans le process Flask, statut interrogé par polling."""
 
 import json
 import os
+import queue
 import threading
+import uuid
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, jsonify, request, send_file, Response, stream_with_context
 
 from database.repository import get_connection, get_document_id, apply_manual_corrections, CorrectionError
 from api.services.data_management import (
     list_documents_for_ui, get_local_pdf_path_for_document,
     get_filter_options, build_flexible_export_xlsx, get_reliability_stats,
     get_document_grid, get_referentiel, page_source_info, kpi_raw_labels_for,
+    _EXPORT_JOBS,
 )
 from api.services import tableau_pipeline_service
 
@@ -522,8 +525,68 @@ def fiabilite():
         conn.close()
 
 
+@bp.route("/api/gestion-donnees/export-stream")
+def export_stream():
+    """SSE endpoint : lance la génération Excel dans un thread, émet des
+    événements de progression, puis stocke le résultat dans _EXPORT_JOBS."""
+    tableaux = request.args.getlist("tableau")
+    codes = request.args.getlist("societe")
+    annees_raw = request.args.getlist("annee")
+    try:
+        annees = [int(a) for a in annees_raw if a]
+    except ValueError:
+        annees = []
+    job_id = uuid.uuid4().hex[:10]
+    q = queue.Queue()
+
+    def run():
+        try:
+            def cb(info):
+                q.put(info)
+            buf = build_flexible_export_xlsx(
+                tableau_keys=tableaux or None,
+                codes=codes or None,
+                annees=annees or None,
+                progress_cb=cb,
+            )
+            _EXPORT_JOBS[job_id] = buf
+            q.put({"phase": "done", "job_id": job_id})
+        except Exception as exc:
+            q.put({"phase": "error", "message": str(exc)})
+
+    threading.Thread(target=run, daemon=True).start()
+
+    def generate():
+        yield f"data: {json.dumps({'phase': 'started', 'job_id': job_id})}\n\n"
+        while True:
+            try:
+                msg = q.get(timeout=120)
+                yield f"data: {json.dumps(msg)}\n\n"
+                if msg.get("phase") in ("done", "error"):
+                    break
+            except queue.Empty:
+                yield "data: {\"phase\":\"heartbeat\"}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
+
+
 @bp.route("/api/gestion-donnees/export.xlsx")
 def export_xlsx():
+    # Téléchargement d'un export déjà généré via export-stream
+    job_id = request.args.get("job_id")
+    if job_id:
+        buf = _EXPORT_JOBS.pop(job_id, None)
+        if buf is None:
+            return jsonify({"error": "Export non trouvé ou déjà téléchargé"}), 404
+        return send_file(
+            buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True, download_name="Export_donnees.xlsx",
+        )
+
     tableaux = request.args.getlist("tableau")
     codes = request.args.getlist("societe")
     annees_raw = request.args.getlist("annee")

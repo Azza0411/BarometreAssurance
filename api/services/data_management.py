@@ -11,6 +11,7 @@ valeur de KPI), pas une mise en page métier avec formules recalculables.
 import math
 import os
 import re
+import uuid
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -1251,7 +1252,11 @@ def _write_narrow_fallback_block(ws, row, annee, narrow_annexe13):
     return row, len(headers)
 
 
-def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
+# Résultats d'export en attente de téléchargement (job_id -> BytesIO)
+_EXPORT_JOBS: dict = {}
+
+
+def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progress_cb=None):
     """Génère un export Excel filtré sur n'importe quelle combinaison de
     tableaux/sociétés/années — chaque filtre vide/absent signifie "tous".
 
@@ -1282,6 +1287,14 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
     7 autres tableaux n'ont pas cet extracteur dédié, ils affichent
     simplement "grille non disponible" pour l'année concernée si elle
     n'est pas encore en base."""
+    def _progress(phase, **kw):
+        if progress_cb:
+            try:
+                progress_cb({"phase": phase, **kw})
+            except Exception:
+                pass
+
+    _progress("chargement", message="Chargement des données…")
     raw_tableaux = _raw_tableaux_for_groups(tableau_keys)
     active_group_keys = tableau_keys if tableau_keys else [key for key, _label, _raws in TABLEAU_GROUPS]
 
@@ -1435,6 +1448,17 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
     # "en cours" sans jamais aboutir). Budget SÉPARÉ par tableau : un
     # export "tous les tableaux" doit pouvoir rafraîchir Annexe 12 ET 13
     # indépendamment, sans qu'ils se disputent le même quota.
+    # Compter le total d'extractions live potentielles pour la progression
+    _live_total = sum(
+        1 for key in active_full_grid_keys
+        if _FULL_GRID_SPECS[key]["live_extractor"]
+        for doc_id in [d[0] for d in full_grid_docs[key]]
+        if full_grid_cellules[key].get(doc_id) is None
+    )
+    _live_done_global = 0
+    if _live_total:
+        _progress("extraction", done=0, total=_live_total, message="Extraction depuis les PDFs…")
+
     MAX_LIVE_EXTRACTIONS = 15
     for key in active_full_grid_keys:
         spec = _FULL_GRID_SPECS[key]
@@ -1454,6 +1478,9 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                 continue
             soc["grids"][key][annee] = spec["live_extractor"](pdf_path)
             live_done += 1
+            _live_done_global += 1
+            _progress("extraction", done=_live_done_global, total=max(_live_total, 1),
+                      company=code, annee=annee, tableau=key)
 
     wb = Workbook()
     wb.remove(wb.active)  # une vraie feuille par société/tableau ci-dessous ; pas de feuille "Sheet" vide
@@ -1684,7 +1711,12 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
         # contient le traitement d'une société. Dans chaque sheet, on va
         # trouver l'annexe 13 et le bilan actif [...] de la société en
         # question."
-        for code in sorted(par_societe.keys()):
+        _soc_codes = sorted(par_societe.keys())
+        _soc_total = len(_soc_codes)
+        _progress("generation", done=0, total=_soc_total, message="Génération Excel…")
+        for _soc_idx, code in enumerate(_soc_codes):
+            _progress("generation", done=_soc_idx, total=_soc_total,
+                      company=code, message=f"Génération {code}…")
             soc = par_societe[code]
             sheet_name = _safe_sheet_name(code, used_names)
             ws = wb.create_sheet(sheet_name)
@@ -1704,6 +1736,8 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                     row, n_cols = _write_grid_section(ws, row, n_cols, key, soc["grids"][key])
             _write_logo_and_finish(ws, code, n_cols)
 
+    _progress("generation", done=_soc_total if par_societe else 0,
+              total=max(_soc_total, 1) if par_societe else 1, message="Finalisation…")
     buffer = io.BytesIO()
     wb.save(buffer)
     buffer.seek(0)
