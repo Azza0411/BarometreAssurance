@@ -137,6 +137,7 @@ COMPANY_REGISTRY = {
         # "EL AMANA TAKAFUL" : orthographe utilisée par le CGA (translittération
         # différente de celle du CMF).
         "aliases": ["AL AMANAH TAKAFUL", "EL AMANA TAKAFUL"],
+        "siege_social": "13, Rue des Berges - Montplaisir - 1073 Tunis",
     },
 
     "AT_TAKAFULIA": {
