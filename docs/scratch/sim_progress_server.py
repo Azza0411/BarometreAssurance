@@ -8,7 +8,7 @@ from flask import Flask
 from flask_cors import CORS
 import pipelines.progress as p
 p._DURATIONS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_sim_phase_durations.json")
-from api.routes import gestion_donnees as g
+from backend.routes import gestion_donnees as g
 
 app = Flask(__name__)
 CORS(app)

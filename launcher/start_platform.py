@@ -4,7 +4,7 @@ d'avancement). Objectif : l'utilisateur double-clique un seul fichier
 (LancerPlateforme.bat, qui appelle ce script), ne tape AUCUNE commande,
 et se retrouve avec son navigateur ouvert sur la plateforme — les données
 manquantes se (re)collectent d'elles-mêmes si besoin (voir
-api/app.py::_start_first_run_scrape, déclenché automatiquement par le
+backend/app.py::_start_first_run_scrape, déclenché automatiquement par le
 process API lui-même dès qu'il démarre sur une base vide).
 
 Ce script démarre, dans l'ordre :
@@ -12,9 +12,9 @@ Ce script démarre, dans l'ordre :
      instance MariaDB, zéro installation, port dédié 3307 (jamais 3306,
      pour ne jamais entrer en conflit avec un MySQL déjà présent sur la
      machine). Télécharge/initialise au premier lancement uniquement.
-  2. L'API Flask (api/app.py, port 8002), pointée vers cette base via
+  2. L'API Flask (backend/app.py, port 8002), pointée vers cette base via
      DB_HOST/DB_PORT — sert AUSSI le frontend buildé (frontend/dist/, voir
-     api/app.py) : un seul processus pour l'API et l'interface, pas besoin
+     backend/app.py) : un seul processus pour l'API et l'interface, pas besoin
      de Node/Nginx à l'exécution.
   3. Le chatbot IA (chatbot_portable/app.py, port 5001) — optionnel,
      autonome (SQLite, pas de dépendance MySQL) : une erreur ici ne doit
@@ -97,7 +97,7 @@ def main():
 
     if not _is_port_open(API_PORT):
         print(f"  Démarrage de l'API (port {API_PORT})...")
-        _start_background("api/app.py", extra_env=db_env)
+        _start_background("backend/app.py", extra_env=db_env)
     else:
         print(f"  API déjà en cours d'exécution (port {API_PORT}).")
 

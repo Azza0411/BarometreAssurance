@@ -124,37 +124,37 @@ def _run_bilan_full():
     PDF CMF déjà présents localement (voir _save_cmf_pdf_local, appelé par
     _run_cmf juste avant dans SOURCES) : toujours placé APRÈS "CMF" pour
     qu'un document tout juste synchronisé soit déjà sur disque."""
-    from api.services.tableau_pipeline_service_bilan import process_all
+    from backend.services.tableau_pipeline_service_bilan import process_all
     return process_all()
 
 
 def _run_annexe12_full():
-    from api.services.tableau_pipeline_service_annexe12 import process_all
+    from backend.services.tableau_pipeline_service_annexe12 import process_all
     return process_all()
 
 
 def _run_annexe13_full():
-    from api.services.tableau_pipeline_service import process_all
+    from backend.services.tableau_pipeline_service import process_all
     return process_all()
 
 
 def _run_takaful_surplus_full():
-    from api.services.tableau_pipeline_service_takaful_surplus import process_all
+    from backend.services.tableau_pipeline_service_takaful_surplus import process_all
     return process_all()
 
 
 def _run_takaful_resultat_full():
-    from api.services.tableau_pipeline_service_takaful_resultat import process_all
+    from backend.services.tableau_pipeline_service_takaful_resultat import process_all
     return process_all()
 
 
 def _run_takaful_ventilation_full():
-    from api.services.tableau_pipeline_service_takaful_ventilation import process_all
+    from backend.services.tableau_pipeline_service_takaful_ventilation import process_all
     return process_all()
 
 
 def _run_etat_resultat_full():
-    from api.services.tableau_pipeline_service_etat_resultat import process_all
+    from backend.services.tableau_pipeline_service_etat_resultat import process_all
     return process_all()
 
 
@@ -262,7 +262,7 @@ def _check_quality():
     N'interrompt jamais le pipeline : une erreur ici est journalisee et ignoree."""
     try:
         from database.repository import get_connection, list_documents_by_source, save_anomaly
-        from api.services.anomalies_service import build_anomalies_systeme
+        from backend.services.anomalies_service import build_anomalies_systeme
 
         conn = get_connection()
         years = [
@@ -302,7 +302,7 @@ def _run_veille():
     juste un déclencheur de notification - une erreur ici ne doit jamais
     faire échouer le pipeline principal."""
     try:
-        from api.routes.veille import sync_new_items
+        from backend.routes.veille import sync_new_items
         return sync_new_items()
     except Exception as exc:
         _log_json("veille_sync_failed", error=str(exc))

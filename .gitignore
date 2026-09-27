@@ -32,6 +32,8 @@ __pycache__/
 .Python
 *.egg-info/
 dist/
+dist_v4/
+distribution/
 build/
 *.egg
 

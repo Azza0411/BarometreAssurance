@@ -174,7 +174,7 @@ def process_resultat(pdf_path, code=None, annee=None, max_pages=15):
     sont pas fournis (usage direct/test sans base de données)."""
     import pdfplumber
     if code and annee:
-        from api.services.pdf_sections import get_pdf_sections
+        from backend.services.pdf_sections import get_pdf_sections
         page_num = get_pdf_sections(code, annee).get("etat_resultat")
         if not page_num:
             return None

@@ -15,7 +15,7 @@ Composants démarrés, dans l'ordre :
      XAMPP) et démarré PAR L'UTILISATEUR avant de lancer cet exécutable.
      Message d'erreur clair si injoignable, plutôt qu'un téléchargement
      silencieux ou un plantage.
-  2. L'API Flask (api/app.py) — importée puis servie via werkzeug
+  2. L'API Flask (backend/app.py) — importée puis servie via werkzeug
      `make_server` dans un thread (pas `app.run()`, qui bloquerait).
   3. Le chatbot IA (chatbot_portable/app.py) — même principe, best-effort
      (une erreur ici ne bloque jamais le reste, voir docstring plus bas).
@@ -112,7 +112,7 @@ def main():
 
     if not _is_port_open(API_PORT):
         print(f"  Démarrage de l'API (port {API_PORT})...")
-        import api.app as api_app
+        import backend.app as api_app
         _run_flask_app_in_thread(api_app.app, API_PORT, "api")
     else:
         print(f"  API déjà en cours d'exécution (port {API_PORT}).")

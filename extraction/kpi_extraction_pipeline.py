@@ -113,7 +113,7 @@ def _save_cmf_pdf_local(code: str, nom_pdf: str, content: bytes) -> None:
     silencieusement un fichier déjà présent (jamais écrasé — un document
     déjà extrait avec succès par la grille complète ne doit pas être
     réécrit à chaque passage du pipeline planifié)."""
-    from api.services.data_management import local_pdf_path
+    from backend.services.data_management import local_pdf_path
 
     path = local_pdf_path("CMF", code, nom_pdf)
     if not path or os.path.isfile(path):
@@ -219,7 +219,7 @@ def _backfill_one_document(code, annee, nom_pdf, lien):
 
 def _missing_local_pdf_documents(conn, already_done):
     """Documents CMF déjà extraits (dans `already_done`) dont le PDF local manque."""
-    from api.services.data_management import local_pdf_path
+    from backend.services.data_management import local_pdf_path
 
     documents = [
         doc for doc in list_all_documents(conn)

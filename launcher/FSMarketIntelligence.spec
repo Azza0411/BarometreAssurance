@@ -14,7 +14,7 @@ PROJECT_ROOT = os.path.dirname(SPECPATH)
 a = Analysis(
     [os.path.join(SPECPATH, "main.py")],
     # Racine du projet dans pathex : main.py importe paresseusement
-    # api.app / chatbot_portable.app (via sys.path.insert au démarrage) —
+    # backend.app / chatbot_portable.app (via sys.path.insert au démarrage) —
     # sans ce chemin, l'analyseur PyInstaller ne voit JAMAIS ces packages
     # et ne les embarque pas du tout (ModuleNotFoundError au lancement,
     # constaté).
