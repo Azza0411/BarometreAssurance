@@ -935,11 +935,12 @@ _REF_HEADER_TEXT = "FFFFFF"
 _REF_ZEBRA = "F3F4F6"
 
 
-def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, row_order_fallback=None, preserve_order=False):
+def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, row_order_fallback=None, preserve_order=False, start_col=1):
+    sc = start_col
     cols = grid["colonnes"]
     last_col = max(1 + len(cols), 2)
-    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=last_col)
-    subtitle_cell = ws.cell(row=row, column=1, value=f"{annee} — tableau complet ({len(grid['lignes'])} lignes × {len(cols)} colonnes)")
+    ws.merge_cells(start_row=row, start_column=sc, end_row=row, end_column=sc + last_col - 1)
+    subtitle_cell = ws.cell(row=row, column=sc, value=f"{annee} — tableau complet ({len(grid['lignes'])} lignes × {len(cols)} colonnes)")
     subtitle_cell.font = Font(italic=True, size=10, color=DARK, name="Calibri")
     subtitle_cell.alignment = Alignment(horizontal="center", vertical="center")
     row += 2  # ligne vide avant le début du tableau (retour utilisateur : espacement)
@@ -972,18 +973,18 @@ def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, r
         # sur les 2 lignes d'en-tête (comme "RUBRIQUES" dans le PDF), noms de
         # groupe fusionnés HORIZONTALEMENT sur la portée de leurs colonnes
         # membres.
-        ws.merge_cells(start_row=row, start_column=1, end_row=row + 1, end_column=1)
-        cell = ws.cell(row=row, column=1, value=headers[0])
+        ws.merge_cells(start_row=row, start_column=sc, end_row=row + 1, end_column=sc)
+        cell = ws.cell(row=row, column=sc, value=headers[0])
         cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
         cell.border = _thin_border()
-        ws.cell(row=row + 1, column=1).border = _thin_border()
+        ws.cell(row=row + 1, column=sc).border = _thin_border()
         group_by_start = {g["debut"]: g for g in groups}
         col_idx = 0
         while col_idx < len(cols):
-            excel_col = col_idx + 2
+            excel_col = sc + col_idx + 1
             g = group_by_start.get(col_idx)
             if g:
-                end_excel_col = g["fin"] + 2
+                end_excel_col = sc + g["fin"] + 1
                 ws.merge_cells(start_row=row, start_column=excel_col, end_row=row, end_column=end_excel_col)
                 for c in range(excel_col, end_excel_col + 1):
                     cell = ws.cell(row=row, column=c, value=g["libelle"].upper() if c == excel_col else None)
@@ -1001,7 +1002,7 @@ def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, r
         # uniquement (les colonnes hors groupe ont déjà leur nom fusionné
         # verticalement ci-dessus, rien à ré-écrire sur cette ligne pour elles).
         for i in grouped_col_idxs:
-            excel_col = i + 2
+            excel_col = sc + i + 1
             cell = ws.cell(row=row + 1, column=excel_col, value=headers[i + 1])
             cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
             cell.border = _thin_border()
@@ -1010,7 +1011,7 @@ def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, r
         row += 2
     else:
         for col_idx, header in enumerate(headers, start=1):
-            cell = ws.cell(row=row, column=col_idx, value=header)
+            cell = ws.cell(row=row, column=sc + col_idx - 1, value=header)
             cell.fill, cell.font, cell.alignment = header_style["fill"], header_style["font"], header_style["alignment"]
             cell.border = _thin_border()
         ws.row_dimensions[row].height = 30
@@ -1027,7 +1028,7 @@ def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, r
     row_items = list(grid["lignes"].items()) if preserve_order else _sorted_grid_rows(grid["lignes"], order=row_order, fallback=fallback)
     for i, (label, values) in enumerate(row_items):
         fill = PatternFill(start_color=_REF_ZEBRA, end_color=_REF_ZEBRA, fill_type="solid") if i % 2 == 1 else None
-        cell = ws.cell(row=row, column=1, value=(label or "").upper())
+        cell = ws.cell(row=row, column=sc, value=(label or "").upper())
         cell.border = _thin_border()
         cell.font = Font(name="Arial", size=10, color=DARK)
         cell.alignment = Alignment(horizontal="left", vertical="center")
@@ -1035,7 +1036,7 @@ def _write_full_grid_block(ws, row, annee, grid, row_order=_ROW_DISPLAY_ORDER, r
             cell.fill = fill
         for col_idx, col in enumerate(cols, start=2):
             val = values.get(col)
-            c = ws.cell(row=row, column=col_idx, value=val)
+            c = ws.cell(row=row, column=sc + col_idx - 1, value=val)
             c.number_format = "#,##0"
             c.border = _thin_border()
             c.font = Font(name="Arial", size=10, color=DARK)
@@ -1471,15 +1472,33 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             dès qu'un bloc (ex. Annexe 13, jusqu'à 16 colonnes par branche)
             la dépassait : le fond sombre du titre s'arrêtait au milieu du
             tableau, visible comme un trait/une cassure verticale entre
-            zone sombre et zone blanche au-dessus des colonnes suivantes."""
+            zone sombre et zone blanche au-dessus des colonnes suivantes.
+            Quand plusieurs grilles sont rendues côte à côte, la largeur
+            totale = somme des largeurs + séparateurs."""
+            valid_grid_widths = [
+                1 + len(g["colonnes"])
+                for key in grids_a_rendre
+                for g in soc["grids"].get(key, {}).values()
+                if g and g.get("lignes") and not (list(g["lignes"].keys()) == ["Données non disponibles"])
+            ]
+            if len(grids_a_rendre) >= 2:
+                # Côte à côte : largeur = somme des max par key + séparateurs
+                GAP = 1
+                per_key_max = []
+                for key in grids_a_rendre:
+                    valides = [
+                        1 + len(g["colonnes"])
+                        for g in soc["grids"].get(key, {}).values()
+                        if g and g.get("lignes") and not (list(g["lignes"].keys()) == ["Données non disponibles"])
+                    ]
+                    per_key_max.append(max(valides) if valides else 3)
+                sidebyside_width = sum(per_key_max) + GAP * (len(grids_a_rendre) - 1)
+                return max([2] + [1 + len({a for kpi_annees in soc["blocs"][name].values() for a in kpi_annees.keys()}) for name in blocs_a_rendre] + [sidebyside_width])
             return max(
                 [2] +
                 [1 + len({a for kpi_annees in soc["blocs"][name].values() for a in kpi_annees.keys()})
                  for name in blocs_a_rendre] +
-                [1 + len(g["colonnes"])
-                 for key in grids_a_rendre
-                 for g in soc["grids"].get(key, {}).values()
-                 if g and g.get("lignes") and not (list(g["lignes"].keys()) == ["Données non disponibles"])]
+                valid_grid_widths
             )
 
         def _write_narrow_block(ws, row, display_tableau, bloc):
@@ -1521,6 +1540,73 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
                 return True
             lignes = list(g["lignes"].keys())
             return len(lignes) == 1 and lignes[0] == "Données non disponibles"
+
+        def _write_grids_sidebyside(ws, row, n_cols, keys_grids_list):
+            """Rend plusieurs grilles CÔTE À CÔTE, regroupées par année (décroissant).
+            keys_grids_list: [(key, grids_dict), ...] — len >= 2.
+            Pour chaque année : en-tête d'année fusionné sur toute la largeur,
+            puis chaque tableau rendu à sa colonne de départ fixe, sans empiètement."""
+            GAP = 1  # colonnes vides entre les tableaux
+
+            def _max_grid_width(grids):
+                valides = [g for g in grids.values() if not _is_marker_grid(g)]
+                return (1 + max(len(g["colonnes"]) for g in valides)) if valides else 3
+
+            widths = [_max_grid_width(grids) for _, grids in keys_grids_list]
+            # Colonne de départ de chaque tableau (1-based)
+            start_cols = []
+            cur = 1
+            for i, w in enumerate(widths):
+                start_cols.append(cur)
+                cur += w + (GAP if i < len(widths) - 1 else 0)
+            total_width = cur - 1
+
+            # Titre de chaque annexe (une seule fois, avant la boucle des années)
+            for (key, _grids), sc, w in zip(keys_grids_list, start_cols, widths):
+                spec = _FULL_GRID_SPECS[key]
+                ws.merge_cells(start_row=row, start_column=sc, end_row=row, end_column=sc + w - 1)
+                title_cell = ws.cell(row=row, column=sc, value=spec["display"])
+                title_cell.font = Font(bold=True, size=12, color=DARK, name="Calibri")
+                title_cell.alignment = Alignment(horizontal="center", vertical="center")
+            row += 1
+
+            all_annees = sorted(
+                {a for _, grids in keys_grids_list for a in grids},
+                reverse=True
+            )
+            for annee in all_annees:
+                # En-tête d'année fusionné sur toute la largeur
+                ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=max(total_width, 2))
+                hdr = ws.cell(row=row, column=1, value=str(annee))
+                hdr.font = Font(bold=True, size=10, color=YELLOW, name="Calibri")
+                hdr.fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
+                hdr.alignment = Alignment(horizontal="center", vertical="center")
+                hdr.border = _thin_border()
+                row += 1
+                content_start = row
+                max_row_after = row
+
+                for (key, grids), sc in zip(keys_grids_list, start_cols):
+                    spec = _FULL_GRID_SPECS[key]
+                    g = grids.get(annee)
+                    r = content_start
+                    if _is_marker_grid(g):
+                        msg_cell = ws.cell(row=r, column=sc, value="Échec d'extraction pour ce tableau")
+                        msg_cell.font = Font(italic=True, size=10, color="808080", name="Calibri")
+                        msg_cell.alignment = Alignment(horizontal="left", vertical="center")
+                        r += 2
+                    else:
+                        r, used_cols = _write_full_grid_block(
+                            ws, r, annee, g,
+                            row_order=spec["row_order"], row_order_fallback=spec["row_order_fallback"],
+                            preserve_order=spec["preserve_order"],
+                            start_col=sc,
+                        )
+                        n_cols = max(n_cols, sc + used_cols - 1)
+                    max_row_after = max(max_row_after, r)
+
+                row = max_row_after  # déjà inclut la ligne vide de _write_full_grid_block (+2)
+            return row, n_cols
 
         def _write_grid_section(ws, row, n_cols, key, grids):
             """Un bloc par année, empilés VERTICALEMENT — titre de section
@@ -1610,8 +1696,12 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None):
             for display_tableau in blocs_a_rendre:
                 row, used_cols = _write_narrow_block(ws, row, display_tableau, soc["blocs"][display_tableau])
                 n_cols = max(n_cols, used_cols)
-            for key in grids_a_rendre:
-                row, n_cols = _write_grid_section(ws, row, n_cols, key, soc["grids"][key])
+            if len(grids_a_rendre) >= 2:
+                keys_grids_list = [(key, soc["grids"][key]) for key in grids_a_rendre]
+                row, n_cols = _write_grids_sidebyside(ws, row, n_cols, keys_grids_list)
+            else:
+                for key in grids_a_rendre:
+                    row, n_cols = _write_grid_section(ws, row, n_cols, key, soc["grids"][key])
             _write_logo_and_finish(ws, code, n_cols)
 
     buffer = io.BytesIO()
