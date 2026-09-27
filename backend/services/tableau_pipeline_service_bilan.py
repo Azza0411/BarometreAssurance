@@ -17,8 +17,8 @@ que `tableau_pipeline_service.process_one_document`."""
 
 import os
 
-from database.repository import get_connection, save_tableau_result, save_cached_tableau_page
-from extraction.bilan_full_extractor import process_bilan
+from backend.database.repository import get_connection, save_tableau_result, save_cached_tableau_page
+from backend.extraction.bilan_full_extractor import process_bilan
 from backend.services.data_management import local_pdf_path
 
 TABLEAU_KEY_ACTIF = "bilan_actif"
@@ -63,8 +63,8 @@ def process_one_document(conn, document_id, code, nom_pdf):
     if not pdf_path or not os.path.isfile(pdf_path):
         return "pdf_absent"
     if code == "AL_AMANAH_TAKAFUL":
-        from extraction.al_amanah_bilan_full_extractor import process_al_amanah_bilan
-        from extraction.al_amanah_bilan_ocr_extractor import process_al_amanah_bilan_ocr
+        from backend.extraction.al_amanah_bilan_full_extractor import process_al_amanah_bilan
+        from backend.extraction.al_amanah_bilan_ocr_extractor import process_al_amanah_bilan_ocr
         result = process_al_amanah_bilan(pdf_path) or {}
         if not result.get("actif") or not result.get("passif"):
             result_ocr = process_al_amanah_bilan_ocr(pdf_path) or {}
