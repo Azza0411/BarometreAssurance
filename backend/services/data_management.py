@@ -285,6 +285,38 @@ _ARABIC_SHEET_NAMES = {
     "takaful_ventilation_general":  "Annexe 15 — Ventilation Général",
 }
 
+# Titres arabes + sous-titres français pour les feuilles AL_AMANAH_TAKAFUL
+_ARABIC_TABLE_TITLES = {
+    "bilan_actif": (
+        "الميزانية — الأصول  |  AL AMANAH TAKAFUL",
+        "Bilan Actif — AL AMANAH TAKAFUL",
+    ),
+    "bilan_passif": (
+        "الميزانية — الخصوم  |  AL AMANAH TAKAFUL",
+        "Bilan Passif — AL AMANAH TAKAFUL",
+    ),
+    "takaful_surplus_familial": (
+        "الملحق 3 — فائض صندوق التكافل الأسري  |  AL AMANAH TAKAFUL",
+        "Annexe 3 — Compte de surplus Takaful Familial",
+    ),
+    "takaful_surplus_general": (
+        "الملحق 4 — فائض صندوق التكافل العام  |  AL AMANAH TAKAFUL",
+        "Annexe 4 — Compte de surplus Takaful Général",
+    ),
+    "takaful_resultat_entreprise": (
+        "الملحق 5.1 — نتيجة مؤسسة التكافل  |  AL AMANAH TAKAFUL",
+        "Annexe 5.1 — Compte de résultat de l'entreprise Takaful",
+    ),
+    "takaful_ventilation_familial": (
+        "الملحق 14 — توزيع عمليات التكافل الأسري  |  AL AMANAH TAKAFUL",
+        "Annexe 14 — Ventilation par branche Takaful Familial",
+    ),
+    "takaful_ventilation_general": (
+        "الملحق 15 — توزيع عمليات التكافل العام  |  AL AMANAH TAKAFUL",
+        "Annexe 15 — Ventilation par branche Takaful Général",
+    ),
+}
+
 
 def kpi_raw_labels_for(tableau):
     """Libellés bruts `kpis.tableau` correspondant à une clé
@@ -1203,12 +1235,23 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
         row += 2
 
     for i, label in enumerate(all_labels):
-        fill = PatternFill(start_color=_REF_ZEBRA, end_color=_REF_ZEBRA, fill_type="solid") if i % 2 == 1 else None
+        is_total_row = is_arabic and (
+            (label or "").startswith("_ROW_Y") or "مجموع" in (label or "")
+        )
+        if is_arabic:
+            if is_total_row:
+                fill = PatternFill(start_color="C6E0B4", end_color="C6E0B4", fill_type="solid")
+            elif i % 2 == 1:
+                fill = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
+            else:
+                fill = None
+        else:
+            fill = PatternFill(start_color=_REF_ZEBRA, end_color=_REF_ZEBRA, fill_type="solid") if i % 2 == 1 else None
         label_val = (label or "") if is_arabic else (label or "").upper()
         label_align = "right" if is_arabic else "left"
         cell = ws.cell(row=row, column=sc, value=label_val)
         cell.border = _thin_border()
-        cell.font = Font(name="Arial", size=10, color=DARK)
+        cell.font = Font(name="Arial", size=10, color=DARK, bold=is_total_row)
         cell.alignment = Alignment(horizontal=label_align, vertical="center")
         if fill:
             cell.fill = fill
@@ -1219,7 +1262,7 @@ def _write_multi_year_grid_block(ws, row, grids_by_annee, display, row_order=_RO
                 c = ws.cell(row=row, column=col_debut + j, value=val)
                 c.number_format = "#,##0"
                 c.border = _thin_border()
-                c.font = Font(name="Arial", size=10, color=DARK)
+                c.font = Font(name="Arial", size=10, color=DARK, bold=is_total_row)
                 c.alignment = Alignment(horizontal="center", vertical="center")
                 if fill:
                     c.fill = fill
@@ -1655,11 +1698,12 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
             if not annees_valides:
                 return row, n_cols
             max_year_cols = (1 + max(len(grids[a]["colonnes"]) for a in annees_valides)) if annees_valides else 2
-            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=max(max_year_cols, 2))
-            title_cell = ws.cell(row=row, column=1, value=spec["display"])
-            title_cell.font = Font(bold=True, size=12, color=DARK, name="Calibri")
-            title_cell.alignment = Alignment(horizontal="center", vertical="center")
-            row += 1
+            if not is_arabic:
+                ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=max(max_year_cols, 2))
+                title_cell = ws.cell(row=row, column=1, value=spec["display"])
+                title_cell.font = Font(bold=True, size=12, color=DARK, name="Calibri")
+                title_cell.alignment = Alignment(horizontal="center", vertical="center")
+                row += 1
             for annee in all_annees:
                 g = grids[annee]
                 if _is_marker_grid(g):
@@ -1741,10 +1785,13 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
                     ws_ar.sheet_view.rightToLeft = True
                     ws_ar.sheet_view.showGridLines = False
                     ar_n_cols = 1
-                    _write_sheet_title(ws_ar, ar_n_cols,
-                                       f"{soc['nom'] or code} ({code})",
-                                       "FS Market Intelligence — Export de données",
-                                       align_left=True)
+                    ar_title_ar, ar_subtitle_fr = _ARABIC_TABLE_TITLES.get(
+                        key,
+                        (f"{soc['nom'] or code} ({code})",
+                         "FS Market Intelligence — Export de données"),
+                    )
+                    _write_sheet_title(ws_ar, ar_n_cols, ar_title_ar, ar_subtitle_fr,
+                                       align_left=False)
                     ar_row = 4
                     ar_row, ar_n_cols = _write_grid_section(
                         ws_ar, ar_row, ar_n_cols, key, grids_for_key, is_arabic=True
