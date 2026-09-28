@@ -9,35 +9,29 @@ import os
 # SPECPATH (fourni par PyInstaller) = dossier de ce fichier (launcher/) —
 # chemin RELATIF plutôt qu'absolu codé en dur, pour que ce spec fonctionne
 # quel que soit l'endroit où le dépôt est cloné.
-PROJECT_ROOT = os.path.dirname(SPECPATH)
+# SPECPATH = backend/launcher/ ; PROJECT_ROOT = SCRAPING/ (racine du dépôt)
+# BACKEND_ROOT = SCRAPING/backend/ (code Python, database, extraction)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(SPECPATH))
+BACKEND_ROOT = os.path.dirname(SPECPATH)
+
+_data_dir = os.path.join(BACKEND_ROOT, "data")
+_data_files = [
+    (os.path.join(_data_dir, f), "data")
+    for f in os.listdir(_data_dir)
+    if f.lower().endswith(".xlsx")
+] if os.path.isdir(_data_dir) else []
 
 a = Analysis(
     [os.path.join(SPECPATH, "main.py")],
-    # Racine du projet dans pathex : main.py importe paresseusement
-    # backend.app / chatbot_portable.app (via sys.path.insert au démarrage) —
-    # sans ce chemin, l'analyseur PyInstaller ne voit JAMAIS ces packages
-    # et ne les embarque pas du tout (ModuleNotFoundError au lancement,
-    # constaté).
     pathex=[PROJECT_ROOT],
     binaries=[],
     datas=[
         (os.path.join(PROJECT_ROOT, "frontend", "dist"), "frontend/dist"),
-        (os.path.join(PROJECT_ROOT, "database", "schema.sql"), "database"),
-        (os.path.join(PROJECT_ROOT, "extraction", "tessdata_ara"), "extraction/tessdata_ara"),
-        (os.path.join(PROJECT_ROOT, "chatbot_portable", "rag_corpus_extra.json"), "chatbot_portable"),
-        (os.path.join(PROJECT_ROOT, "chatbot_portable", "MarketInsurance.db"), "chatbot_portable"),
-        # Fichier(s) source de l'enquête de marché — PAS régénéré par le
-        # scraping (contrairement aux PDF CMF/FTUSA/CGA, ~500 Mo de cache
-        # à eux seuls et volontairement PAS embarqués ici), donc à livrer
-        # tel quel avec le paquet distribuable. Chaque .xlsx du dossier
-        # data/ (à la racine, pas ses sous-dossiers) plutôt qu'un nom
-        # précis : extraction/enquete_extractor.py::_find_xlsx() prend le
-        # plus récent fichier "survey*.xlsx", peu importe son nom exact.
-        *[
-            (os.path.join(PROJECT_ROOT, "data", f), "data")
-            for f in os.listdir(os.path.join(PROJECT_ROOT, "data"))
-            if f.lower().endswith(".xlsx")
-        ],
+        (os.path.join(BACKEND_ROOT, "database", "schema.sql"), "database"),
+        (os.path.join(BACKEND_ROOT, "extraction", "tessdata_ara"), "extraction/tessdata_ara"),
+        (os.path.join(BACKEND_ROOT, "chatbot_portable", "rag_corpus_extra.json"), "chatbot_portable"),
+        (os.path.join(BACKEND_ROOT, "chatbot_portable", "MarketInsurance.db"), "chatbot_portable"),
+        *_data_files,
     ],
     hiddenimports=["pymysql", "chatbot_portable.app"],
     hookspath=[],
