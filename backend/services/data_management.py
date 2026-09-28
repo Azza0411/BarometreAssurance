@@ -274,6 +274,17 @@ TABLEAU_GROUPS = [
 ]
 _TABLEAU_GROUP_TO_RAW = {key: raws for key, _label, raws in TABLEAU_GROUPS}
 
+# Noms de feuilles pour les tableaux arabes d'AL_AMANAH_TAKAFUL (RTL)
+_ARABIC_SHEET_NAMES = {
+    "bilan_actif":               "الميزانية - الأصول",
+    "bilan_passif":              "الميزانية - الخصوم",
+    "takaful_surplus_familial":  "Annexe 3 — Surplus Familial",
+    "takaful_surplus_general":   "Annexe 4 — Surplus Général",
+    "takaful_resultat_entreprise": "Annexe 5.1 — Résultat Entreprise",
+    "takaful_ventilation_familial": "Annexe 14 — Ventilation Familial",
+    "takaful_ventilation_general":  "Annexe 15 — Ventilation Général",
+}
+
 
 def kpi_raw_labels_for(tableau):
     """Libellés bruts `kpis.tableau` correspondant à une clé
@@ -1715,13 +1726,38 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
             for display_tableau in blocs_a_rendre:
                 row, used_cols = _write_narrow_block(ws, row, display_tableau, soc["blocs"][display_tableau])
                 n_cols = max(n_cols, used_cols)
-            if len(grids_a_rendre) >= 2:
+            if is_arabic:
+                # AL_AMANAH_TAKAFUL : feuille principale = KPIs seuls (blocs narrow)
+                # + une feuille séparée par tableau (RTL, nom arabe/français)
+                _write_logo_and_finish(ws, code, n_cols, logo_left=True)
+                for key in grids_a_rendre:
+                    grids_for_key = soc["grids"][key]
+                    if not any(not _is_marker_grid(g) for g in grids_for_key.values()):
+                        continue
+                    ar_sheet_name = _safe_sheet_name(
+                        _ARABIC_SHEET_NAMES.get(key, key), used_names
+                    )
+                    ws_ar = wb.create_sheet(ar_sheet_name)
+                    ws_ar.sheet_view.rightToLeft = True
+                    ws_ar.sheet_view.showGridLines = False
+                    ar_n_cols = 1
+                    _write_sheet_title(ws_ar, ar_n_cols,
+                                       f"{soc['nom'] or code} ({code})",
+                                       "FS Market Intelligence — Export de données",
+                                       align_left=True)
+                    ar_row = 4
+                    ar_row, ar_n_cols = _write_grid_section(
+                        ws_ar, ar_row, ar_n_cols, key, grids_for_key, is_arabic=True
+                    )
+                    _write_logo_and_finish(ws_ar, code, ar_n_cols, logo_left=True)
+            elif len(grids_a_rendre) >= 2:
                 keys_grids_list = [(key, soc["grids"][key]) for key in grids_a_rendre]
-                row, n_cols = _write_grids_sidebyside(ws, row, n_cols, keys_grids_list, is_arabic=is_arabic)
+                row, n_cols = _write_grids_sidebyside(ws, row, n_cols, keys_grids_list, is_arabic=False)
+                _write_logo_and_finish(ws, code, n_cols, logo_left=False)
             else:
                 for key in grids_a_rendre:
-                    row, n_cols = _write_grid_section(ws, row, n_cols, key, soc["grids"][key], is_arabic=is_arabic)
-            _write_logo_and_finish(ws, code, n_cols, logo_left=is_arabic)
+                    row, n_cols = _write_grid_section(ws, row, n_cols, key, soc["grids"][key], is_arabic=False)
+                _write_logo_and_finish(ws, code, n_cols, logo_left=False)
 
     _progress("generation", done=_soc_total if par_societe else 0,
               total=max(_soc_total, 1) if par_societe else 1, message="Finalisation…")
