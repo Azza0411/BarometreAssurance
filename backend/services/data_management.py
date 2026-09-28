@@ -1615,10 +1615,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
                     g = grids.get(annee)
                     r = content_start
                     if _is_marker_grid(g):
-                        msg_cell = ws.cell(row=r, column=sc, value="Échec d'extraction pour ce tableau")
-                        msg_cell.font = Font(italic=True, size=10, color="808080", name="Calibri")
-                        msg_cell.alignment = Alignment(horizontal="left", vertical="center")
-                        r += 2
+                        pass  # tableau absent : on ne l'écrit pas
                     else:
                         r, used_cols = _write_full_grid_block(
                             ws, r, annee, g,
@@ -1644,9 +1641,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
             if not all_annees:
                 return row, n_cols
             annees_valides = [a for a in all_annees if not _is_marker_grid(grids[a])]
-            # Pour les tableaux arabes : si aucune année n'a de données réelles,
-            # ne pas écrire le titre de section du tout (retour utilisateur).
-            if is_arabic and not annees_valides:
+            if not annees_valides:
                 return row, n_cols
             max_year_cols = (1 + max(len(grids[a]["colonnes"]) for a in annees_valides)) if annees_valides else 2
             ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=max(max_year_cols, 2))
@@ -1657,18 +1652,7 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
             for annee in all_annees:
                 g = grids[annee]
                 if _is_marker_grid(g):
-                    if is_arabic:
-                        continue  # tableaux arabes : ignorer silencieusement les échecs
-                    hdr = ws.cell(row=row, column=1, value=str(annee))
-                    hdr.font = Font(bold=True, size=10, color=YELLOW, name="Calibri")
-                    hdr.fill = PatternFill(start_color=DARK, end_color=DARK, fill_type="solid")
-                    hdr.alignment = Alignment(horizontal="center", vertical="center")
-                    hdr.border = _thin_border()
-                    row += 1
-                    msg_cell = ws.cell(row=row, column=1, value="Échec d'extraction pour ce tableau")
-                    msg_cell.font = Font(italic=True, size=10, color="808080", name="Calibri")
-                    msg_cell.alignment = Alignment(horizontal="left", vertical="center")
-                    row += 2
+                    continue  # tableau absent : ne pas l'écrire du tout
                 else:
                     row, used_cols = _write_full_grid_block(
                         ws, row, annee, g,

@@ -15,7 +15,7 @@ import re
 
 import pymysql
 
-from config.db_config import DB_CONFIG
+from backend.config.db_config import DB_CONFIG
 
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
 
@@ -496,7 +496,7 @@ def save_tableau_result(conn, document_id, tableau, result):
         validation_rows = [
             (document_id, tableau, v["regle_code"], v["regle"], v["colonne"],
              v["attendu"], v["trouve"], v["ecart"], v["statut"])
-            for v in result["validations"]
+            for v in result.get("validations", [])
         ]
         if validation_rows:
             cur.executemany(
@@ -1003,7 +1003,7 @@ def get_kpis_by_use_case(conn, use_case, annee=None, code=None):
     d'agences par assureur - COMAR") sont exclus s'ils ne correspondent pas
     à `code` — voir _belongs_to_company_or_global (un filtre SQL simple sur
     societe_id ne suffit pas, ces KPI vivent sous des documents sectoriels)."""
-    from config.kpi_registry import KPI_REGISTRY
+    from backend.config.kpi_registry import KPI_REGISTRY
 
     names = KPI_REGISTRY[use_case]
     name_clauses = []
