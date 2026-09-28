@@ -1757,23 +1757,11 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
             _progress("generation", done=_soc_idx, total=_soc_total,
                       company=code, message=f"Génération {code}…")
             soc = par_societe[code]
-            sheet_name = _safe_sheet_name(code, used_names)
-            ws = wb.create_sheet(sheet_name)
-            blocs_a_rendre = sorted(soc["blocs"].keys())
             is_arabic = (code == "AL_AMANAH_TAKAFUL")
             grids_a_rendre = [k for k in active_full_grid_keys if soc["grids"].get(k)]
-            n_cols = _sheet_n_cols(soc, blocs_a_rendre, grids_a_rendre)
-            _write_sheet_title(ws, n_cols, f"{soc['nom'] or code} ({code})",
-                               "FS Market Intelligence — Export de données",
-                               align_left=is_arabic)
-            row = 4
-            for display_tableau in blocs_a_rendre:
-                row, used_cols = _write_narrow_block(ws, row, display_tableau, soc["blocs"][display_tableau])
-                n_cols = max(n_cols, used_cols)
             if is_arabic:
-                # AL_AMANAH_TAKAFUL : feuille principale = KPIs seuls (blocs narrow)
-                # + une feuille séparée par tableau (RTL, nom arabe/français)
-                _write_logo_and_finish(ws, code, n_cols, logo_left=True)
+                # AL_AMANAH_TAKAFUL : PAS de feuille KPI — uniquement feuilles arabes RTL
+                _tmp_ws = wb.create_sheet(f"__tmp_{code}")
                 for key in grids_a_rendre:
                     grids_for_key = soc["grids"][key]
                     if not any(not _is_marker_grid(g) for g in grids_for_key.values()):
@@ -1797,7 +1785,21 @@ def build_flexible_export_xlsx(tableau_keys=None, codes=None, annees=None, progr
                         ws_ar, ar_row, ar_n_cols, key, grids_for_key, is_arabic=True
                     )
                     _write_logo_and_finish(ws_ar, code, ar_n_cols, logo_left=True)
-            elif len(grids_a_rendre) >= 2:
+                del wb[_tmp_ws.title]
+                continue
+
+            sheet_name = _safe_sheet_name(code, used_names)
+            ws = wb.create_sheet(sheet_name)
+            blocs_a_rendre = sorted(soc["blocs"].keys())
+            n_cols = _sheet_n_cols(soc, blocs_a_rendre, grids_a_rendre)
+            _write_sheet_title(ws, n_cols, f"{soc['nom'] or code} ({code})",
+                               "FS Market Intelligence — Export de données",
+                               align_left=False)
+            row = 4
+            for display_tableau in blocs_a_rendre:
+                row, used_cols = _write_narrow_block(ws, row, display_tableau, soc["blocs"][display_tableau])
+                n_cols = max(n_cols, used_cols)
+            if len(grids_a_rendre) >= 2:
                 keys_grids_list = [(key, soc["grids"][key]) for key in grids_a_rendre]
                 row, n_cols = _write_grids_sidebyside(ws, row, n_cols, keys_grids_list, is_arabic=False)
                 _write_logo_and_finish(ws, code, n_cols, logo_left=False)
