@@ -1430,6 +1430,12 @@ class Chatbot:
             if forecast_resp:
                 return forecast_resp
 
+        # ── KPI structuré avec composantes (ratio combiné, etc.) ────────────────
+        if intent == INTENT_KPI_QUERY and entities.get("company") and entities.get("kpis") and entities.get("years"):
+            direct_resp = self._handle_direct_kpi(entities, session)
+            if direct_resp:
+                return direct_resp
+
         # ── Explication grondée d'un chiffre précis (avant le texte-à-SQL
         # générique ci-dessous, qui ne fait que RE-AFFICHER la valeur sans
         # jamais l'expliquer — voir détection dans detect_intent) ──────────────
@@ -1545,6 +1551,83 @@ class Chatbot:
             except Exception as e:
                 logger.error(f"Query error: {e}", exc_info=True)
                 return {"results": [], "error": f"Erreur : {e}"}
+
+    # ── KPI_SOURCES lisibles pour l'affichage ────────────────────────────────
+    _SOURCE_LABELS = {
+        "CMF":   "Rapport annuel — CMF (Conseil du Marché Financier)",
+        "FTUSA": "Statistiques FTUSA",
+        "INS":   "Institut National de la Statistique (INS)",
+        "CGA":   "Comité Général des Assurances (CGA)",
+    }
+
+    # Ratio combiné = sinistralité + frais → on sait comment l'expliquer
+    _RATIO_COMPONENTS = {
+        "Ratio combiné": [
+            ("Ratio de sinistralité (%)",    "Charge de sinistres / Primes acquises"),
+            ("Ratio de frais de gestion (%)", "Charges de gestion / Primes acquises"),
+        ],
+    }
+
+    def _handle_direct_kpi(self, entities: dict, session) -> dict | None:
+        """Réponse déterministe et présentable pour kpi_query complet
+        (company + year + kpi tous connus). Retourne None si les données
+        ne sont pas trouvées (le flux normal reprend alors)."""
+        company = entities["company"]
+        year    = entities["years"][0]
+        kpi     = entities["kpis"][0]
+
+        with _db() as conn:
+            rows = fetch_kpi_for_company(conn, kpi, company, year)
+            if not rows:
+                return None
+            row    = rows[0]
+            value  = row.get("valeur")
+            source = row.get("source", "CMF")
+            unit   = row.get("unit", "%")
+            if value is None:
+                return None
+
+            # Formater la valeur principale
+            if isinstance(value, float):
+                val_str = f"{value:.1f} {unit}".strip()
+            else:
+                val_str = f"{value} {unit}".strip()
+
+            company_name = display_company(company)
+            source_label = self._SOURCE_LABELS.get(source, source)
+
+            # ── Cas ratio combiné : afficher aussi les composantes ───────────
+            components_md = ""
+            resolved_kpi  = row.get("kpi", kpi)
+            kpi_base      = resolved_kpi.replace(" (%)", "").strip()
+            if kpi_base in self._RATIO_COMPONENTS:
+                lines = []
+                for comp_kpi, comp_formula in self._RATIO_COMPONENTS[kpi_base]:
+                    comp_rows = fetch_kpi_for_company(conn, comp_kpi, company, year)
+                    if comp_rows and comp_rows[0].get("valeur") is not None:
+                        cv = comp_rows[0]["valeur"]
+                        cv_str = f"{cv:.1f} %" if isinstance(cv, float) else str(cv)
+                        lines.append(f"  • **{comp_kpi.replace(' (%)','')}** : {cv_str}  *(= {comp_formula})*")
+                if lines:
+                    components_md = "\n\nDécomposition :\n" + "\n".join(lines)
+
+        # ── Construire la réponse ────────────────────────────────────────────
+        text = (
+            f"Le **{kpi_base}** de **{company_name}** en **{year}** est de **{val_str}**."
+            + components_md
+            + f"\n\n*Source : {source_label}*"
+        )
+
+        suggestions = [
+            f"Quelle est l'évolution du ratio combiné de {company_name} ?",
+            f"Quel est le classement des compagnies par ratio combiné en {year} ?",
+            f"Quel est le profil complet de {company_name} en {year} ?",
+        ]
+
+        resp = {"text": text, "render": RENDER_TEXT, "data": {"results": rows},
+                "suggestions": suggestions, "error": None}
+        session.add_message("assistant", text)
+        return resp
 
     def _handle_forecast(self, entities, raw_question, enriched_question,
                          history, session_id, session) -> dict | None:
