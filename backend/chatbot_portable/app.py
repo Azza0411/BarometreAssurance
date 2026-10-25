@@ -1598,24 +1598,47 @@ class Chatbot:
 
             # ── Cas ratio combiné : afficher aussi les composantes ───────────
             components_md = ""
+            formula_md    = ""
+            calc_md       = ""
             resolved_kpi  = row.get("kpi", kpi)
             kpi_base      = resolved_kpi.replace(" (%)", "").strip()
             if kpi_base in self._RATIO_COMPONENTS:
-                lines = []
+                comp_values = []
+                comp_blocks = []
                 for comp_kpi, comp_formula in self._RATIO_COMPONENTS[kpi_base]:
                     comp_rows = fetch_kpi_for_company(conn, comp_kpi, company, year)
                     if comp_rows and comp_rows[0].get("valeur") is not None:
                         cv = comp_rows[0]["valeur"]
+                        cs = self._SOURCE_LABELS.get(comp_rows[0].get("source", source), source_label)
                         cv_str = f"{cv:.1f} %" if isinstance(cv, float) else str(cv)
-                        lines.append(f"  • **{comp_kpi.replace(' (%)','')}** : {cv_str}  *(= {comp_formula})*")
-                if lines:
-                    components_md = "\n\nDécomposition :\n" + "\n".join(lines)
+                        comp_name = comp_kpi.replace(" (%)", "")
+                        comp_values.append(cv_str)
+                        comp_blocks.append(
+                            f"**{comp_name}** : **{cv_str}**\n"
+                            f"  *Formule :* {comp_formula}\n"
+                            f"  *Source :* {cs}"
+                        )
+                if comp_blocks:
+                    formula_md = (
+                        f"\n\n**Formule :**\n"
+                        f"> {kpi_base} = "
+                        + " + ".join(c.replace(" (%)", "") for c, _ in self._RATIO_COMPONENTS[kpi_base])
+                    )
+                    if len(comp_values) == len(self._RATIO_COMPONENTS[kpi_base]):
+                        calc_md = (
+                            f"\n\n**Calcul :**\n"
+                            f"> = {' + '.join(comp_values)} = **{val_str}**"
+                        )
+                    components_md = "\n\n**Composantes :**\n\n" + "\n\n".join(comp_blocks)
 
         # ── Construire la réponse ────────────────────────────────────────────
+        header = f"**{kpi_base} — {company_name} ({year})**\n\n**Résultat : {val_str}**"
         text = (
-            f"Le **{kpi_base}** de **{company_name}** en **{year}** est de **{val_str}**."
+            header
+            + formula_md
+            + calc_md
             + components_md
-            + f"\n\n*Source : {source_label}*"
+            + f"\n\n---\n*Source : {source_label}*"
         )
 
         suggestions = [
