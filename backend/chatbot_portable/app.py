@@ -1596,50 +1596,55 @@ class Chatbot:
             company_name = display_company(company)
             source_label = self._SOURCE_LABELS.get(source, source)
 
-            # ── Cas ratio combiné : afficher aussi les composantes ───────────
-            components_md = ""
-            formula_md    = ""
-            calc_md       = ""
-            resolved_kpi  = row.get("kpi", kpi)
-            kpi_base      = resolved_kpi.replace(" (%)", "").strip()
+                # ── Cas ratio combiné : afficher aussi les composantes ───────────
+            comp_data    = []
+            resolved_kpi = row.get("kpi", kpi)
+            kpi_base     = resolved_kpi.replace(" (%)", "").strip()
             if kpi_base in self._RATIO_COMPONENTS:
-                comp_values = []
-                comp_blocks = []
                 for comp_kpi, comp_formula in self._RATIO_COMPONENTS[kpi_base]:
                     comp_rows = fetch_kpi_for_company(conn, comp_kpi, company, year)
                     if comp_rows and comp_rows[0].get("valeur") is not None:
                         cv = comp_rows[0]["valeur"]
                         cs = self._SOURCE_LABELS.get(comp_rows[0].get("source", source), source_label)
                         cv_str = f"{cv:.1f} %" if isinstance(cv, float) else str(cv)
-                        comp_name = comp_kpi.replace(" (%)", "")
-                        comp_values.append(cv_str)
-                        comp_blocks.append(
-                            f"**{comp_name}** : **{cv_str}**\n"
-                            f"  *Formule :* {comp_formula}\n"
-                            f"  *Source :* {cs}"
-                        )
-                if comp_blocks:
-                    formula_md = (
-                        f"\n\n**Formule :**\n"
-                        f"> {kpi_base} = "
-                        + " + ".join(c.replace(" (%)", "") for c, _ in self._RATIO_COMPONENTS[kpi_base])
-                    )
-                    if len(comp_values) == len(self._RATIO_COMPONENTS[kpi_base]):
-                        calc_md = (
-                            f"\n\n**Calcul :**\n"
-                            f"> = {' + '.join(comp_values)} = **{val_str}**"
-                        )
-                    components_md = "\n\n**Composantes :**\n\n" + "\n\n".join(comp_blocks)
+                        comp_data.append({
+                            "name": comp_kpi.replace(" (%)", ""),
+                            "value": cv_str,
+                            "formula": comp_formula,
+                            "source": cs,
+                        })
 
-        # ── Construire la réponse ────────────────────────────────────────────
-        header = f"**{kpi_base} — {company_name} ({year})**\n\n**Résultat : {val_str}**"
-        text = (
-            header
-            + formula_md
-            + calc_md
-            + components_md
-            + f"\n\n---\n*Source : {source_label}*"
-        )
+        # ── Construire la réponse HTML ───────────────────────────────────────
+        S = "style="  # raccourci pour lisibilité
+        H = "#0C1B2E"; BLUE = "#1a3a6b"; GREEN = "#1a6b3a"; GRAY = "#7f8c8d"; LIGHT = "#f4f6f9"
+        lines = [
+            f'<div>',
+            f'<div style="font-weight:700;font-size:1.05em;color:{BLUE};margin-bottom:4px">{kpi_base} — {company_name} ({year})</div>',
+            f'<div style="font-size:1.6em;font-weight:700;color:{GREEN};margin-bottom:10px">{val_str}</div>',
+        ]
+        if comp_data:
+            comp_names = " + ".join(c["name"] for c in comp_data)
+            comp_vals  = " + ".join(c["value"] for c in comp_data)
+            lines += [
+                f'<div style="background:{LIGHT};border-left:3px solid {BLUE};padding:6px 10px;margin-bottom:10px;font-size:0.93em">',
+                f'<b>Formule :</b> {kpi_base} = {comp_names}<br>',
+                f'<b>Calcul :</b> {comp_vals} = <b style="color:{GREEN}">{val_str}</b>',
+                f'</div>',
+                f'<div style="font-weight:700;color:{H};margin-bottom:6px">Composantes</div>',
+            ]
+            for c in comp_data:
+                lines += [
+                    f'<div style="background:#fff;border:1px solid #dde2ec;border-radius:6px;padding:8px 12px;margin-bottom:6px">',
+                    f'<div style="font-weight:700;color:{BLUE}">{c["name"]} : <span style="color:{GREEN}">{c["value"]}</span></div>',
+                    f'<div style="color:#555;font-size:0.88em;margin-top:2px">{c["formula"]}</div>',
+                    f'<div style="color:{GRAY};font-size:0.82em;margin-top:2px">Source : {c["source"]}</div>',
+                    f'</div>',
+                ]
+        lines += [
+            f'<div style="color:{GRAY};font-size:0.82em;margin-top:8px;border-top:1px solid #dde2ec;padding-top:6px">Source : {source_label}</div>',
+            f'</div>',
+        ]
+        text = "".join(lines)
 
         suggestions = [
             f"Quelle est l'évolution du ratio combiné de {company_name} ?",
