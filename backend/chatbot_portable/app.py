@@ -1571,48 +1571,50 @@ class Chatbot:
     def _handle_direct_kpi(self, entities: dict, session) -> dict | None:
         """Réponse déterministe et présentable pour kpi_query complet
         (company + year + kpi tous connus). Retourne None si les données
-        ne sont pas trouvées (le flux normal reprend alors)."""
+        ne sont pas trouvées ou si le schéma DB est incompatible (flux normal reprend)."""
+        import sqlite3 as _sqlite3
         company = entities["company"]
         year    = entities["years"][0]
         kpi     = entities["kpis"][0]
 
-        with _db() as conn:
-            rows = fetch_kpi_for_company(conn, kpi, company, year)
-            if not rows:
-                return None
-            row    = rows[0]
-            value  = row.get("valeur")
-            source = row.get("source", "CMF")
-            unit   = row.get("unit", "%")
-            if value is None:
-                return None
+        try:
+            with _db() as conn:
+                rows = fetch_kpi_for_company(conn, kpi, company, year)
+                if not rows:
+                    return None
+                row    = rows[0]
+                value  = row.get("valeur")
+                source = row.get("source", "CMF")
+                unit   = row.get("unit", "%")
+                if value is None:
+                    return None
 
-            # Formater la valeur principale
-            if isinstance(value, float):
-                val_str = f"{value:.1f} {unit}".strip()
-            else:
-                val_str = f"{value} {unit}".strip()
+                if isinstance(value, float):
+                    val_str = f"{value:.1f} {unit}".strip()
+                else:
+                    val_str = f"{value} {unit}".strip()
 
-            company_name = display_company(company)
-            source_label = self._SOURCE_LABELS.get(source, source)
+                company_name = display_company(company)
+                source_label = self._SOURCE_LABELS.get(source, source)
 
-                # ── Cas ratio combiné : afficher aussi les composantes ───────────
-            comp_data    = []
-            resolved_kpi = row.get("kpi", kpi)
-            kpi_base     = resolved_kpi.replace(" (%)", "").strip()
-            if kpi_base in self._RATIO_COMPONENTS:
-                for comp_kpi, comp_formula in self._RATIO_COMPONENTS[kpi_base]:
-                    comp_rows = fetch_kpi_for_company(conn, comp_kpi, company, year)
-                    if comp_rows and comp_rows[0].get("valeur") is not None:
-                        cv = comp_rows[0]["valeur"]
-                        cs = self._SOURCE_LABELS.get(comp_rows[0].get("source", source), source_label)
-                        cv_str = f"{cv:.1f} %" if isinstance(cv, float) else str(cv)
-                        comp_data.append({
-                            "name": comp_kpi.replace(" (%)", ""),
-                            "value": cv_str,
-                            "formula": comp_formula,
-                            "source": cs,
-                        })
+                comp_data    = []
+                resolved_kpi = row.get("kpi", kpi)
+                kpi_base     = resolved_kpi.replace(" (%)", "").strip()
+                if kpi_base in self._RATIO_COMPONENTS:
+                    for comp_kpi, comp_formula in self._RATIO_COMPONENTS[kpi_base]:
+                        comp_rows = fetch_kpi_for_company(conn, comp_kpi, company, year)
+                        if comp_rows and comp_rows[0].get("valeur") is not None:
+                            cv = comp_rows[0]["valeur"]
+                            cs = self._SOURCE_LABELS.get(comp_rows[0].get("source", source), source_label)
+                            cv_str = f"{cv:.1f} %" if isinstance(cv, float) else str(cv)
+                            comp_data.append({
+                                "name": comp_kpi.replace(" (%)", ""),
+                                "value": cv_str,
+                                "formula": comp_formula,
+                                "source": cs,
+                            })
+        except _sqlite3.OperationalError:
+            return None
 
         # ── Construire la réponse HTML ───────────────────────────────────────
         H = "#0C1B2E"; BLUE = "#1a3a6b"; GREEN = "#1a6b3a"; GRAY = "#7f8c8d"; LIGHT = "#f4f6f9"
