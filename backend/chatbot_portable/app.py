@@ -1614,7 +1614,58 @@ class Chatbot:
                                 "source": cs,
                             })
         except _sqlite3.OperationalError:
-            return None
+            # Fallback : schéma DB portable (kpi_values + documents + societes)
+            try:
+                with _db() as conn:
+                    kpi_portable = kpi if kpi.endswith(" (%)") else kpi + " (%)"
+                    soc = conn.execute(
+                        "SELECT id FROM societes WHERE code=?", (company,)
+                    ).fetchone()
+                    if not soc:
+                        return None
+                    soc_id = soc[0]
+                    r = conn.execute("""
+                        SELECT kv.kpi, kv.valeur_nombre
+                        FROM kpi_values kv
+                        JOIN documents d ON d.id = kv.document_id
+                        WHERE d.cmf_id = ? AND d.annee = ? AND kv.kpi = ?
+                        LIMIT 1
+                    """, (soc_id, int(year), kpi_portable)).fetchone()
+                    if not r or r[1] is None:
+                        return None
+                    value  = r[1]
+                    unit   = "%"
+                    source = "CMF"
+                    if isinstance(value, float):
+                        val_str = f"{value:.1f} {unit}".strip()
+                    else:
+                        val_str = f"{value} {unit}".strip()
+                    company_name = display_company(company)
+                    source_label = self._SOURCE_LABELS.get(source, source)
+                    kpi_base     = r[0].replace(" (%)", "").strip()
+                    comp_data    = []
+                    if kpi_base in self._RATIO_COMPONENTS:
+                        for comp_kpi, comp_formula in self._RATIO_COMPONENTS[kpi_base]:
+                            comp_kpi_p = comp_kpi if comp_kpi.endswith(" (%)") else comp_kpi + " (%)"
+                            cr = conn.execute("""
+                                SELECT kv.valeur_nombre
+                                FROM kpi_values kv
+                                JOIN documents d ON d.id = kv.document_id
+                                WHERE d.cmf_id = ? AND d.annee = ? AND kv.kpi = ?
+                                LIMIT 1
+                            """, (soc_id, int(year), comp_kpi_p)).fetchone()
+                            if cr and cr[0] is not None:
+                                cv = cr[0]
+                                cv_str = f"{cv:.1f} %" if isinstance(cv, float) else str(cv)
+                                comp_data.append({
+                                    "name": comp_kpi.replace(" (%)", ""),
+                                    "value": cv_str,
+                                    "formula": comp_formula,
+                                    "source": source_label,
+                                })
+                    rows = [{"kpi": r[0], "valeur": value, "source": source, "unit": "%"}]
+            except Exception:
+                return None
 
         # ── Construire la réponse HTML ───────────────────────────────────────
         H = "#0C1B2E"; BLUE = "#1a3a6b"; GREEN = "#1a6b3a"; GRAY = "#7f8c8d"; LIGHT = "#f4f6f9"
