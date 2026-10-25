@@ -1615,33 +1615,32 @@ class Chatbot:
                         })
 
         # ── Construire la réponse HTML ───────────────────────────────────────
-        S = "style="  # raccourci pour lisibilité
         H = "#0C1B2E"; BLUE = "#1a3a6b"; GREEN = "#1a6b3a"; GRAY = "#7f8c8d"; LIGHT = "#f4f6f9"
         lines = [
-            f'<div>',
-            f'<div style="font-weight:700;font-size:1.05em;color:{BLUE};margin-bottom:4px">{kpi_base} — {company_name} ({year})</div>',
-            f'<div style="font-size:1.6em;font-weight:700;color:{GREEN};margin-bottom:10px">{val_str}</div>',
+            f'<div style="font-size:0.85em">',
+            f'<div style="font-weight:700;font-size:1em;color:{BLUE};margin-bottom:2px">{kpi_base} — {company_name} ({year})</div>',
+            f'<div style="font-size:1.35em;font-weight:700;color:{GREEN};margin-bottom:7px">{val_str}</div>',
         ]
         if comp_data:
             comp_names = " + ".join(c["name"] for c in comp_data)
             comp_vals  = " + ".join(c["value"] for c in comp_data)
             lines += [
-                f'<div style="background:{LIGHT};border-left:3px solid {BLUE};padding:6px 10px;margin-bottom:10px;font-size:0.93em">',
+                f'<div style="background:{LIGHT};border-left:3px solid {BLUE};padding:4px 8px;margin-bottom:7px;font-size:0.9em">',
                 f'<b>Formule :</b> {kpi_base} = {comp_names}<br>',
                 f'<b>Calcul :</b> {comp_vals} = <b style="color:{GREEN}">{val_str}</b>',
                 f'</div>',
-                f'<div style="font-weight:700;color:{H};margin-bottom:6px">Composantes</div>',
+                f'<div style="font-weight:700;color:{H};margin-bottom:4px;font-size:0.9em">Composantes</div>',
             ]
             for c in comp_data:
                 lines += [
-                    f'<div style="background:#fff;border:1px solid #dde2ec;border-radius:6px;padding:8px 12px;margin-bottom:6px">',
-                    f'<div style="font-weight:700;color:{BLUE}">{c["name"]} : <span style="color:{GREEN}">{c["value"]}</span></div>',
-                    f'<div style="color:#555;font-size:0.88em;margin-top:2px">{c["formula"]}</div>',
-                    f'<div style="color:{GRAY};font-size:0.82em;margin-top:2px">Source : {c["source"]}</div>',
+                    f'<div style="background:#fff;border:1px solid #dde2ec;border-radius:5px;padding:5px 9px;margin-bottom:4px">',
+                    f'<div style="font-weight:700;color:{BLUE};font-size:0.9em">{c["name"]} : <span style="color:{GREEN}">{c["value"]}</span></div>',
+                    f'<div style="color:#555;font-size:0.82em;margin-top:1px">{c["formula"]}</div>',
+                    f'<div style="color:{GRAY};font-size:0.78em;margin-top:1px">Source : {c["source"]}</div>',
                     f'</div>',
                 ]
         lines += [
-            f'<div style="color:{GRAY};font-size:0.82em;margin-top:8px;border-top:1px solid #dde2ec;padding-top:6px">Source : {source_label}</div>',
+            f'<div style="color:{GRAY};font-size:0.78em;margin-top:5px;border-top:1px solid #dde2ec;padding-top:4px">Source : {source_label}</div>',
             f'</div>',
         ]
         text = "".join(lines)
