@@ -82,7 +82,7 @@ def get_kpis_for_document(conn, document_id: int) -> dict:
     # cote app principale) et prediction/data/data_loader.py pour
     # l'incident deja rencontre (ASTREE 2025).
     rows = conn.execute(
-        "SELECT kpi, valeur_nombre, valeur_texte FROM kpis "
+        "SELECT kpi, valeur_nombre, valeur_texte FROM kpi_values "
         "WHERE document_id = ? AND tableau != 'Calcul interne'",
         (document_id,)
     ).fetchall()
@@ -94,10 +94,9 @@ def get_kpis_for_document(conn, document_id: int) -> dict:
 
 def list_documents_by_source(conn, source_nom: str):
     return conn.execute("""
-        SELECT d.id, d.societe_id, c.code, d.annee
-        FROM documents_pdf d
+        SELECT d.id, NULL, SUBSTR(d.nom_pdf, 1, LENGTH(d.nom_pdf) - 9), d.annee
+        FROM documents d
         JOIN sources s ON s.id = d.source_id
-        LEFT JOIN societes c ON c.id = d.societe_id
         WHERE s.nom = ?
         ORDER BY d.annee DESC
     """, (source_nom,)).fetchall()
@@ -671,12 +670,12 @@ def fetch_kpi_for_market(conn, kpi_name: str, year: int | None) -> list[dict]:
     results = []
     for source in sources_to_try:
         q = ("""SELECT d.annee, MAX(CASE WHEN k.valeur_nombre IS NOT NULL THEN k.valeur_nombre END), MAX(k.valeur_texte)
-               FROM kpis k JOIN documents_pdf d ON d.id=k.document_id JOIN sources s ON s.id=d.source_id
-               WHERE s.nom=? AND k.kpi=? AND d.annee=? AND d.societe_id IS NULL GROUP BY d.annee ORDER BY d.annee""",
+               FROM kpi_values k JOIN documents d ON d.id=k.document_id JOIN sources s ON s.id=d.source_id
+               WHERE s.nom=? AND k.kpi=? AND d.annee=? GROUP BY d.annee ORDER BY d.annee""",
               (source, kpi_name, year)) if year else (
              """SELECT d.annee, MAX(CASE WHEN k.valeur_nombre IS NOT NULL THEN k.valeur_nombre END), MAX(k.valeur_texte)
-               FROM kpis k JOIN documents_pdf d ON d.id=k.document_id JOIN sources s ON s.id=d.source_id
-               WHERE s.nom=? AND k.kpi=? AND d.societe_id IS NULL GROUP BY d.annee ORDER BY d.annee""",
+               FROM kpi_values k JOIN documents d ON d.id=k.document_id JOIN sources s ON s.id=d.source_id
+               WHERE s.nom=? AND k.kpi=? GROUP BY d.annee ORDER BY d.annee""",
               (source, kpi_name))
         rows = conn.execute(*q).fetchall()
         if rows:
@@ -697,9 +696,9 @@ def _fetch_kpi_for_company_exact(conn, kpi_name: str, company_code: str, year: i
     year_clause = "AND d.annee=?" if year else ""
     rows = conn.execute(f"""
         SELECT d.annee, k.valeur_nombre, k.valeur_texte, s.nom
-        FROM kpis k JOIN documents_pdf d ON d.id=k.document_id
-        JOIN sources s ON s.id=d.source_id JOIN societes c ON c.id=d.societe_id
-        WHERE c.code=? AND k.kpi=? {year_clause} ORDER BY d.annee
+        FROM kpi_values k JOIN documents d ON d.id=k.document_id
+        JOIN sources s ON s.id=d.source_id
+        WHERE SUBSTR(d.nom_pdf, 1, LENGTH(d.nom_pdf) - 9)=? AND k.kpi=? {year_clause} ORDER BY d.annee
     """, params).fetchall()
     results = []
     for annee, val_num, val_txt, source in rows:
@@ -772,11 +771,11 @@ def fetch_explain_context(conn, kpi_name: str, company_code: str, year: int) -> 
     # INNER JOIN sur societes exclut naturellement les sources sectorielles
     # (FTUSA/CGA/INS, societe_id NULL) — ne garde que les vraies compagnies.
     sector_rows = conn.execute("""
-        SELECT c.code, k.valeur_nombre
-        FROM kpis k
-        JOIN documents_pdf d ON d.id = k.document_id
-        JOIN societes c ON c.id = d.societe_id
-        WHERE k.kpi = ? AND d.annee = ? AND k.valeur_nombre IS NOT NULL
+        SELECT SUBSTR(d.nom_pdf, 1, LENGTH(d.nom_pdf) - 9), k.valeur_nombre
+        FROM kpi_values k
+        JOIN documents d ON d.id = k.document_id
+        JOIN sources s ON s.id = d.source_id
+        WHERE k.kpi = ? AND d.annee = ? AND k.valeur_nombre IS NOT NULL AND s.nom = 'CMF'
     """, (resolved_kpi, year)).fetchall()
     values = [(code, v) for code, v in sector_rows if v is not None]
     sector_avg = round(sum(v for _, v in values) / len(values), 2) if values else None
@@ -801,19 +800,21 @@ def fetch_ranking(conn, kpi_name: str, year: int, limit: int = 10) -> list[dict]
     max_val = 500 if is_pct else None
     if max_val:
         rows = conn.execute("""
-            SELECT c.code, c.nom_entreprise, k.valeur_nombre, k.valeur_texte, s.nom
-            FROM kpis k JOIN documents_pdf d ON d.id=k.document_id
-            JOIN sources s ON s.id=d.source_id JOIN societes c ON c.id=d.societe_id
-            WHERE k.kpi=? AND d.annee=? AND k.valeur_nombre IS NOT NULL
+            SELECT SUBSTR(d.nom_pdf, 1, LENGTH(d.nom_pdf) - 9), c.nom_entreprise, k.valeur_nombre, k.valeur_texte, s.nom
+            FROM kpi_values k JOIN documents d ON d.id=k.document_id
+            JOIN sources s ON s.id=d.source_id
+            LEFT JOIN societes c ON SUBSTR(d.nom_pdf, 1, LENGTH(d.nom_pdf) - 9) = c.code
+            WHERE k.kpi=? AND d.annee=? AND k.valeur_nombre IS NOT NULL AND s.nom='CMF'
               AND k.valeur_nombre BETWEEN -500 AND ?
             ORDER BY k.valeur_nombre DESC LIMIT ?
         """, (kpi_name, year, max_val, limit)).fetchall()
     else:
         rows = conn.execute("""
-            SELECT c.code, c.nom_entreprise, k.valeur_nombre, k.valeur_texte, s.nom
-            FROM kpis k JOIN documents_pdf d ON d.id=k.document_id
-            JOIN sources s ON s.id=d.source_id JOIN societes c ON c.id=d.societe_id
-            WHERE k.kpi=? AND d.annee=? AND k.valeur_nombre IS NOT NULL
+            SELECT SUBSTR(d.nom_pdf, 1, LENGTH(d.nom_pdf) - 9), c.nom_entreprise, k.valeur_nombre, k.valeur_texte, s.nom
+            FROM kpi_values k JOIN documents d ON d.id=k.document_id
+            JOIN sources s ON s.id=d.source_id
+            LEFT JOIN societes c ON SUBSTR(d.nom_pdf, 1, LENGTH(d.nom_pdf) - 9) = c.code
+            WHERE k.kpi=? AND d.annee=? AND k.valeur_nombre IS NOT NULL AND s.nom='CMF'
             ORDER BY k.valeur_nombre DESC LIMIT ?
         """, (kpi_name, year, limit)).fetchall()
     results = []
@@ -1223,6 +1224,7 @@ RENDER_TABLE     = "table"
 RENDER_KPI_CARDS = "kpi_cards"
 RENDER_RANKING   = "ranking"
 RENDER_EVOLUTION = "evolution"
+RENDER_EXPLAIN   = "explain"
 
 
 def build_response(user_question: str, intent: str, entities: dict,
@@ -1885,6 +1887,12 @@ class Chatbot:
             session.add_message("assistant", text)
             return response
 
+        # Pré-formater la moyenne secteur pour l'affichage frontend
+        if facts.get("sector_avg") is not None:
+            fmt_avg = _fmt_number(facts["sector_avg"], facts.get("current", {}).get("kpi", kpi), "CMF")
+            facts["sector_avg_display"] = fmt_avg["display"]
+            facts["sector_avg_unit"] = fmt_avg["unit"]
+
         fallback_text = _explain_fallback_text(facts)
 
         facts_lines = [
@@ -1932,7 +1940,7 @@ class Chatbot:
                 logger.warning(f"Explication chatbot rejetée (nombres non sourcés: {orphans}) — repli déterministe.")
 
         response = {
-            "text": answer_text, "render": RENDER_TEXT, "data": facts,
+            "text": answer_text, "render": RENDER_EXPLAIN, "data": facts,
             "suggestions": [
                 f"Évolution de {kpi} pour {display_company(company)} ?",
                 f"Classement {kpi} en {year} ?",

@@ -141,6 +141,75 @@ function RichContent({ render, data, text }) {
     );
   }
 
+  if (render === "explain" && data) {
+    const current = data.current;
+    const yoy = data.yoy_pct;
+    const sAvg = data.sector_avg_display ?? (data.sector_avg != null ? String(data.sector_avg) : null);
+    const sUnit = data.sector_avg_unit ?? "";
+    const sRank = data.sector_rank;
+    const sN = data.sector_n;
+    const yoyPositive = yoy != null && yoy > 0;
+    const yoyColor = yoy != null ? (yoyPositive ? "#D93025" : "#1A8A4A") : MUTED;
+    const yoyIcon = yoy != null ? (yoyPositive ? "▲" : "▼") : "";
+    const hasStats = yoy != null || sAvg != null;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+        {/* Main value card */}
+        <div style={{
+          background: "linear-gradient(135deg, #0C1B2E 0%, #1a3050 100%)",
+          borderRadius: 10, padding: "12px 16px",
+        }}>
+          <div style={{ fontSize: 9, color: "rgba(255,255,255,.55)", textTransform: "uppercase", letterSpacing: ".7px", fontWeight: 700, marginBottom: 5 }}>
+            {(current?.kpi || data.kpi || "").replace("(%)", "")} · {data.annee}
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: "#fff", letterSpacing: "-.5px" }}>
+            {current?.display || "—"}
+            {current?.unit && <span style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,.7)", marginLeft: 5 }}>{current.unit}</span>}
+          </div>
+        </div>
+
+        {/* Stats row */}
+        {hasStats && (
+          <div style={{ display: "grid", gridTemplateColumns: yoy != null && sAvg != null ? "1fr 1fr" : "1fr", gap: 7 }}>
+            {yoy != null && (
+              <div style={{ background: "#F8FAFC", borderRadius: 8, padding: "8px 12px", border: `1px solid ${BORDER_LIGHT}` }}>
+                <div style={{ fontSize: 9, color: MUTED, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700, marginBottom: 4 }}>
+                  vs {data.annee - 1}
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: yoyColor }}>
+                  {yoyIcon} {yoy > 0 ? "+" : ""}{yoy.toFixed(1)} %
+                </div>
+              </div>
+            )}
+            {sAvg != null && (
+              <div style={{ background: "#F8FAFC", borderRadius: 8, padding: "8px 12px", border: `1px solid ${BORDER_LIGHT}` }}>
+                <div style={{ fontSize: 9, color: MUTED, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700, marginBottom: 4 }}>
+                  Moy. secteur{sN ? ` (${sN})` : ""}
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: D }}>
+                  {sAvg}{sUnit && <span style={{ fontSize: 11, fontWeight: 500, marginLeft: 3 }}>{sUnit}</span>}
+                  {sRank != null && <span style={{ fontSize: 10, color: MUTED, fontWeight: 500, marginLeft: 7 }}>#{sRank}</span>}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* LLM explanation */}
+        {text && (
+          <div style={{
+            borderLeft: `3px solid ${D}`,
+            paddingLeft: 11, paddingTop: 2, paddingBottom: 2,
+            fontSize: 12, lineHeight: 1.7, color: TXT,
+            whiteSpace: "pre-wrap",
+          }}
+            dangerouslySetInnerHTML={{ __html: bold(text) }}
+          />
+        )}
+      </div>
+    );
+  }
+
   // Fallback : texte markdown
   return (
     <div
