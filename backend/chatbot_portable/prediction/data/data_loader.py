@@ -148,10 +148,10 @@ class DataLoader:
         rows = self._conn.execute(
             """
             SELECT d.annee, k.valeur_nombre
-            FROM kpis k
-            JOIN documents_pdf d ON d.id = k.document_id
+            FROM kpi_values k
+            JOIN documents d ON d.id = k.document_id
             JOIN sources s   ON s.id = d.source_id
-            JOIN societes c       ON c.id = d.societe_id
+            JOIN societes c  ON c.id = d.cmf_id
             WHERE c.code = ?
               AND k.kpi = ?
               AND k.valeur_nombre IS NOT NULL
@@ -161,6 +161,24 @@ class DataLoader:
             """,
             (company, kpi),
         ).fetchall()
+
+        # Some KPIs (e.g. "Part de marché (%)") only exist under "Calcul interne"
+        if not rows:
+            rows = self._conn.execute(
+                """
+                SELECT d.annee, k.valeur_nombre
+                FROM kpi_values k
+                JOIN documents d ON d.id = k.document_id
+                JOIN sources s   ON s.id = d.source_id
+                JOIN societes c  ON c.id = d.cmf_id
+                WHERE c.code = ?
+                  AND k.kpi = ?
+                  AND k.valeur_nombre IS NOT NULL
+                  AND d.annee BETWEEN 2000 AND 2025
+                ORDER BY d.annee
+                """,
+                (company, kpi),
+            ).fetchall()
 
         if not rows:
             return pd.DataFrame(columns=["annee", "valeur"]), "CMF"
@@ -177,14 +195,14 @@ class DataLoader:
             rows = self._conn.execute(
                 """
                 SELECT d.annee, k.valeur_nombre
-                FROM kpis k
-                JOIN documents_pdf d ON d.id = k.document_id
+                FROM kpi_values k
+                JOIN documents d ON d.id = k.document_id
                 JOIN sources s   ON s.id = d.source_id
                 WHERE s.nom = ?
                   AND k.kpi = ?
                   AND k.valeur_nombre IS NOT NULL
                   AND k.tableau != 'Calcul interne'
-                  AND d.societe_id IS NULL
+                  AND d.cmf_id IS NULL
                   AND d.annee BETWEEN 2000 AND 2025
                 ORDER BY d.annee
                 """,
@@ -202,7 +220,7 @@ class DataLoader:
     def list_available_companies(self) -> list[str]:
         """Retourne tous les codes compagnies ayant des documents CMF."""
         rows = self._conn.execute(
-            "SELECT DISTINCT c.code FROM societes c JOIN documents_pdf d ON d.societe_id = c.id ORDER BY c.code"
+            "SELECT DISTINCT c.code FROM societes c JOIN documents d ON d.cmf_id = c.id ORDER BY c.code"
         ).fetchall()
         return [r[0] for r in rows]
 
@@ -211,14 +229,14 @@ class DataLoader:
         if company:
             rows = self._conn.execute(
                 """
-                SELECT DISTINCT d.annee FROM documents_pdf d
-                JOIN societes c ON c.id = d.societe_id
+                SELECT DISTINCT d.annee FROM documents d
+                JOIN societes c ON c.id = d.cmf_id
                 WHERE c.code = ? ORDER BY d.annee
                 """,
                 (company,),
             ).fetchall()
         else:
             rows = self._conn.execute(
-                "SELECT DISTINCT annee FROM documents_pdf WHERE societe_id IS NULL ORDER BY annee"
+                "SELECT DISTINCT annee FROM documents WHERE cmf_id IS NULL ORDER BY annee"
             ).fetchall()
         return [r[0] for r in rows if r[0]]

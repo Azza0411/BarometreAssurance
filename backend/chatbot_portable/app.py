@@ -1743,6 +1743,7 @@ class Chatbot:
         narrative = None
         model_used = None
         model_comparison = None
+        forecast_result = None
         try:
             from prediction.inference.forecast_service import ForecastService
             with _db() as conn:
@@ -1818,7 +1819,10 @@ class Chatbot:
             )},
         ])
         answer_text = llm_raw if llm_raw else narrative
-        forecast_rows = self._linear_forecast_rows(company, kpi, horizon)
+        if forecast_result is not None:
+            forecast_rows = self._prophet_forecast_rows(forecast_result, company, kpi)
+        else:
+            forecast_rows = self._linear_forecast_rows(company, kpi, horizon)
         response = {"text": answer_text, "render": RENDER_FORECAST,
                     "data": {"forecast": True, "kpi": kpi, "company": company, "horizon": horizon,
                              "model_used": model_used, "model_comparison": model_comparison,
@@ -1830,6 +1834,33 @@ class Chatbot:
                     ], "error": None}
         session.add_message("assistant", answer_text)
         return response
+
+    def _prophet_forecast_rows(self, forecast_result, company: str | None, kpi: str) -> list[dict]:
+        """Build visualization rows from a ForecastService result (Prophet/XGBoost)."""
+        rows: list[dict] = []
+        unit = ""
+        try:
+            from prediction.data.data_loader import DataLoader
+            with _db() as conn:
+                loader = DataLoader(conn)
+                ts = loader.load(kpi=kpi, company=company)
+            unit = ts.unit
+            hist_df = ts.data.tail(4)
+            for _, r in hist_df.iterrows():
+                rows.append({
+                    "year": int(r["annee"]), "value": round(float(r["valeur"]), 2),
+                    "ci_low": None, "ci_high": None, "unit": unit, "historical": True
+                })
+        except Exception:
+            pass
+        pred = forecast_result.prediction
+        for year, val, lo, hi in zip(pred.years, pred.values, pred.lower_bound, pred.upper_bound):
+            rows.append({
+                "year": int(year), "value": round(float(val), 2),
+                "ci_low": round(float(lo), 2), "ci_high": round(float(hi), 2),
+                "unit": unit, "historical": False
+            })
+        return rows
 
     def _linear_forecast(self, company: str | None, kpi: str, horizon: int) -> str | None:
         """Régression linéaire simple sur données historiques — fallback sans dépendances ML."""
