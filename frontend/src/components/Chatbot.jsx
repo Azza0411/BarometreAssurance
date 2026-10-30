@@ -260,6 +260,116 @@ function RichContent({ render, data, text }) {
     );
   }
 
+  if (render === "forecast" && data?.rows?.length) {
+    const rows = data.rows;
+    const histRows = rows.filter(r => r.historical);
+    const foreRows = rows.filter(r => !r.historical);
+    const allVals = rows.map(r => r.value);
+    const maxV = Math.max(...allVals, 1);
+    const unit = rows[0]?.unit || "%";
+    const kpiLabel = data.kpi || "KPI";
+    const companyLabel = data.company || "le marché";
+    const modelLabel = data.model_used || "Régression linéaire";
+    const fmtVal = v => v != null ? Number(v).toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " " + unit : "—";
+    const fmtPct = v => v != null ? Number(v).toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " " + unit : "—";
+    // pick the last historical as baseline for trend arrow
+    const lastHist = histRows.length ? histRows[histRows.length - 1].value : null;
+    const lastFore = foreRows.length ? foreRows[foreRows.length - 1].value : null;
+    const trendUp = lastHist != null && lastFore != null && lastFore >= lastHist;
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 3, height: 30, background: "#7C3AED", borderRadius: 2 }} />
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: D, letterSpacing: ".2px" }}>
+              Prévision — {kpiLabel}
+            </div>
+            <div style={{ fontSize: 9, color: MUTED, marginTop: 1 }}>
+              {companyLabel} · {modelLabel}
+            </div>
+          </div>
+          <div style={{ marginLeft: "auto", fontSize: 20 }}>{trendUp ? "📈" : "📉"}</div>
+        </div>
+
+        {/* Forecast cards */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {/* Historical context (smaller) */}
+          {histRows.length > 0 && (
+            <div style={{ fontSize: 9, color: MUTED, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 600, marginBottom: 2 }}>
+              Historique récent
+            </div>
+          )}
+          {histRows.map(r => {
+            const barPct = Math.round((r.value / maxV) * 100);
+            return (
+              <div key={r.year} style={{ display: "flex", alignItems: "center", gap: 7, opacity: 0.65 }}>
+                <span style={{ fontSize: 9.5, color: MUTED, width: 34, flexShrink: 0, fontWeight: 600 }}>{r.year}</span>
+                <div style={{ flex: 1, height: 5, background: BORDER_LIGHT, borderRadius: 3, overflow: "hidden" }}>
+                  <div style={{ width: `${barPct}%`, height: "100%", background: D, borderRadius: 3 }} />
+                </div>
+                <span style={{ fontSize: 9.5, color: MUTED, width: 60, flexShrink: 0, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+                  {fmtVal(r.value)}
+                </span>
+              </div>
+            );
+          })}
+
+          {/* Forecast rows (prominent) */}
+          {foreRows.length > 0 && (
+            <div style={{ fontSize: 9, color: "#7C3AED", textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700, marginTop: 6, marginBottom: 2 }}>
+              Prévisions
+            </div>
+          )}
+          {foreRows.map((r, i) => {
+            const barPct = Math.round((r.value / maxV) * 100);
+            const isTarget = i === foreRows.length - 1;
+            return (
+              <div key={r.year} style={{
+                background: isTarget ? "#F5F0FF" : "#FAFBFF",
+                border: `1px solid ${isTarget ? "#C4B5FD" : "#E8EAF0"}`,
+                borderRadius: 8,
+                padding: "8px 10px",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700,
+                    color: isTarget ? "#7C3AED" : D,
+                    width: 34, flexShrink: 0,
+                  }}>{r.year}</span>
+                  <div style={{ flex: 1, height: 6, background: BORDER_LIGHT, borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ width: `${barPct}%`, height: "100%", background: isTarget ? "#7C3AED" : "#9B72F8", borderRadius: 3 }} />
+                  </div>
+                  <span style={{
+                    fontSize: isTarget ? 13 : 11, fontWeight: isTarget ? 800 : 700,
+                    color: isTarget ? "#7C3AED" : D,
+                    width: 70, flexShrink: 0, textAlign: "right",
+                    fontVariantNumeric: "tabular-nums",
+                  }}>{fmtPct(r.value)}</span>
+                </div>
+                {/* IC band */}
+                {r.ci_low != null && (
+                  <div style={{ marginTop: 4, marginLeft: 41, fontSize: 9, color: MUTED, fontVariantNumeric: "tabular-nums" }}>
+                    IC 80 % : {fmtPct(r.ci_low)} – {fmtPct(r.ci_high)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* LLM narrative */}
+        {text && (
+          <div style={{
+            fontSize: 11.5, color: TXT, lineHeight: 1.65,
+            borderTop: `1px solid ${BORDER_LIGHT}`, paddingTop: 8, marginTop: 2,
+          }} dangerouslySetInnerHTML={{ __html: bold(text) }} />
+        )}
+      </div>
+    );
+  }
+
   // Fallback : texte markdown
   return (
     <div
@@ -272,39 +382,38 @@ function RichContent({ render, data, text }) {
 /* ── Bloc de message — style "document" : label Assistant/Vous au-dessus,
    bulle sobre (fond teinté léger, pas de couleur vive) pour distinguer les
    2 rôles au premier coup d'œil, en plus de l'alignement gauche/droite. */
-function UserAvatar() {
-  return (
-    <div style={{
-      width: 30, height: 30, borderRadius: 15, background: "#DCE4F0",
-      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-    }}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A7499" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-      </svg>
-    </div>
-  );
-}
-
 function Msg({ role, text, render, data, suggestions, onSuggest }) {
   const isUser = role === "user";
   const bold = t => (t || "").replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
 
   if (isUser) {
     return (
-      <div style={{ marginBottom: 18, display: "flex", flexDirection: "row", alignItems: "flex-start", gap: 10, justifyContent: "flex-end" }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-          <div style={{ fontSize: 9.5, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 6 }}>
-            Vous
+      <div style={{ marginBottom: 18, display: "flex", justifyContent: "flex-end", alignItems: "flex-end", gap: 8 }}>
+        {/* Bulle consultant — droite, bleu marine distinctif */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", maxWidth: "78%" }}>
+          <div style={{ fontSize: 9.5, fontWeight: 700, color: "#3B6FA8", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 5 }}>
+            Consultant
           </div>
           <div style={{
-            background: "#EEF2F8", border: `1px solid #DCE4F0`,
-            borderRadius: 10, padding: "9px 13px",
-            maxWidth: "100%", textAlign: "right", boxSizing: "border-box",
+            background: "linear-gradient(135deg,#1C4F8C,#2563EB)",
+            borderRadius: "12px 12px 3px 12px",
+            padding: "10px 14px", boxSizing: "border-box",
+            boxShadow: "0 2px 8px rgba(37,99,235,.25)",
           }}>
-            <div dangerouslySetInnerHTML={{ __html: bold(text) }} style={{ fontSize: 12.5, lineHeight: 1.6, color: TXT }}/>
+            <div dangerouslySetInnerHTML={{ __html: bold(text) }} style={{ fontSize: 12.5, lineHeight: 1.6, color: "#fff" }}/>
           </div>
         </div>
-        <UserAvatar />
+        {/* Avatar consultant */}
+        <div style={{
+          width: 32, height: 32, borderRadius: 16, flexShrink: 0,
+          background: "linear-gradient(135deg,#1C4F8C,#2563EB)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 2px 6px rgba(37,99,235,.3)",
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+        </div>
       </div>
     );
   }

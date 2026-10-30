@@ -1239,6 +1239,7 @@ RENDER_RANKING        = "ranking"
 RENDER_MARKET_OVERVIEW = "market_overview"
 RENDER_EVOLUTION = "evolution"
 RENDER_EXPLAIN   = "explain"
+RENDER_FORECAST  = "forecast"
 
 
 def build_response(user_question: str, intent: str, entities: dict,
@@ -1817,9 +1818,11 @@ class Chatbot:
             )},
         ])
         answer_text = llm_raw if llm_raw else narrative
-        response = {"text": answer_text, "render": RENDER_TEXT,
+        forecast_rows = self._linear_forecast_rows(company, kpi, horizon)
+        response = {"text": answer_text, "render": RENDER_FORECAST,
                     "data": {"forecast": True, "kpi": kpi, "company": company, "horizon": horizon,
-                             "model_used": model_used, "model_comparison": model_comparison},
+                             "model_used": model_used, "model_comparison": model_comparison,
+                             "rows": forecast_rows},
                     "suggestions": [
                         f"Évolution historique de {kpi} ?",
                         f"Comparer les prévisions avec les concurrents ?",
@@ -1879,6 +1882,45 @@ class Chatbot:
         except Exception as e:
             logger.error(f"Linear forecast error: {e}")
             return None
+
+    def _linear_forecast_rows(self, company: str | None, kpi: str, horizon: int) -> list[dict]:
+        """Return structured forecast rows [{year, value, ci_low, ci_high, unit}] for visual render."""
+        try:
+            import numpy as np
+            with _db() as conn:
+                if company:
+                    rows = fetch_kpi_for_company(conn, kpi, company, year=None)
+                else:
+                    rows = fetch_kpi_for_market(conn, kpi, year=None)
+            rows = [r for r in rows if r.get("valeur") is not None
+                    and isinstance(r.get("valeur"), (int, float))]
+            if len(rows) < 3:
+                return []
+            rows.sort(key=lambda r: r["annee"])
+            unit = rows[0].get("unit", "")
+            years = [r["annee"] for r in rows]
+            values = [r["valeur"] for r in rows]
+            import numpy as _np
+            coeffs = _np.polyfit(years, values, 1)
+            last_year = int(years[-1])
+            historical = [{"year": r["annee"], "value": float(r["valeur"]), "unit": unit, "historical": True}
+                          for r in rows[-4:]]  # last 4 historical points for context
+            forecast = []
+            for h in range(1, horizon + 1):
+                target_year = last_year + h
+                pred = float(_np.polyval(coeffs, target_year))
+                forecast.append({
+                    "year": target_year,
+                    "value": round(pred, 4),
+                    "ci_low": round(pred * 0.90, 4),
+                    "ci_high": round(pred * 1.10, 4),
+                    "unit": unit,
+                    "historical": False,
+                })
+            return historical + forecast
+        except Exception as e:
+            logger.error(f"_linear_forecast_rows error: {e}")
+            return []
 
     def _handle_explain(self, entities, raw_question, session) -> dict | None:
         """"Expliquer ce chiffre" (voir KpiOptionsMenu côté frontend) —
