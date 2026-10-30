@@ -141,6 +141,56 @@ function RichContent({ render, data, text }) {
     );
   }
 
+  if (render === "market_overview" && data?.results?.length) {
+    const ov = data.results[0];
+    const annee = ov.annee ?? data.annee ?? "—";
+    const fmt = (v, dec = 2) => v != null ? Number(v).toLocaleString("fr-FR", { maximumFractionDigits: dec }) : "—";
+    const metrics = [
+      { label: "Total primes émises", value: ov.total_primes_mdt != null ? `${fmt(ov.total_primes_mdt)} MDT` : "—", accent: true },
+      { label: "Taux de pénétration", value: ov.taux_penetration != null ? `${fmt(ov.taux_penetration, 2)} %` : "—", accent: false },
+      { label: "Primes Vie", value: ov.primes_vie_mdt != null ? `${fmt(ov.primes_vie_mdt)} MDT` : "—", accent: false },
+      { label: "Primes Non-Vie", value: ov.primes_non_vie_mdt != null ? `${fmt(ov.primes_non_vie_mdt)} MDT` : "—", accent: false },
+      { label: "Nombre d'assureurs", value: ov.nb_assureurs != null ? fmt(ov.nb_assureurs, 0) : "—", accent: false },
+      { label: "Densité assurance", value: ov.densite != null ? `${fmt(ov.densite, 1)} TND/hab.` : "—", accent: false },
+    ];
+    const bold = t => (t || "").replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
+    return (
+      <div>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <div style={{ width: 3, height: 28, background: "#1B6EC2", borderRadius: 2 }} />
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: D, letterSpacing: ".3px" }}>
+              Marché des assurances tunisien — {annee}
+            </div>
+            <div style={{ fontSize: 9, color: MUTED, marginTop: 1 }}>Vue d'ensemble macro-économique</div>
+          </div>
+        </div>
+        {/* KPI grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 10 }}>
+          {metrics.map(({ label, value, accent }) => (
+            <div key={label} style={{
+              borderRadius: 8,
+              padding: "8px 10px",
+              background: accent ? "#EBF3FB" : "#F8FAFC",
+              border: `1px solid ${accent ? "#BEDAF5" : BORDER_LIGHT}`,
+            }}>
+              <div style={{ fontSize: 8.5, color: MUTED, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 600, marginBottom: 3 }}>{label}</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: accent ? "#1B6EC2" : D }}>{value}</div>
+            </div>
+          ))}
+        </div>
+        {/* LLM narrative */}
+        {text && (
+          <div style={{
+            fontSize: 11.5, color: TXT, lineHeight: 1.65,
+            borderTop: `1px solid ${BORDER_LIGHT}`, paddingTop: 8, marginTop: 4,
+          }} dangerouslySetInnerHTML={{ __html: bold(text) }} />
+        )}
+      </div>
+    );
+  }
+
   if (render === "explain" && data) {
     const current = data.current;
     const yoy = data.yoy_pct;

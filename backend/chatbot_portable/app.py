@@ -473,6 +473,18 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         r"plus faible", r"pire", r"minimum", r"maximum",
         r"quelle compagnie (a|possede|affiche|realise)",
     ]),
+    (INTENT_MARKET_OVERVIEW, [
+        r"apercu", r"aperçu", r"vue d'ensemble", r"marche global",
+        r"secteur assurance", r"tableau de bord",
+        r"statistiques (globales|generales|du marche)",
+        r"combien (de compagnies|d'assureurs)",
+        r"autres (donnees|données|stats|kpi)",
+        r"tendances", r"principales tendances",
+        r"marche de l.assurance", r"march[eé] de l.assurance",
+        r"evolution du marche", r"[eé]volution du march[eé]",
+        r"bilan (du|de l.assurance)", r"apercu (du|de l.assurance)",
+        r"march[eé].*tunisi", r"secteur.*tunisi",
+    ]),
     (INTENT_EVOLUTION, [
         r"evolution", r"évolution", r"tendance", r"historique",
         r"depuis\s+\d{4}", r"toutes les annees", r"serie (temporelle|historique)",
@@ -487,13 +499,6 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     (INTENT_DEFINITION, [
         r"qu'est.ce que", r"c'est quoi", r"definir", r"definition",
         r"signifie", r"que veut dire", r"expliquer",
-    ]),
-    (INTENT_MARKET_OVERVIEW, [
-        r"apercu", r"aperçu", r"vue d'ensemble", r"marche global",
-        r"secteur assurance", r"tableau de bord",
-        r"statistiques (globales|generales|du marche)",
-        r"combien (de compagnies|d'assureurs)",
-        r"autres (donnees|données|stats|kpi)",
     ]),
     (INTENT_COMPANY_PROFILE, [
         r"profil (de|d'|du)", r"fiche (de|d'|du)",
@@ -1219,10 +1224,11 @@ def answer_with_sql(conn: sqlite3.Connection, question: str, history: list[dict]
 #  MODULE 7 — RESPONSE GENERATOR
 # ─────────────────────────────────────────────────────────────────────────────
 
-RENDER_TEXT      = "text"
-RENDER_TABLE     = "table"
-RENDER_KPI_CARDS = "kpi_cards"
-RENDER_RANKING   = "ranking"
+RENDER_TEXT           = "text"
+RENDER_TABLE          = "table"
+RENDER_KPI_CARDS      = "kpi_cards"
+RENDER_RANKING        = "ranking"
+RENDER_MARKET_OVERVIEW = "market_overview"
 RENDER_EVOLUTION = "evolution"
 RENDER_EXPLAIN   = "explain"
 
@@ -1319,6 +1325,8 @@ def _fallback_text(intent, entities, query_results) -> str:
 def _choose_render(intent, results, entities) -> str:
     if intent == "ranking":
         return RENDER_RANKING
+    if intent == "market_overview":
+        return RENDER_MARKET_OVERVIEW
     if intent == "evolution" or (not entities.get("company") and len(results) > 3):
         return RENDER_EVOLUTION
     if intent == "company_profile":
@@ -2022,6 +2030,21 @@ def _session_id() -> str:
     if not sid and request.is_json:
         sid = (request.get_json(silent=True) or {}).get("session_id")
     return sid or str(uuid.uuid4())
+
+
+@chatbot_bp.get("/debug-intent")
+def debug_intent():
+    text = request.args.get("q", "")
+    norm = normalize(text)
+    entities = extract_entities(text)
+    intent = detect_intent(text, entities)
+    matched = []
+    for i_name, compiled in _COMPILED_PATTERNS:
+        for pat in compiled:
+            if pat.search(norm):
+                matched.append({"intent": i_name, "pattern": pat.pattern})
+                break
+    return jsonify({"norm": norm, "intent": intent, "entities": entities, "first_matches": matched[:5]})
 
 
 @chatbot_bp.post("")
