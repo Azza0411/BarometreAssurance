@@ -893,14 +893,22 @@ def fetch_market_overview(conn, year: int) -> dict:
     if nb_assureurs is None:
         cmf_docs = list_documents_by_source(conn, "CMF")
         nb_assureurs = len({code for _, _, code, y in cmf_docs if y == year and code}) or None
+    # Taux de pénétration est stocké dans le tableau 'Calcul interne' (exclu par get_kpis_for_document)
+    row = conn.execute(
+        "SELECT kv.valeur_nombre FROM kpi_values kv JOIN documents d ON kv.document_id=d.id "
+        "JOIN sources s ON d.source_id=s.id WHERE s.nom='FTUSA' AND d.annee=? AND kv.kpi=?",
+        (year, "Taux de pénétration")
+    ).fetchone()
+    taux_penetration = row[0] if row else None
+    pib_mdt = ins.get("Produit Interieur Brut (PIB)")
     return {
         "annee": year,
-        "pib_mdt": ins.get("Produit Interieur Brut (PIB)"),
+        "pib_mdt": pib_mdt,
         "population": population,
         "total_primes_mdt": total / PRIMES_DIVISOR if total else None,
         "primes_vie_mdt": (ftusa.get("Primes émises Vie") or 0) / PRIMES_DIVISOR or None,
         "primes_non_vie_mdt": (ftusa.get("Primes émises Non-Vie") or 0) / PRIMES_DIVISOR or None,
-        "taux_penetration": ftusa.get("Taux de pénétration"),
+        "taux_penetration": taux_penetration,
         "densite": densite,
         "nb_assureurs": nb_assureurs,
         "total_agences": cga.get("Total agences"),
