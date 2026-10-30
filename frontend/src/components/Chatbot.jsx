@@ -180,13 +180,90 @@ function RichContent({ render, data, text }) {
             </div>
           ))}
         </div>
-        {/* LLM narrative */}
-        {text && (
-          <div style={{
-            fontSize: 11.5, color: TXT, lineHeight: 1.65,
-            borderTop: `1px solid ${BORDER_LIGHT}`, paddingTop: 8, marginTop: 4,
-          }} dangerouslySetInnerHTML={{ __html: bold(text) }} />
-        )}
+        {/* LLM narrative — parsée en sections colorées */}
+        {text && (() => {
+          // Découper par **Titre** (en début de ligne)
+          const raw = text.trim();
+          const sections = [];
+          const sectionRe = /\*\*([^*\n]+)\*\*[^\n]*\n([\s\S]*?)(?=\n\s*\*\*[^*]|\s*$)/g;
+          let m;
+          while ((m = sectionRe.exec(raw)) !== null) {
+            const title = m[1].trim();
+            const body  = m[2].trim();
+            // Sauter tableau / synthèse / synthétique (redondant avec les cartes KPI)
+            if (/tableau|synth/i.test(title)) continue;
+            const bullets = body.split("\n")
+              .filter(l => l.trim().startsWith("- "))
+              .map(l => l.replace(/^-\s*/, "").trim())
+              .filter(Boolean);
+            const prose = body.split("\n")
+              .filter(l => !l.trim().startsWith("- ") && !l.trim().startsWith("|") && l.trim())
+              .join(" ").trim();
+            sections.push({ title, bullets, prose });
+          }
+
+          // Palette par type de section
+          const palette = (t) => {
+            const n = t.toLowerCase();
+            if (/analyse|concis|faits|observ/i.test(n)) return { accent: "#1B6EC2", bg: "#EBF3FB", border: "#BEDAF5", dot: "#1B6EC2" };
+            if (/opportun|perspect|recommand/i.test(n)) return { accent: "#16A34A", bg: "#F0FDF4", border: "#BBF7D0", dot: "#16A34A" };
+            if (/risque|défi|limit/i.test(n))           return { accent: "#B45309", bg: "#FFFBEB", border: "#FDE68A", dot: "#B45309" };
+            if (/enjeu|tendance|contexte/i.test(n))     return { accent: "#7C3AED", bg: "#F5F0FF", border: "#DDD6FE", dot: "#7C3AED" };
+            return { accent: "#1B6EC2", bg: "#EBF3FB", border: "#BEDAF5", dot: "#1B6EC2" };
+          };
+
+          // Note de bas de page : ligne *italique*
+          const noteMatch = raw.match(/\n\*([^*\n]+)\*\s*$/);
+          const footerNote = noteMatch ? noteMatch[1].trim() : null;
+
+          if (!sections.length) {
+            // Fallback : affichage texte propre si aucune section détectée
+            return (
+              <div style={{ borderTop: `1px solid ${BORDER_LIGHT}`, paddingTop: 8, marginTop: 4 }}>
+                <div style={{ fontSize: 11.5, color: TXT, lineHeight: 1.7 }}
+                  dangerouslySetInnerHTML={{ __html: bold(raw) }} />
+              </div>
+            );
+          }
+
+          return (
+            <div style={{ borderTop: `1px solid ${BORDER_LIGHT}`, paddingTop: 10, marginTop: 4, display: "flex", flexDirection: "column", gap: 7 }}>
+              {sections.map(({ title, bullets, prose }) => {
+                const { accent, bg, border, dot } = palette(title);
+                return (
+                  <div key={title} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 8, overflow: "hidden" }}>
+                    {/* En-tête de section */}
+                    <div style={{ background: accent, padding: "5px 10px" }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: "#fff", textTransform: "uppercase", letterSpacing: ".7px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {title}
+                      </div>
+                    </div>
+                    {/* Contenu */}
+                    <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 5 }}>
+                      {bullets.map((b, i) => (
+                        <div key={i} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+                          <div style={{ width: 5, height: 5, borderRadius: "50%", background: dot, flexShrink: 0, marginTop: 5 }} />
+                          <div style={{ fontSize: 11.5, color: TXT, lineHeight: 1.65 }}
+                            dangerouslySetInnerHTML={{ __html: bold(b) }} />
+                        </div>
+                      ))}
+                      {prose && !bullets.length && (
+                        <div style={{ fontSize: 11.5, color: TXT, lineHeight: 1.65 }}
+                          dangerouslySetInnerHTML={{ __html: bold(prose) }} />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Note de bas de page */}
+              {footerNote && (
+                <div style={{ fontSize: 9.5, color: MUTED, fontStyle: "italic", textAlign: "center", paddingTop: 2 }}>
+                  ⚠ {footerNote}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   }
