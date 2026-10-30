@@ -199,62 +199,107 @@ function RichContent({ render, data, text }) {
     const sRank = data.sector_rank;
     const sN = data.sector_n;
     const yoyPositive = yoy != null && yoy > 0;
-    const yoyColor = yoy != null ? (yoyPositive ? "#D93025" : "#1A8A4A") : MUTED;
+    // Vert = hausse, rouge = baisse (logique métier assurance)
+    const yoyColor = yoy != null ? (yoyPositive ? "#16A34A" : "#DC2626") : MUTED;
+    const yoyBg   = yoy != null ? (yoyPositive ? "#F0FDF4" : "#FEF2F2") : "#F8FAFC";
+    const yoyBorder = yoy != null ? (yoyPositive ? "#BBF7D0" : "#FECACA") : BORDER_LIGHT;
     const yoyIcon = yoy != null ? (yoyPositive ? "▲" : "▼") : "";
-    const hasStats = yoy != null || sAvg != null;
+    // Classement : top 3 = OR/vert, reste = neutre
+    const rankColor = sRank != null && sRank <= 3 ? "#16A34A" : D;
+    const rankBg    = sRank != null && sRank <= 3 ? "#F0FDF4" : "#F8FAFC";
+    const rankBorder = sRank != null && sRank <= 3 ? "#BBF7D0" : BORDER_LIGHT;
+
+    // Détecte le fallback structuré : commence par **kpi** (markdown gras),
+    // à la différence de la prose LLM qui commence par "La " / "Le " etc.
+    const isFallback = text && text.trimStart().startsWith("**");
+
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-        {/* Main value card */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {/* Carte valeur principale */}
         <div style={{
           background: "linear-gradient(135deg, #0C1B2E 0%, #1a3050 100%)",
           borderRadius: 10, padding: "12px 16px",
+          display: "flex", alignItems: "flex-end", justifyContent: "space-between",
         }}>
-          <div style={{ fontSize: 9, color: "rgba(255,255,255,.55)", textTransform: "uppercase", letterSpacing: ".7px", fontWeight: 700, marginBottom: 5 }}>
-            {(current?.kpi || data.kpi || "").replace("(%)", "")} · {data.annee}
+          <div>
+            <div style={{ fontSize: 9, color: "rgba(255,255,255,.55)", textTransform: "uppercase", letterSpacing: ".7px", fontWeight: 700, marginBottom: 5 }}>
+              {(current?.kpi || data.kpi || "").replace(/\s*\(%\)\s*/i, "")} · {data.annee}
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", letterSpacing: "-.5px", lineHeight: 1 }}>
+              {current?.display || "—"}
+              {current?.unit && <span style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,.6)", marginLeft: 5 }}>{current.unit}</span>}
+            </div>
           </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: "#fff", letterSpacing: "-.5px" }}>
-            {current?.display || "—"}
-            {current?.unit && <span style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,.7)", marginLeft: 5 }}>{current.unit}</span>}
-          </div>
+          {sRank === 1 && <div style={{ fontSize: 22 }}>🏆</div>}
         </div>
 
-        {/* Stats row */}
-        {hasStats && (
-          <div style={{ display: "grid", gridTemplateColumns: yoy != null && sAvg != null ? "1fr 1fr" : "1fr", gap: 7 }}>
-            {yoy != null && (
-              <div style={{ background: "#F8FAFC", borderRadius: 8, padding: "8px 12px", border: `1px solid ${BORDER_LIGHT}` }}>
-                <div style={{ fontSize: 9, color: MUTED, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700, marginBottom: 4 }}>
-                  vs {data.annee - 1}
-                </div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: yoyColor }}>
-                  {yoyIcon} {yoy > 0 ? "+" : ""}{yoy.toFixed(1)} %
-                </div>
+        {/* Grille 3 métriques : YoY · Moy. secteur · Classement */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+          {yoy != null && (
+            <div style={{ background: yoyBg, borderRadius: 8, padding: "8px 10px", border: `1px solid ${yoyBorder}` }}>
+              <div style={{ fontSize: 8.5, color: MUTED, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700, marginBottom: 4 }}>
+                vs {data.annee - 1}
               </div>
-            )}
-            {sAvg != null && (
-              <div style={{ background: "#F8FAFC", borderRadius: 8, padding: "8px 12px", border: `1px solid ${BORDER_LIGHT}` }}>
-                <div style={{ fontSize: 9, color: MUTED, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700, marginBottom: 4 }}>
-                  Moy. secteur{sN ? ` (${sN})` : ""}
-                </div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: D }}>
-                  {sAvg}{sUnit && <span style={{ fontSize: 11, fontWeight: 500, marginLeft: 3 }}>{sUnit}</span>}
-                  {sRank != null && <span style={{ fontSize: 10, color: MUTED, fontWeight: 500, marginLeft: 7 }}>#{sRank}</span>}
-                </div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: yoyColor }}>
+                {yoyIcon} {yoy > 0 ? "+" : ""}{yoy.toFixed(1)} %
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+          {sAvg != null && (
+            <div style={{ background: "#F8FAFC", borderRadius: 8, padding: "8px 10px", border: `1px solid ${BORDER_LIGHT}` }}>
+              <div style={{ fontSize: 8.5, color: MUTED, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700, marginBottom: 4 }}>
+                Moy. secteur
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: D }}>
+                {sAvg}{sUnit && <span style={{ fontSize: 10, fontWeight: 500, marginLeft: 2 }}>{sUnit}</span>}
+              </div>
+              {sN != null && <div style={{ fontSize: 8.5, color: MUTED, marginTop: 2 }}>{sN} compagnies</div>}
+            </div>
+          )}
+          {sRank != null && (
+            <div style={{ background: rankBg, borderRadius: 8, padding: "8px 10px", border: `1px solid ${rankBorder}` }}>
+              <div style={{ fontSize: 8.5, color: MUTED, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700, marginBottom: 4 }}>
+                Classement
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: rankColor }}>
+                #{sRank}
+                <span style={{ fontSize: 10, fontWeight: 500, color: MUTED, marginLeft: 3 }}>/ {sN}</span>
+              </div>
+            </div>
+          )}
+        </div>
 
-        {/* LLM explanation */}
+        {/* Explication — prose LLM ou fallback stylisé */}
         {text && (
-          <div style={{
-            borderLeft: `3px solid ${D}`,
-            paddingLeft: 11, paddingTop: 2, paddingBottom: 2,
-            fontSize: 12, lineHeight: 1.7, color: TXT,
-            whiteSpace: "pre-wrap",
-          }}
-            dangerouslySetInnerHTML={{ __html: bold(text) }}
-          />
+          isFallback ? (
+            // Fallback : lignes structurées → liste propre
+            <div style={{ background: "#F8FAFC", border: `1px solid ${BORDER_LIGHT}`, borderRadius: 8, padding: "9px 12px" }}>
+              <div style={{ fontSize: 8.5, color: MUTED, textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700, marginBottom: 6 }}>
+                Contexte
+              </div>
+              {text.trim().split("\n").filter(Boolean).map((line, i) => (
+                <div key={i} style={{ fontSize: 11.5, color: TXT, lineHeight: 1.7, display: "flex", gap: 6, alignItems: "baseline" }}>
+                  <span style={{ color: MUTED, flexShrink: 0 }}>·</span>
+                  <span dangerouslySetInnerHTML={{ __html: bold(line) }} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            // Prose LLM → carte bleue sobre
+            <div style={{
+              background: "#EBF3FB", border: "1px solid #BEDAF5",
+              borderRadius: 8, padding: "9px 12px",
+            }}>
+              <div style={{ fontSize: 8.5, color: "#1B6EC2", textTransform: "uppercase", letterSpacing: ".5px", fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#1B6EC2" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                Analyse EY
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.7, color: TXT }}
+                dangerouslySetInnerHTML={{ __html: bold(text) }} />
+            </div>
+          )
         )}
       </div>
     );
