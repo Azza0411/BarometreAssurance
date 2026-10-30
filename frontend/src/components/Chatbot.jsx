@@ -359,13 +359,63 @@ function RichContent({ render, data, text }) {
           })}
         </div>
 
-        {/* LLM narrative */}
-        {text && (
-          <div style={{
-            fontSize: 11.5, color: TXT, lineHeight: 1.65,
-            borderTop: `1px solid ${BORDER_LIGHT}`, paddingTop: 8, marginTop: 2,
-          }} dangerouslySetInnerHTML={{ __html: bold(text) }} />
-        )}
+        {/* LLM narrative — parsée en sections Prévision / Explication */}
+        {text && (() => {
+          // Extraire les sections **Titre** \n contenu
+          const sectionRe = /\*\*([^*]+)\*\*[\s\S]*?\n([\s\S]*?)(?=\n\s*\*\*|$)/g;
+          const sections = [];
+          let m;
+          const src = text.trim();
+          while ((m = sectionRe.exec(src)) !== null) {
+            const title = m[1].trim();
+            const body = m[2].trim();
+            const bullets = body.split("\n").filter(l => l.trim().startsWith("- ")).map(l => l.replace(/^-\s*/, "").trim());
+            const prose = body.split("\n").filter(l => !l.trim().startsWith("- ")).join(" ").trim();
+            sections.push({ title, bullets, prose });
+          }
+          // Afficher uniquement la section Explication (Prévision = déjà dans les cartes)
+          const expl = sections.find(s => s.title.toLowerCase().includes("explication") || s.title.toLowerCase().includes("analyse"));
+          const toShow = expl ? [expl] : sections;
+          if (!toShow.length) {
+            return (
+              <div style={{ fontSize: 11.5, color: TXT, lineHeight: 1.65, borderTop: `1px solid ${BORDER_LIGHT}`, paddingTop: 8 }}
+                dangerouslySetInnerHTML={{ __html: bold(text) }} />
+            );
+          }
+          return (
+            <div style={{ borderTop: `1px solid ${BORDER_LIGHT}`, paddingTop: 9, marginTop: 4, display: "flex", flexDirection: "column", gap: 6 }}>
+              {toShow.map(({ title, bullets, prose }) => (
+                <div key={title} style={{
+                  background: "#F5F0FF", border: "1px solid #DDD6FE",
+                  borderRadius: 8, padding: "9px 12px",
+                }}>
+                  <div style={{
+                    fontSize: 9, fontWeight: 800, color: "#7C3AED",
+                    textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 6,
+                    display: "flex", alignItems: "center", gap: 5,
+                  }}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    Analyse du modèle
+                  </div>
+                  {bullets.length > 0 && (
+                    <ul style={{ margin: "0 0 5px 0", paddingLeft: 14 }}>
+                      {bullets.map((b, i) => (
+                        <li key={i} style={{ fontSize: 11, color: TXT, lineHeight: 1.6, marginBottom: 2 }}
+                          dangerouslySetInnerHTML={{ __html: bold(b) }} />
+                      ))}
+                    </ul>
+                  )}
+                  {prose && (
+                    <div style={{ fontSize: 11.5, color: TXT, lineHeight: 1.7 }}
+                      dangerouslySetInnerHTML={{ __html: bold(prose) }} />
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
     );
   }
