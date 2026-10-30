@@ -272,29 +272,60 @@ function RichContent({ render, data, text }) {
 /* ── Bloc de message — style "document" : label Assistant/Vous au-dessus,
    bulle sobre (fond teinté léger, pas de couleur vive) pour distinguer les
    2 rôles au premier coup d'œil, en plus de l'alignement gauche/droite. */
+function UserAvatar() {
+  return (
+    <div style={{
+      width: 30, height: 30, borderRadius: 15, background: "#DCE4F0",
+      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+    }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A7499" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+      </svg>
+    </div>
+  );
+}
+
 function Msg({ role, text, render, data, suggestions, onSuggest }) {
   const isUser = role === "user";
   const bold = t => (t || "").replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
+
+  if (isUser) {
+    return (
+      <div style={{ marginBottom: 18, display: "flex", flexDirection: "row", alignItems: "flex-start", gap: 10, justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+          <div style={{ fontSize: 9.5, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 6 }}>
+            Vous
+          </div>
+          <div style={{
+            background: "#EEF2F8", border: `1px solid #DCE4F0`,
+            borderRadius: 10, padding: "9px 13px",
+            maxWidth: "100%", textAlign: "right", boxSizing: "border-box",
+          }}>
+            <div dangerouslySetInnerHTML={{ __html: bold(text) }} style={{ fontSize: 12.5, lineHeight: 1.6, color: TXT }}/>
+          </div>
+        </div>
+        <UserAvatar />
+      </div>
+    );
+  }
+
   return (
-    <div style={{ marginBottom: 18, display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "stretch" }}>
+    <div style={{ marginBottom: 18, display: "flex", flexDirection: "column", alignItems: "stretch" }}>
       <div style={{
         fontSize: 9.5, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 6,
-        width: isUser ? "auto" : "100%",
+        width: "100%",
       }}>
-        {isUser ? "Vous" : "Assistant"}
+        Assistant
       </div>
       <div style={{
-        background: isUser ? "#EEF2F8" : "#F7F8FA",
-        border: `1px solid ${isUser ? "#DCE4F0" : BORDER_LIGHT}`,
+        background: "#F7F8FA",
+        border: `1px solid ${BORDER_LIGHT}`,
         borderRadius: 10,
         padding: "9px 13px",
-        maxWidth: isUser ? "85%" : "100%", textAlign: isUser ? "right" : "left",
+        maxWidth: "100%", textAlign: "left",
         boxSizing: "border-box",
       }}>
-        {isUser
-          ? <div dangerouslySetInnerHTML={{ __html: bold(text) }} style={{ fontSize: 12.5, lineHeight: 1.6, color: TXT }}/>
-          : <RichContent render={render} data={data} text={text}/>
-        }
+        <RichContent render={render} data={data} text={text}/>
       </div>
       {!isUser && suggestions?.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
